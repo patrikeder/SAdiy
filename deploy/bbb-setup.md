@@ -9,4 +9,4 @@ Verify every pin and overlay name on your image (`uname -r`, `cat /etc/dogtag`, 
 5. CPU governor: `sudo cpufreq-set -g performance`.
 6. Copy the project to `/opt/sadiy`, config to `/etc/sadiy/local.toml`, install `deploy/sweepd.service`
    into `/etc/systemd/system/`, then `systemctl enable --now sweepd`.
-7. View from a PC: `python -m sadiy.ui.qt_client --host <bbb-ip>`.
+7. View from a PC (the BBB needs no Qt): `python -m sadiy.ui.sa_gui --host <bbb-ip> --connect`. `sweepd` binds `tcp://*:5556` (frames) and `tcp://*:5557` (commands), so both ports must be reachable from the PC. Use `--sim` only for a simulator on the PC itself.

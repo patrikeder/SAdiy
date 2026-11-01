@@ -19,7 +19,7 @@ ADF4351 -> 6 dB pad -> PE4302 -> [DUT] -> detector -> ADC
 - [ ] ADS1115 driver (I2C, +/-2.048 V range, 860 SPS) and BBB on-chip ADC path with divider.
 - [ ] `build_hw_engine` in `sweepd`: real SPI/GPIO, switch GPIO from sysfs to libgpiod.
 - [ ] Thru normalisation and S21 trace in `cal.py`, saved as JSON/NPZ.
-- [ ] Client: S21 trace in dB, markers, thru-store button (terminal first, PyQtGraph later).
+- [ ] Client: S21 trace in dB, markers, thru-store button. Terminal first; later an SNA mode in `ui/sa_gui.py` (markers, trace B, CSV export and the Advanced tab carry over; the level axis becomes dB relative to the thru).
 - [ ] Measure per-point time (PLL lock plus ADC) before deciding on C++/Rust.
 
 ## 4. Timeline (evenings, adjust freely)
@@ -40,4 +40,4 @@ ADF4351 -> 6 dB pad -> PE4302 -> [DUT] -> detector -> ADC
 
 ## 6. Open points
 - Which ADC path first: ADS1115 on the RPi, or BBB on-chip ADC (0 to 1.8 V, needs divider)?
-- Is the PE4302 module strapped to serial mode? Is its input DC-blocked?
+- Answered 2026-11-01: the PE4302 module has parallel control only (V1..V6), no serial mode. Still open: is its RF input DC-blocked (series capacitors seen on the photos, verify)?

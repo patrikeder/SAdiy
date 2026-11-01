@@ -23,7 +23,15 @@ def build_sim_engine(cfg: dict) -> SweepEngine:
     from ..sim import SimAdc, SimAtten, SimChain, SimSynth
 
     det = Detector.from_config(cfg["detector"])
-    chain = SimChain(det, if_hz=cfg["rf"]["if_hz"], gain_db=cfg["cal"]["default_gain_db"])
+    sim = cfg.get("sim", {})                     # optional [sim] section, see config/default.toml
+    chain = SimChain(
+        det,
+        tones=[(float(f), float(p)) for f, p in sim.get("tones", ((100e6, -30.0), (250e6, -45.0)))],
+        if_hz=cfg["rf"]["if_hz"],
+        rbw_hz=float(sim.get("rbw_hz", 230e3)),
+        gain_db=cfg["cal"]["default_gain_db"],
+        noise_dbm_in=float(sim.get("noise_dbm_in", -100.0)),
+    )
     return SweepEngine(
         SimSynth(chain),
         SimAtten(chain),
@@ -69,6 +77,12 @@ class Sweepd:
                 return {"ok": False, "error": "start_hz must be below stop_hz"}
             if not 2 <= int(new["points"]) <= 4001:
                 return {"ok": False, "error": "points must be 2..4001"}
+            rf = self.cfg["rf"]    # outside this range the LO plan raises and would kill the daemon
+            if new["start_hz"] < rf["rf_min_hz"] or new["stop_hz"] > rf["rf_max_hz"]:
+                return {
+                    "ok": False,
+                    "error": f"range must be within {rf['rf_min_hz'] / 1e6:g}..{rf['rf_max_hz'] / 1e6:g} MHz",
+                }
             self.settings = new
             return {"ok": True, "settings": self.settings}
         if name == "run":
@@ -78,7 +92,14 @@ class Sweepd:
             self.running = False
             return {"ok": True}
         if name == "status":
-            return {"ok": True, "running": self.running, "seq": self.seq, "settings": self.settings}
+            rf = self.cfg["rf"]
+            return {
+                "ok": True,
+                "running": self.running,
+                "seq": self.seq,
+                "settings": self.settings,
+                "limits": {"rf_min_hz": rf["rf_min_hz"], "rf_max_hz": rf["rf_max_hz"], "points_max": 4001},
+            }
         return {"ok": False, "error": f"unknown command {name!r}"}
 
     def step(self):

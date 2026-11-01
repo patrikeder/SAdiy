@@ -19,6 +19,8 @@ pip install -e .[dev]
 pytest
 python -m sadiy.server.sweepd --sim &        # simulated RF chain, publishes on tcp 5556 / 5557
 python -m sadiy.ui.cli_client --count 5      # prints the peak of each sweep
+pip install -e .[ui]                         # PyQtGraph + PyQt5, only for the GUI
+python -m sadiy.ui.sa_gui --sim              # spectrum analyzer GUI, starts its own simulated hardware
 python tools/bringup.py pe4302-pattern --db 16 --from-db 15.5   # V1..V6 write order for the logic analyzer
 python tools/bringup.py pll --mhz 110.7
 ```
@@ -33,12 +35,12 @@ Run from a project checkout: the config is read from `config/default.toml` next 
 | `src/sadiy/drivers/` | PE4302, ADF4351, ADC drivers |
 | `src/sadiy/core/` | frequency plan, detector model, calibration, sweep engine (no hardware access) |
 | `src/sadiy/server/` | `sweepd` acquisition daemon, wire protocol |
-| `src/sadiy/ui/` | clients (terminal, PyQtGraph); they never touch hardware |
+| `src/sadiy/ui/` | clients (terminal, spectrum analyzer GUI `sa_gui.py`, old PyQtGraph skeleton `qt_client.py`); they never touch hardware. `sa_core.py` holds the GUI logic without Qt (tested) |
 | `src/sadiy/sim.py` | simulated RF chain for development |
 | `src/sadiy/patterns.py` | pattern maker: attenuator line sequences and ADF4351 SPI frames, for logic analyzer comparison |
 | `config/` | TOML configuration; values marked VERIFY need checking on the real boards |
 | `hw/` | wiring (BBB and RPi), diagrams (SVG + PNG), board hierarchy, netlist, per-board notes, test points, missing parts |
-| `docs/` | architecture and bring-up plan |
+| `docs/` | architecture, bring-up plan, GUI manual (`gui.md`) |
 | `deploy/` | BBB setup notes, systemd unit |
 | `native/` | placeholder for C++ / Rust, only if profiling demands it |
 | `tools/` | bring-up and calibration helpers; `gen_diagrams.py` regenerates `hw/diagrams/` and `hw/netlist.md` |
@@ -57,5 +59,6 @@ Run from a project checkout: the config is read from `config/default.toml` next 
 | ADF4351 register packing | **not written**: needs the datasheet register maps (see `drivers/adf4351.py`) |
 | Hardware wiring in `sweepd` (`build_hw_engine`) | **not written**: waits for the ADF4351 registers and the pin map |
 | ADS1115 driver | stub |
-| PyQtGraph client | untested skeleton |
+| Spectrum analyzer GUI (`sa_gui.py`, see `docs/gui.md`) | done: classic display, markers, trace modes, Advanced tab with simulated hardware; smoke-tested offscreen against the simulator, not yet used with real hardware or on a real display |
+| `qt_client.py` | old untested skeleton, superseded by `sa_gui.py` |
 | GPIO backend | sysfs; switch to libgpiod once the image is fixed |

@@ -5,7 +5,7 @@
 ```
  sweepd (one process, real-time priority)         clients (any number, any host)
  +--------------------------------------+         +-------------------------+
- | SweepEngine                          |  PUB    | qt_client / cli_client  |
+ | SweepEngine                          |  PUB    | sa_gui / cli_client     |
  |   synth.tune -> settle -> adc.read   | ------> | plot, markers, hold     |
  | PE4302 (GPIO) ADF4351 (SPI) ADC      |  REP    |                         |
  +--------------------------------------+ <------ | set / run / stop        |
@@ -14,11 +14,14 @@
 - The GPIO / SPI control and the ADC reads run in `sweepd`, a separate process from any UI. This is the "secondary thread" requirement done with a process, because Python's GIL would otherwise couple plotting to SPI timing.
 - On the BBB the viewer runs on another machine (`--host <bbb-ip>`). On the RPi it can run locally on the monitor. Same code both ways.
 - Frames are two ZeroMQ parts: a JSON header and float32 dBm values (`server/protocol.py`).
+- Commands (REQ/REP, JSON): `set` (start_hz, stop_hz, points, atten_db, auto_atten, averages), `run`, `stop`, `status`. `set` is rejected when the range lies outside `[rf] rf_min_hz .. rf_max_hz`, because the LO plan would fail below the ADF4351 minimum. `status` returns the settings, the running state and the `limits` (rf_min_hz, rf_max_hz, points_max), which the GUI adopts on connect.
+- The GUI (`ui/sa_gui.py`, see `gui.md`) is one such client. It can also start `sweepd --sim` as a child process for development on a PC.
 
 ## Layering
 
 `hal` (pins, buses) <- `drivers` (PE4302, ADF4351, ADC) <- `core` (sweep, cal, plan) <- `server` <- `ui`.
 Only `hal` touches the OS. Everything above runs against fakes and the simulator on a PC.
+Inside `ui`, everything that is not drawing lives in `sa_core.py` (no Qt, unit-tested); `sa_gui.py` is the thin Qt layer, `sweep_client.py` the ZeroMQ side and `sim_runner.py` the simulator launcher.
 
 ## Frequency plan
 
@@ -44,5 +47,6 @@ The sweep samples the response of the IF filter, so the step must be no larger t
 | ZeroMQ PUB/SUB + REQ/REP | simple, multi-client, works across hosts |
 | Precompute all sweep points and PLL words | keeps the inner loop to tune, settle, read |
 | PE4302 on 6 GPIO lines (parallel V1..V6), make-before-break write order, safe default | the module has no serial interface. Stages turning on are written first so no step is less attenuating than min(old, new); the module's own pull-downs default to 0 dB; optional 2.2 kohm pull-ups give maximum attenuation before the SBC drives the lines |
+| GUI as a client with its own simulator launcher | the same GUI runs on a PC against the simulator, on the RPi locally and on a PC against the BBB; sim parameters go through a temporary TOML override (`[sim]` section), so `sweepd` has no GUI-specific code |
 | Python first, native later | only if the measured per-point time says so (`native/`) |
 | Simulator in the repo | whole stack testable without the hardware |

@@ -46,3 +46,9 @@ settle_s = 0.0005         # measure PLL lock + detector settling, then tighten
 [server]
 pub = "tcp://*:5556"
 rep = "tcp://*:5557"
+
+[sim]
+# Only used by `sweepd --sim` (and the GUI's "Simulated hardware" tab).
+tones = [[100e6, -30.0], [250e6, -45.0]]   # [frequency Hz, level dBm at the analyzer input]
+noise_dbm_in = -100.0                      # input-referred noise floor
+rbw_hz = 230e3                             # Gaussian IF filter width of the simulated receiver

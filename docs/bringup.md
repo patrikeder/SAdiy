@@ -30,7 +30,7 @@ Each stage lists the board test points it uses (see `hw/test-points.md`). Tick a
 ## Stage 4: calibration, auto-range, UI
 - `tools/cal_run.py` procedure, per-frequency gain table in `cal/gain.json`.
 - Check auto-ranging against the compression limits measured in stage 2.
-- Remote viewing from the PC for the BBB.
+- Remote viewing from the PC for the BBB: `python -m sadiy.ui.sa_gui --host <bbb-ip> --connect` (see `gui.md`). The status bar warns when the point count is too low for the RBW; use "Points = 2·span/RBW" and a narrower span for the first calibrated sweeps.
 - [ ] Pass: a sweep over 30 to 480 MHz at a usable rate with calibrated levels.
 
 ## Open measurements to settle
