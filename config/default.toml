@@ -9,8 +9,12 @@ rf_max_hz = 480e6         # AD831 LO limit is 500 MHz, so RF max is about 489 MH
 [synth]
 ref_hz = 25e6             # verified: 25.000 MHz oscillator on the ADF4351 eval board (photo)
 pfd_hz = 25e6
-out_power_dbm = -4        # ADF4351 steps: -4, -1, +2, +5
 mod_max = 4095
+# RF outputs are OFF unless enabled here (a missing key also means off). Enable only what is cabled.
+out_main_enable = true    # RFOUTA = the LO feed to the AD831 (eval board SMA AOUT+ or AOUT-, VERIFY which)
+out_power_dbm = -4        # main output power; ADF4351 steps: -4, -1, +2, +5
+out_aux_enable = false    # RFOUTB, not used
+out_aux_power_dbm = -4
 
 [attenuator]
 # PE4302 module with parallel control only: inputs V1..V6, no serial interface.
