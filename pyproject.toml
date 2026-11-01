@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sadiy"
+version = "0.1.0"
+description = "DIY swept spectrum analyzer: BeagleBone Black / Raspberry Pi control and acquisition"
+requires-python = ">=3.9"
+dependencies = ["numpy", "pyzmq", "tomli; python_version < '3.11'"]
+
+[project.optional-dependencies]
+hw = ["spidev"]
+ui = ["pyqtgraph", "PyQt5"]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+sweepd = "sadiy.server.sweepd:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

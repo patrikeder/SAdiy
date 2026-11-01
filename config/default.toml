@@ -1,0 +1,44 @@
+# SAdiy default configuration. Values marked VERIFY must be checked on the real boards.
+
+[rf]
+if_hz = 10.7e6
+injection = "high"        # LO = RF + IF
+rf_min_hz = 30e6
+rf_max_hz = 480e6         # AD831 LO limit is 500 MHz, so RF max is about 489 MHz with a 10.7 MHz IF
+
+[synth]
+ref_hz = 25e6             # verified: 25.000 MHz oscillator on the ADF4351 eval board (photo)
+pfd_hz = 25e6
+out_power_dbm = -4        # ADF4351 steps: -4, -1, +2, +5
+mod_max = 4095
+
+[attenuator]
+# PE4302 module with parallel control only: inputs V1..V6, no serial interface.
+weights_db = [0.5, 1.0, 2.0, 4.0, 8.0, 16.0]   # per the module description; confirm with tools/bringup.py pe4302-walk
+active_high = true                              # per the module description (high = stage in); confirm with the walk tool
+gpio_bbb = [66, 67, 69, 68, 45, 44]             # kernel GPIO numbers: P8.7, 8, 9, 10, 11, 12
+gpio_rpi_bcm = [5, 6, 12, 13, 20, 21]           # BCM GPIO numbers: pins 29, 31, 32, 33, 38, 40
+max_db = 31.5
+
+[detector]
+slope_v_per_db = -0.0245  # AD8318 typical; calibrate per frequency
+intercept_dbm = 20.0
+divider_ratio = 1.0       # Vadc / Vdet. Set to the real value once the ADC-side divider is fitted
+
+[cal]
+default_gain_db = 22.0    # estimate: amp 31 - PE4302 1.5 - IF filter 6 - LPF ~1.5. Replace by measurement
+file = "cal/gain.json"
+
+[adc]
+kind = "sim"              # sim | bbb_iio | ads1115
+channel = 0
+vref = 1.8                # BBB on-chip ADC full scale. NEVER exceed 1.8 V on AIN
+
+[sweep]
+points = 401
+averages = 4
+settle_s = 0.0005         # measure PLL lock + detector settling, then tighten
+
+[server]
+pub = "tcp://*:5556"
+rep = "tcp://*:5557"
