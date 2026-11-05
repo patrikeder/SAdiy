@@ -1,0 +1,212 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="837" viewBox="0 0 920 837"><defs></defs>
+<rect x="0" y="0" width="920" height="837" fill="#ffffff"/>
+<text x="24.0" y="34.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="22" text-anchor="start" font-weight="bold" fill="#212529">BeagleBone Black header P9: pinout and use</text>
+<text x="24.0" y="58.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="13" text-anchor="start" font-weight="normal" fill="#6c757d">Highlighted pins are used by SAdiy. Pins 1 and 2 are at the top (the end nearest the 5 V DC jack; confirm with the board silkscreen).</text>
+<rect x="24.0" y="76.0" width="16.0" height="16.0" rx="4" fill="#d0ebff" stroke="#1971c2" stroke-width="1.8"/>
+<text x="46.0" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">SPI</text>
+<rect x="88.7" y="76.0" width="16.0" height="16.0" rx="4" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.8"/>
+<text x="110.7" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GPIO</text>
+<rect x="160.3" y="76.0" width="16.0" height="16.0" rx="4" fill="#f3d9fa" stroke="#9c36b5" stroke-width="1.8"/>
+<text x="182.3" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">analog</text>
+<rect x="245.7" y="76.0" width="16.0" height="16.0" rx="4" fill="#c5f6fa" stroke="#0b7285" stroke-width="1.8"/>
+<text x="267.7" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">I2C</text>
+<rect x="310.4" y="76.0" width="16.0" height="16.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="1.8"/>
+<text x="332.4" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">ground</text>
+<rect x="395.8" y="76.0" width="16.0" height="16.0" rx="4" fill="#fff0e6" stroke="#e8590c" stroke-width="1.8"/>
+<text x="417.8" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">power</text>
+<rect x="474.3" y="76.0" width="16.0" height="16.0" rx="4" fill="#fff3bf" stroke="#e67700" stroke-width="1.8"/>
+<text x="496.3" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">reserved / optional</text>
+<rect x="649.4" y="76.0" width="16.0" height="16.0" rx="4" fill="#f1f3f5" stroke="#868e96" stroke-width="1.8"/>
+<text x="671.4" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">special</text>
+<rect x="741.7" y="76.0" width="16.0" height="16.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="1.8"/>
+<text x="763.7" y="89.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">unused</text>
+<text x="460.0" y="108.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#6c757d">P9 header (odd pins left, even pins right)</text>
+<rect x="416.0" y="120.0" width="36.0" height="22.0" rx="4" fill="#495057" stroke="#495057" stroke-width="1.2"/>
+<text x="434.0" y="136.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">1</text>
+<rect x="30.0" y="120.0" width="378.0" height="22.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="0.8"/>
+<text x="400.0" y="136.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">GND</text>
+<rect x="468.0" y="120.0" width="36.0" height="22.0" rx="4" fill="#495057" stroke="#495057" stroke-width="1.2"/>
+<text x="486.0" y="136.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">2</text>
+<rect x="512.0" y="120.0" width="378.0" height="22.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="0.8"/>
+<text x="520.0" y="136.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GND</text>
+<rect x="416.0" y="145.0" width="36.0" height="22.0" rx="4" fill="#e8590c" stroke="#e8590c" stroke-width="1.2"/>
+<text x="434.0" y="161.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">3</text>
+<rect x="30.0" y="145.0" width="378.0" height="22.0" rx="4" fill="#fff0e6" stroke="#e8590c" stroke-width="0.8"/>
+<text x="400.0" y="161.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">DC_3.3V</text>
+<rect x="468.0" y="145.0" width="36.0" height="22.0" rx="4" fill="#e8590c" stroke="#e8590c" stroke-width="1.2"/>
+<text x="486.0" y="161.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">4</text>
+<rect x="512.0" y="145.0" width="378.0" height="22.0" rx="4" fill="#fff0e6" stroke="#e8590c" stroke-width="0.8"/>
+<text x="520.0" y="161.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">DC_3.3V</text>
+<rect x="416.0" y="170.0" width="36.0" height="22.0" rx="4" fill="#e8590c" stroke="#e8590c" stroke-width="1.2"/>
+<text x="434.0" y="186.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">5</text>
+<rect x="30.0" y="170.0" width="378.0" height="22.0" rx="4" fill="#fff0e6" stroke="#e8590c" stroke-width="0.8"/>
+<text x="400.0" y="186.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">VDD_5V</text>
+<rect x="468.0" y="170.0" width="36.0" height="22.0" rx="4" fill="#e8590c" stroke="#e8590c" stroke-width="1.2"/>
+<text x="486.0" y="186.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">6</text>
+<rect x="512.0" y="170.0" width="378.0" height="22.0" rx="4" fill="#fff0e6" stroke="#e8590c" stroke-width="0.8"/>
+<text x="520.0" y="186.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">VDD_5V</text>
+<rect x="416.0" y="195.0" width="36.0" height="22.0" rx="4" fill="#e8590c" stroke="#e8590c" stroke-width="1.2"/>
+<text x="434.0" y="211.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">7</text>
+<rect x="30.0" y="195.0" width="378.0" height="22.0" rx="4" fill="#fff0e6" stroke="#e8590c" stroke-width="0.8"/>
+<text x="400.0" y="211.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">SYS_5V</text>
+<rect x="468.0" y="195.0" width="36.0" height="22.0" rx="4" fill="#e8590c" stroke="#e8590c" stroke-width="1.2"/>
+<text x="486.0" y="211.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">8</text>
+<rect x="512.0" y="195.0" width="378.0" height="22.0" rx="4" fill="#fff0e6" stroke="#e8590c" stroke-width="0.8"/>
+<text x="520.0" y="211.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">SYS_5V</text>
+<rect x="416.0" y="220.0" width="36.0" height="22.0" rx="4" fill="#868e96" stroke="#868e96" stroke-width="1.2"/>
+<text x="434.0" y="236.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">9</text>
+<rect x="30.0" y="220.0" width="378.0" height="22.0" rx="4" fill="#f1f3f5" stroke="#868e96" stroke-width="0.8"/>
+<text x="400.0" y="236.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">PWR_BUT</text>
+<rect x="468.0" y="220.0" width="36.0" height="22.0" rx="4" fill="#868e96" stroke="#868e96" stroke-width="1.2"/>
+<text x="486.0" y="236.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">10</text>
+<rect x="512.0" y="220.0" width="378.0" height="22.0" rx="4" fill="#f1f3f5" stroke="#868e96" stroke-width="0.8"/>
+<text x="520.0" y="236.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">SYS_RESETn</text>
+<rect x="416.0" y="245.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="434.0" y="261.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">11</text>
+<rect x="30.0" y="245.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="400.0" y="261.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">GPIO0_30 / UART4_RX</text>
+<rect x="468.0" y="245.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="486.0" y="261.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">12</text>
+<rect x="512.0" y="245.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="520.0" y="261.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GPIO1_28</text>
+<rect x="416.0" y="270.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="434.0" y="286.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">13</text>
+<rect x="30.0" y="270.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="400.0" y="286.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">GPIO0_31 / UART4_TX</text>
+<rect x="468.0" y="270.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="486.0" y="286.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">14</text>
+<rect x="512.0" y="270.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="520.0" y="286.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GPIO1_18 / EHRPWM1A</text>
+<rect x="416.0" y="295.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="434.0" y="311.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">15</text>
+<rect x="30.0" y="295.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="400.0" y="311.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">GPIO1_16</text>
+<rect x="468.0" y="295.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="486.0" y="311.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">16</text>
+<rect x="512.0" y="295.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="520.0" y="311.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GPIO1_19 / EHRPWM1B</text>
+<rect x="416.0" y="320.0" width="36.0" height="22.0" rx="4" fill="#1971c2" stroke="#1971c2" stroke-width="1.2"/>
+<text x="434.0" y="336.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">17</text>
+<rect x="30.0" y="320.0" width="378.0" height="22.0" rx="4" fill="#d0ebff" stroke="#1971c2" stroke-width="1.2"/>
+<text x="400.0" y="336.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="bold" fill="#212529">SPI0_CS0 / GPIO0_5   &gt;   ADF4351 LE</text>
+<rect x="468.0" y="320.0" width="36.0" height="22.0" rx="4" fill="#1971c2" stroke="#1971c2" stroke-width="1.2"/>
+<text x="486.0" y="336.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">18</text>
+<rect x="512.0" y="320.0" width="378.0" height="22.0" rx="4" fill="#d0ebff" stroke="#1971c2" stroke-width="1.2"/>
+<text x="520.0" y="336.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="bold" fill="#212529">SPI0_D1 (MOSI) / GPIO0_4   &gt;   ADF4351 DAT</text>
+<rect x="416.0" y="345.0" width="36.0" height="22.0" rx="4" fill="#0b7285" stroke="#0b7285" stroke-width="1.2"/>
+<text x="434.0" y="361.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">19</text>
+<rect x="30.0" y="345.0" width="378.0" height="22.0" rx="4" fill="#c5f6fa" stroke="#0b7285" stroke-width="1.2"/>
+<text x="400.0" y="361.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="bold" fill="#212529">I2C2_SCL / GPIO0_13   &gt;   ADS1115 SCL</text>
+<rect x="468.0" y="345.0" width="36.0" height="22.0" rx="4" fill="#0b7285" stroke="#0b7285" stroke-width="1.2"/>
+<text x="486.0" y="361.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">20</text>
+<rect x="512.0" y="345.0" width="378.0" height="22.0" rx="4" fill="#c5f6fa" stroke="#0b7285" stroke-width="1.2"/>
+<text x="520.0" y="361.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="bold" fill="#212529">I2C2_SDA / GPIO0_12   &gt;   ADS1115 SDA</text>
+<rect x="416.0" y="370.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="434.0" y="386.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">21</text>
+<rect x="30.0" y="370.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="400.0" y="386.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">SPI0_D0 (MISO) / GPIO0_3</text>
+<rect x="468.0" y="370.0" width="36.0" height="22.0" rx="4" fill="#1971c2" stroke="#1971c2" stroke-width="1.2"/>
+<text x="486.0" y="386.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">22</text>
+<rect x="512.0" y="370.0" width="378.0" height="22.0" rx="4" fill="#d0ebff" stroke="#1971c2" stroke-width="1.2"/>
+<text x="520.0" y="386.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="bold" fill="#212529">SPI0_SCLK / GPIO0_2   &gt;   ADF4351 CLK</text>
+<rect x="416.0" y="395.0" width="36.0" height="22.0" rx="4" fill="#2b8a3e" stroke="#2b8a3e" stroke-width="1.2"/>
+<text x="434.0" y="411.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">23</text>
+<rect x="30.0" y="395.0" width="378.0" height="22.0" rx="4" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.2"/>
+<text x="400.0" y="411.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="bold" fill="#212529">GPIO1_17   &gt;   ADF4351 LD</text>
+<rect x="468.0" y="395.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="486.0" y="411.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">24</text>
+<rect x="512.0" y="395.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="520.0" y="411.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">UART1_TX / GPIO0_15</text>
+<rect x="416.0" y="420.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="434.0" y="436.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">25</text>
+<rect x="30.0" y="420.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="400.0" y="436.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">GPIO3_21</text>
+<rect x="468.0" y="420.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="486.0" y="436.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">26</text>
+<rect x="512.0" y="420.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="520.0" y="436.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">UART1_RX / GPIO0_14</text>
+<rect x="416.0" y="445.0" width="36.0" height="22.0" rx="4" fill="#e67700" stroke="#e67700" stroke-width="1.2"/>
+<text x="434.0" y="461.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">27</text>
+<rect x="30.0" y="445.0" width="378.0" height="22.0" rx="4" fill="#fff3bf" stroke="#e67700" stroke-width="1.2"/>
+<text x="400.0" y="461.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="bold" fill="#212529">GPIO3_19   &gt;   ADF4351 CE</text>
+<rect x="468.0" y="445.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="486.0" y="461.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">28</text>
+<rect x="512.0" y="445.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="520.0" y="461.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">SPI1_CS0 / GPIO3_17</text>
+<rect x="416.0" y="470.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="434.0" y="486.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">29</text>
+<rect x="30.0" y="470.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="400.0" y="486.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">SPI1_D0 / GPIO3_15</text>
+<rect x="468.0" y="470.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="486.0" y="486.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">30</text>
+<rect x="512.0" y="470.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="520.0" y="486.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">SPI1_D1 / GPIO3_16</text>
+<rect x="416.0" y="495.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="434.0" y="511.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">31</text>
+<rect x="30.0" y="495.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="400.0" y="511.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">SPI1_SCLK / GPIO3_14</text>
+<rect x="468.0" y="495.0" width="36.0" height="22.0" rx="4" fill="#e8590c" stroke="#e8590c" stroke-width="1.2"/>
+<text x="486.0" y="511.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">32</text>
+<rect x="512.0" y="495.0" width="378.0" height="22.0" rx="4" fill="#fff0e6" stroke="#e8590c" stroke-width="0.8"/>
+<text x="520.0" y="511.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">VDD_ADC (1.8 V ref)</text>
+<rect x="416.0" y="520.0" width="36.0" height="22.0" rx="4" fill="#9c36b5" stroke="#9c36b5" stroke-width="1.2"/>
+<text x="434.0" y="536.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">33</text>
+<rect x="30.0" y="520.0" width="378.0" height="22.0" rx="4" fill="#f3d9fa" stroke="#9c36b5" stroke-width="0.8"/>
+<text x="400.0" y="536.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">AIN4</text>
+<rect x="468.0" y="520.0" width="36.0" height="22.0" rx="4" fill="#495057" stroke="#495057" stroke-width="1.2"/>
+<text x="486.0" y="536.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">34</text>
+<rect x="512.0" y="520.0" width="378.0" height="22.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="1.2"/>
+<text x="520.0" y="536.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="bold" fill="#212529">GNDA_ADC   &gt;   Detector GND</text>
+<rect x="416.0" y="545.0" width="36.0" height="22.0" rx="4" fill="#9c36b5" stroke="#9c36b5" stroke-width="1.2"/>
+<text x="434.0" y="561.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">35</text>
+<rect x="30.0" y="545.0" width="378.0" height="22.0" rx="4" fill="#f3d9fa" stroke="#9c36b5" stroke-width="0.8"/>
+<text x="400.0" y="561.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">AIN6</text>
+<rect x="468.0" y="545.0" width="36.0" height="22.0" rx="4" fill="#9c36b5" stroke="#9c36b5" stroke-width="1.2"/>
+<text x="486.0" y="561.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">36</text>
+<rect x="512.0" y="545.0" width="378.0" height="22.0" rx="4" fill="#f3d9fa" stroke="#9c36b5" stroke-width="0.8"/>
+<text x="520.0" y="561.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">AIN5</text>
+<rect x="416.0" y="570.0" width="36.0" height="22.0" rx="4" fill="#9c36b5" stroke="#9c36b5" stroke-width="1.2"/>
+<text x="434.0" y="586.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">37</text>
+<rect x="30.0" y="570.0" width="378.0" height="22.0" rx="4" fill="#f3d9fa" stroke="#9c36b5" stroke-width="0.8"/>
+<text x="400.0" y="586.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">AIN2</text>
+<rect x="468.0" y="570.0" width="36.0" height="22.0" rx="4" fill="#9c36b5" stroke="#9c36b5" stroke-width="1.2"/>
+<text x="486.0" y="586.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">38</text>
+<rect x="512.0" y="570.0" width="378.0" height="22.0" rx="4" fill="#f3d9fa" stroke="#9c36b5" stroke-width="0.8"/>
+<text x="520.0" y="586.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">AIN3</text>
+<rect x="416.0" y="595.0" width="36.0" height="22.0" rx="4" fill="#9c36b5" stroke="#9c36b5" stroke-width="1.2"/>
+<text x="434.0" y="611.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">39</text>
+<rect x="30.0" y="595.0" width="378.0" height="22.0" rx="4" fill="#f3d9fa" stroke="#9c36b5" stroke-width="1.2"/>
+<text x="400.0" y="611.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="bold" fill="#212529">AIN0   &gt;   Detector VOUT via divider</text>
+<rect x="468.0" y="595.0" width="36.0" height="22.0" rx="4" fill="#9c36b5" stroke="#9c36b5" stroke-width="1.2"/>
+<text x="486.0" y="611.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">40</text>
+<rect x="512.0" y="595.0" width="378.0" height="22.0" rx="4" fill="#f3d9fa" stroke="#9c36b5" stroke-width="0.8"/>
+<text x="520.0" y="611.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">AIN1</text>
+<rect x="416.0" y="620.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="434.0" y="636.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">41</text>
+<rect x="30.0" y="620.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="400.0" y="636.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">GPIO0_20 / CLKOUT2</text>
+<rect x="468.0" y="620.0" width="36.0" height="22.0" rx="4" fill="#e9ecef" stroke="#adb5bd" stroke-width="1.2"/>
+<text x="486.0" y="636.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#212529">42</text>
+<rect x="512.0" y="620.0" width="378.0" height="22.0" rx="4" fill="#ffffff" stroke="#adb5bd" stroke-width="0.8"/>
+<text x="520.0" y="636.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GPIO0_7 / ECAPPWM0</text>
+<rect x="416.0" y="645.0" width="36.0" height="22.0" rx="4" fill="#495057" stroke="#495057" stroke-width="1.2"/>
+<text x="434.0" y="661.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">43</text>
+<rect x="30.0" y="645.0" width="378.0" height="22.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="0.8"/>
+<text x="400.0" y="661.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">GND</text>
+<rect x="468.0" y="645.0" width="36.0" height="22.0" rx="4" fill="#495057" stroke="#495057" stroke-width="1.2"/>
+<text x="486.0" y="661.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">44</text>
+<rect x="512.0" y="645.0" width="378.0" height="22.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="0.8"/>
+<text x="520.0" y="661.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GND</text>
+<rect x="416.0" y="670.0" width="36.0" height="22.0" rx="4" fill="#495057" stroke="#495057" stroke-width="1.2"/>
+<text x="434.0" y="686.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">45</text>
+<rect x="30.0" y="670.0" width="378.0" height="22.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="0.8"/>
+<text x="400.0" y="686.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="end" font-weight="normal" fill="#212529">GND</text>
+<rect x="468.0" y="670.0" width="36.0" height="22.0" rx="4" fill="#495057" stroke="#495057" stroke-width="1.2"/>
+<text x="486.0" y="686.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" font-weight="bold" fill="#ffffff">46</text>
+<rect x="512.0" y="670.0" width="378.0" height="22.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="0.8"/>
+<text x="520.0" y="686.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GND</text>
+<text x="24.0" y="719.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">AIN pins: 0 to 1.8 V absolute maximum. VDD_ADC (P9.32) is a 1.8 V reference output, do not load it.</text>
+<text x="24.0" y="737.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">P9.17, P9.18 and P9.22 are SPI0 (ADF4351), P9.19 and P9.20 are I2C2 (ADS1115). The PE4302 inputs V1..V6 are on P8.7-P8.12; P9.11-P9.16 stay free.</text>
+<text x="24.0" y="755.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">Check config-pin / show-pins. SPI0 is the only hardware SPI used; the PE4302 is plain GPIO.</text>
+<text x="24.0" y="773.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">P9.34 (GNDA_ADC) and P9.39 (AIN0) are optional, for the AIN0 cross-check only. The ADS1115 needs just I2C2 and board GND.</text>
+</svg>

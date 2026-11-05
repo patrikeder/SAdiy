@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "sadiy")(type "KiCad")(uri "${KIPRJMOD}/sadiy.kicad_sym")(options "")(descr "SAdiy adapter symbols"))
+)

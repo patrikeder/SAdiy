@@ -1,0 +1,13 @@
+[Unit]
+Description=SAdiy sweep daemon
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -m sadiy.server.sweepd --rt --config /etc/sadiy/local.toml
+Environment=PYTHONPATH=/opt/sadiy/src
+Restart=on-failure
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=10
+
+[Install]
+WantedBy=multi-user.target

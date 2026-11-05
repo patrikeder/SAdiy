@@ -1,0 +1,69 @@
+# SAdiy default configuration. Values marked VERIFY must be checked on the real boards.
+
+[rf]
+if_hz = 10.7e6
+injection = "high"        # LO = RF + IF
+rf_min_hz = 30e6
+rf_max_hz = 480e6         # AD831 LO limit is 500 MHz, so RF max is about 489 MHz with a 10.7 MHz IF
+
+[synth]
+ref_hz = 25e6             # verified: 25.000 MHz oscillator on the ADF4351 eval board (photo)
+pfd_hz = 25e6
+mod_max = 4095
+# RF outputs are OFF unless enabled here (a missing key also means off). Enable only what is cabled.
+out_main_enable = true    # RFOUTA = the LO feed to the AD831 (eval board SMA AOUT+ or AOUT-, VERIFY which)
+out_power_dbm = -4        # main output power; ADF4351 steps: -4, -1, +2, +5
+out_aux_enable = false    # RFOUTB, not used
+out_aux_power_dbm = -4
+
+[attenuator]
+# PE4302 module with parallel control only: inputs V1..V6, no serial interface.
+weights_db = [0.5, 1.0, 2.0, 4.0, 8.0, 16.0]   # per the module description; confirm with tools/bringup.py pe4302-walk
+active_high = true                              # per the module description (high = stage in); confirm with the walk tool
+gpio_bbb = [66, 67, 69, 68, 45, 44]             # kernel GPIO numbers: P8.7, 8, 9, 10, 11, 12
+gpio_rpi_bcm = [5, 6, 12, 13, 20, 21]           # BCM GPIO numbers: pins 29, 31, 32, 33, 38, 40
+max_db = 31.5
+
+[detector]
+slope_v_per_db = -0.0245  # AD8318 typical; calibrate per frequency
+intercept_dbm = 20.0
+divider_ratio = 1.0       # Vadc / Vdet of the main ADC. The ADS1115 path on the adapter has no divider (1k, 100 nF, clamp)
+
+[cal]
+default_gain_db = 22.0    # estimate: amp 31 - PE4302 1.5 - IF filter 6 - LPF ~1.5. Replace by measurement
+file = "cal/gain.json"
+
+[adc]
+# The ADS1115 is the ADC for the detector on both platforms (BBB: I2C2, P9.19 / P9.20). The BBB on-chip
+# AIN0 stays wired through the divider as a cross-check, read from the bench mode (or kind = "bbb_iio").
+kind = "sim"              # sim on a PC; ads1115 on the hardware. Also: bbb_iio
+channel = 0               # ADS1115 A0
+ads1115_full_scale_v = 4.096   # PGA range; the input is clamped to 3.3 V on the adapter
+ads1115_sps = 128         # 8, 16, 32, 64, 128, 250, 475, 860
+vref = 1.8                # BBB on-chip ADC full scale. NEVER exceed 1.8 V on AIN
+ain0_divider_ratio = 0.751     # Vain0 / Vdet: 1k over 3.01k on the adapter. Only for AIN0
+
+[sweep]
+points = 401
+averages = 4
+settle_s = 0.0005         # measure PLL lock + detector settling, then tighten
+
+[bench]
+# Bench mode (Pins tab). Device numbers depend on the image: VERIFY with ls /dev/spidev* /dev/i2c-*
+spi_bus = 1               # /dev/spidev1.0 is SPI0 on many images
+spi_device = 0
+spi_hz = 1000000
+i2c_bus = 2               # I2C2 on P9.19 / P9.20 is /dev/i2c-2 on recent kernels
+ads1115_address = 0x48
+iio_device = "iio:device0"
+lease_s = 5.0             # no command from the client for this long: back to the safe state
+
+[server]
+pub = "tcp://*:5556"
+rep = "tcp://*:5557"
+
+[sim]
+# Only used by `sweepd --sim` (and the GUI's "Simulated hardware" tab).
+tones = [[100e6, -30.0], [250e6, -45.0]]   # [frequency Hz, level dBm at the analyzer input]
+noise_dbm_in = -100.0                      # input-referred noise floor
+rbw_hz = 230e3                             # Gaussian IF filter width of the simulated receiver
