@@ -4,55 +4,29 @@
     python tools/gen_diagrams.py            # SVG + PNG (PNG needs rsvg-convert or cairosvg)
     python tools/gen_diagrams.py --no-png   # SVG and netlist only
 
-Edit NETS / STRAPS below when the wiring changes, then regenerate. Do not edit the output files.
+Edit src/sadiy/pinmap.py (NETS, BBB_P8, BBB_P9) or STRAPS below when the wiring changes, then regenerate.
+Do not edit the output files.
 """
 from __future__ import annotations
 
 import argparse
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from sadiy.pinmap import BBB_P8, BBB_P9, NETS  # noqa: E402
+
 HW = ROOT / "hw"
 OUT = HW / "diagrams"
 FONT = "DejaVu Sans, Arial, Helvetica, sans-serif"
 
 # ----------------------------------------------------------------------------- pin map
-# One entry per SBC-to-board signal. bbb is a P9 pin number or a string like "P8.7"; rpi is the physical pin (None = not used there).
-NETS = [
-    dict(id="SYN_CLK", dev="ADF4351", dpin="CLK", kind="spi", dir="SBC to board", bbb=22, rpi=23,
-         note="SPI mode 0, MSB first"),
-    dict(id="SYN_DATA", dev="ADF4351", dpin="DAT", kind="spi", dir="SBC to board", bbb=18, rpi=19,
-         note="32-bit words"),
-    dict(id="SYN_LE", dev="ADF4351", dpin="LE", kind="spi", dir="SBC to board", bbb=17, rpi=24,
-         note="used as SPI chip select; data latches on the rising edge at the end of a transfer"),
-    dict(id="SYN_LD", dev="ADF4351", dpin="LD", kind="gpio", dir="board to SBC", bbb=23, rpi=35,
-         note="digital lock detect output (Lock_Flag LED on the board), GPIO input; the MUX pin stays unused"),
-    dict(id="SYN_CE", dev="ADF4351", dpin="CE", kind="reserved", dir="SBC to board", bbb=27, rpi=36,
-         note="optional; tie the CE header pin to 3V3 until needed"),
-    dict(id="ATT_V1", dev="PE4302", dpin="V1 (0.5 dB)", kind="gpio", dir="SBC to board", bbb="P8.7", rpi=29,
-         note="assumed weight; verify order and polarity with pe4302-walk"),
-    dict(id="ATT_V2", dev="PE4302", dpin="V2 (1 dB)", kind="gpio", dir="SBC to board", bbb="P8.8", rpi=31,
-         note="assumed 1 dB stage"),
-    dict(id="ATT_V3", dev="PE4302", dpin="V3 (2 dB)", kind="gpio", dir="SBC to board", bbb="P8.9", rpi=32,
-         note="assumed 2 dB stage"),
-    dict(id="ATT_V4", dev="PE4302", dpin="V4 (4 dB)", kind="gpio", dir="SBC to board", bbb="P8.10", rpi=33,
-         note="assumed 4 dB stage"),
-    dict(id="ATT_V5", dev="PE4302", dpin="V5 (8 dB)", kind="gpio", dir="SBC to board", bbb="P8.11", rpi=38,
-         note="assumed 8 dB stage"),
-    dict(id="ATT_V6", dev="PE4302", dpin="V6 (16 dB)", kind="gpio", dir="SBC to board", bbb="P8.12", rpi=40,
-         note="assumed 16 dB stage"),
-    dict(id="DET_ADC", dev="Detector", dpin="VOUT via divider", kind="analog", dir="board to SBC", bbb=39,
-         rpi=None, note="BBB: AIN0, 0 to 1.8 V absolute maximum. RPi: goes to ADS1115 A0 instead"),
-    dict(id="ADC_GND", dev="Detector", dpin="GND", kind="gnd", dir="return", bbb=34, rpi=None,
-         note="BBB GNDA_ADC; join the digital ground at the star point"),
-    dict(id="I2C_SDA", dev="ADS1115", dpin="SDA", kind="i2c", dir="bidirectional", bbb=None, rpi=3,
-         note="RPi only. BBB could use I2C2_SDA (P9.20) if an external ADC is added"),
-    dict(id="I2C_SCL", dev="ADS1115", dpin="SCL", kind="i2c", dir="SBC to board", bbb=None, rpi=5,
-         note="RPi only. BBB could use I2C2_SCL (P9.19)"),
-]
+# NETS, BBB_P8 and BBB_P9 live in src/sadiy/pinmap.py, shared with the daemon and the GUI.
 
 # Static straps on the boards (no SBC pin involved). Verify against each PCB.
 STRAPS = [
@@ -74,46 +48,6 @@ STRAPS = [
      "about 68 mA at 5 V per the listing; the board has its own regulator (SOT-223), read its marking for the allowed input range"),
     ("Detector", "OUT header", "check with a DMM", "2-pin header: find which pin is OUT and which is GND before connecting"),
 ]
-
-BBB_P9 = {
-    1: ("GND", "gnd"), 2: ("GND", "gnd"), 3: ("DC_3.3V", "power"), 4: ("DC_3.3V", "power"),
-    5: ("VDD_5V", "power"), 6: ("VDD_5V", "power"), 7: ("SYS_5V", "power"), 8: ("SYS_5V", "power"),
-    9: ("PWR_BUT", "special"), 10: ("SYS_RESETn", "special"),
-    11: ("GPIO0_30 / UART4_RX", "free"), 12: ("GPIO1_28", "free"), 13: ("GPIO0_31 / UART4_TX", "free"),
-    14: ("GPIO1_18 / EHRPWM1A", "free"), 15: ("GPIO1_16", "free"), 16: ("GPIO1_19 / EHRPWM1B", "free"),
-    17: ("SPI0_CS0 / GPIO0_5", "free"), 18: ("SPI0_D1 (MOSI) / GPIO0_4", "free"),
-    19: ("I2C2_SCL / GPIO0_13", "free"), 20: ("I2C2_SDA / GPIO0_12", "free"),
-    21: ("SPI0_D0 (MISO) / GPIO0_3", "free"), 22: ("SPI0_SCLK / GPIO0_2", "free"), 23: ("GPIO1_17", "free"),
-    24: ("UART1_TX / GPIO0_15", "free"), 25: ("GPIO3_21", "free"), 26: ("UART1_RX / GPIO0_14", "free"),
-    27: ("GPIO3_19", "free"), 28: ("SPI1_CS0 / GPIO3_17", "free"), 29: ("SPI1_D0 / GPIO3_15", "free"),
-    30: ("SPI1_D1 / GPIO3_16", "free"), 31: ("SPI1_SCLK / GPIO3_14", "free"),
-    32: ("VDD_ADC (1.8 V ref)", "power"), 33: ("AIN4", "analog"), 34: ("GNDA_ADC", "gnd"),
-    35: ("AIN6", "analog"), 36: ("AIN5", "analog"), 37: ("AIN2", "analog"), 38: ("AIN3", "analog"),
-    39: ("AIN0", "analog"), 40: ("AIN1", "analog"), 41: ("GPIO0_20 / CLKOUT2", "free"),
-    42: ("GPIO0_7 / ECAPPWM0", "free"), 43: ("GND", "gnd"), 44: ("GND", "gnd"), 45: ("GND", "gnd"),
-    46: ("GND", "gnd"),
-}
-
-BBB_P8 = {
-    1: ("GND", "gnd"), 2: ("GND", "gnd"),
-    3: ("GPIO1_6 (eMMC)", "special"), 4: ("GPIO1_7 (eMMC)", "special"), 5: ("GPIO1_2 (eMMC)", "special"),
-    6: ("GPIO1_3 (eMMC)", "special"),
-    7: ("GPIO2_2 / TIMER4", "free"), 8: ("GPIO2_3 / TIMER7", "free"), 9: ("GPIO2_5 / TIMER5", "free"),
-    10: ("GPIO2_4 / TIMER6", "free"), 11: ("GPIO1_13 / PRU0 R30_15", "free"), 12: ("GPIO1_12 / PRU0 R30_14", "free"),
-    13: ("GPIO0_23 / EHRPWM2B", "free"), 14: ("GPIO0_26", "free"), 15: ("GPIO1_15 / PRU0 R31_15", "free"),
-    16: ("GPIO1_14 / PRU0 R31_14", "free"), 17: ("GPIO0_27", "free"), 18: ("GPIO2_1", "free"),
-    19: ("GPIO0_22 / EHRPWM2A", "free"),
-    20: ("GPIO1_31 (eMMC cmd)", "special"), 21: ("GPIO1_30 (eMMC clk)", "special"), 22: ("GPIO1_5 (eMMC)", "special"),
-    23: ("GPIO1_4 (eMMC)", "special"), 24: ("GPIO1_1 (eMMC)", "special"), 25: ("GPIO1_0 (eMMC)", "special"),
-    26: ("GPIO1_29", "free"),
-    27: ("GPIO2_22 (HDMI/LCD)", "special"), 28: ("GPIO2_24 (HDMI/LCD)", "special"), 29: ("GPIO2_23 (HDMI/LCD)", "special"),
-    30: ("GPIO2_25 (HDMI/LCD)", "special"), 31: ("GPIO0_10 (HDMI/LCD)", "special"), 32: ("GPIO0_11 (HDMI/LCD)", "special"),
-    33: ("GPIO0_9 (HDMI/LCD)", "special"), 34: ("GPIO2_17 (HDMI/LCD)", "special"), 35: ("GPIO0_8 (HDMI/LCD)", "special"),
-    36: ("GPIO2_16 (HDMI/LCD)", "special"), 37: ("GPIO2_14 (HDMI/LCD)", "special"), 38: ("GPIO2_15 (HDMI/LCD)", "special"),
-    39: ("GPIO2_12 (HDMI/LCD)", "special"), 40: ("GPIO2_13 (HDMI/LCD)", "special"), 41: ("GPIO2_10 (HDMI/LCD)", "special"),
-    42: ("GPIO2_11 (HDMI/LCD)", "special"), 43: ("GPIO2_8 (HDMI/LCD)", "special"), 44: ("GPIO2_9 (HDMI/LCD)", "special"),
-    45: ("GPIO2_6 (HDMI/LCD)", "special"), 46: ("GPIO2_7 (HDMI/LCD)", "special"),
-}
 
 RPI_40 = {
     1: ("3V3", "power"), 2: ("5V", "power"), 3: ("GPIO2 / SDA1", "free"), 4: ("5V", "power"),
@@ -367,7 +301,9 @@ def sbc_rows_bbb():
         r(22, "clk", "L"), r(18, "data", "L"), r(17, "le", "L"), r(23, "ld", "L", "input"),
         dict(t="group", label="GPIO to PE4302 board (V1..V6 on P8.7-P8.12)"),
         r("P8.7", "v1", "L"), r("P8.8", "v2", "L"), r("P8.9", "v3", "L"), r("P8.10", "v4", "L"), r("P8.11", "v5", "L"), r("P8.12", "v6", "L"),
-        dict(t="group", label="Analog input from detector"),
+        dict(t="group", label="I2C2 to ADS1115 (main ADC)"),
+        r(20, "sda", "R"), r(19, "scl", "R"),
+        dict(t="group", label="Analog input from detector (cross-check)"),
         r(39, "ain", "R", "max 1.8 V"), r(34, "agnd", "R"),
         dict(t="group", label="Ground"),
         dict(t="sig", label="P9.1 / P9.2 / P9.43-46 / P8.1 / P8.2  GND", note="star point", kind="gnd", side=None, key=None),
@@ -448,10 +384,10 @@ def draw_left_wires(svg: Svg, sbc_ports, p1, p2):
 
 
 def wiring_bbb(path: Path) -> None:
-    W, H = 1560, 860
+    W, H = 1560, 960
     svg = Svg(W, H, "BeagleBone Black wiring (proposed)",
               "3.3 V logic on all control lines. AIN0 is 0 to 1.8 V absolute maximum. Pin names: BBB system reference, verify on your image.")
-    legend(svg, 24, 76, ["spi", "gpio", "analog", "gnd", "v33"])
+    legend(svg, 24, 76, ["spi", "gpio", "i2c", "analog", "gnd", "v33"])
     top = 110
     p1, p2, bl = left_devices(svg, 40, top)
     sbc_x, sbc_w = 560, 380
@@ -472,6 +408,14 @@ def wiring_bbb(path: Path) -> None:
         dict(t="strap", label="RF in", note="from IF amp"),
     ])
     pa = PAL["analog"][0]
+    ads, _ = card(svg, det_x, sp["sda"][1] - 180, 250, "ADS1115 breakout (main ADC)", "address 0x48, A0 from the detector", [
+        dict(t="sig", label="SDA", kind="i2c", side="L", key="sda"),
+        dict(t="sig", label="SCL", kind="i2c", side="L", key="scl"),
+        dict(t="pwr", label="VDD", note="3V3", kind="v33"),
+        dict(t="sig", label="GND", note="board GND", kind="gnd", side=None, key=None),
+    ])
+    wire(svg, sp["sda"], ads["sda"], PAL["i2c"][0], "I2C_SDA", arrow_end=True, arrow_start=True)
+    wire(svg, sp["scl"], ads["scl"], PAL["i2c"][0], "I2C_SCL", arrow_end=True)
     wire(svg, dp["vout"], (dv_x + dv_w, ay), pa, "VOUT", arrow_end=True)
     wire(svg, (dv_x, ay), sp["ain"], pa, "DET_ADC", arrow_end=True)
     wire(svg, sp["agnd"], dp["gnd"], PAL["gnd"][0], "ADC_GND", arrow_end=False, arrow_start=False)
@@ -652,7 +596,7 @@ def power_tree(path: Path) -> None:
           ("Detector board (VCC pad)", "~68 mA, check its regulator")]),
         ("v33", "SBC 3.3 V output pin", "BBB P9.3 / P9.4, RPi pin 1 / 17\ntiny loads only", "5V", False,
          [("PE4302 board (VDD pad)", "3.3 V required, tiny"),
-          ("ADS1115 (RPi only)", "tiny"),
+          ("ADS1115", "tiny"),
           ("optional pull-ups on V1..V6", "few mA")]),
         ("v10", "10 V low-noise LDO", "from 12 V (2 V dropout)\nAD831 100-125 mA + amp (measure)", "12V", True,
          [("AD831 mixer module (VCC pad)", "9-11 V, ~100-125 mA"),
@@ -677,13 +621,13 @@ def power_tree(path: Path) -> None:
             wire(svg, (rx + rw, y + 45), (lx, ly + 17), col, None, arrow_end=True, sw=2.2)
     svg.text(24, 580, "The ADF4351 eval board regulates its 5 V jack to 3.3 V itself. The PE4302 module has no regulator and wants 3.3 V: take it from the SBC pin, which is also the GPIO level.", size=11.5, fill=MUTED)
     svg.text(24, 600, "The rail voltage on the shared lever connector in the photos is not known yet: confirm it before connecting the PE4302 pads (3.3 V) and the AD831 (9 to 11 V).", size=11.5, fill=MUTED)
-    svg.text(24, 620, "Grounds meet at one star point near the SBC. On the BBB use GNDA_ADC (P9.34) as the detector analog return.", size=11.5, fill=MUTED)
+    svg.text(24, 620, "Grounds meet at one star point near the SBC. GNDA_ADC (P9.34) is only for the optional BBB AIN0 cross-check.", size=11.5, fill=MUTED)
     svg.save(path)
 
 
 # ----------------------------------------------------------------------------- netlist markdown
 def netlist_md() -> str:
-    L = ["# Netlist", "", "Generated by `tools/gen_diagrams.py` from the pin map in that file. Do not edit by hand.", "",
+    L = ["# Netlist", "", "Generated by `tools/gen_diagrams.py` from the pin map in `src/sadiy/pinmap.py`. Do not edit by hand.", "",
          "BBB = BeagleBone Black headers P8 and P9. RPi = 40-pin header (physical pin numbers). Verify every pin on your image.", "",
          "## SBC to board signals", "",
          "| Net | Board | Board pin | Direction | BBB | RPi | Notes |", "|---|---|---|---|---|---|---|"]
@@ -695,10 +639,10 @@ def netlist_md() -> str:
     for dev, pin, tie, why in STRAPS:
         L.append(f"| {dev} | {pin} | {tie} | {why} |")
     L += ["", "## Pins left free for later", "",
-          "- BBB: P9.11-P9.16, P8.13 to P8.19 and P8.26 (GPIO), I2C2 (P9.19/20), SPI1 (P9.28-31), AIN1-AIN6, UART1 (P9.24/26).",
+          "- BBB: P9.11-P9.16, P8.13 to P8.19 and P8.26 (GPIO), SPI1 (P9.28-31), AIN1-AIN6, UART1 (P9.24/26).",
           "- RPi: SPI0 CE1 (pin 26), GPIO 17/27/22/23/24/25, UART (pins 8/10).", "",
           "## Ground and supply pins", "",
-          "- BBB: GND P9.1, P9.2, P9.43-46 and P8.1, P8.2; analog return GNDA_ADC P9.34; ADC reference VDD_ADC P9.32 (1.8 V, do not load).",
+          "- BBB: GND P9.1, P9.2, P9.43-46 and P8.1, P8.2; GNDA_ADC P9.34 (optional, AIN0 cross-check only); ADC reference VDD_ADC P9.32 (1.8 V, do not load).",
           "- RPi: GND pins 6, 9, 14, 20, 25, 30, 34, 39.",
           "- Board supplies come from the power tree, not from SBC pins (`power-tree.svg`).", ""]
     return "\n".join(L)
@@ -715,7 +659,26 @@ def render_png(svg: Path) -> bool:
         cairosvg.svg2png(url=str(svg), write_to=str(png), scale=1.6)
         return True
     except ImportError:
+        return render_png_qt(svg, png)
+
+
+def render_png_qt(svg: Path, png: Path, scale: float = 1.6) -> bool:
+    """Fallback for a machine with the GUI dependencies but no SVG tools."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PyQt5 import QtCore, QtGui, QtSvg
+    except ImportError:
         return False
+    _app = QtGui.QGuiApplication.instance() or QtGui.QGuiApplication([])
+    renderer = QtSvg.QSvgRenderer(str(svg))
+    size = renderer.defaultSize()
+    image = QtGui.QImage(round(size.width() * scale), round(size.height() * scale), QtGui.QImage.Format_ARGB32)
+    image.fill(QtCore.Qt.white)
+    painter = QtGui.QPainter(image)
+    renderer.render(painter)
+    painter.end()
+    return image.save(str(png))
 
 
 def main() -> None:
@@ -727,9 +690,9 @@ def main() -> None:
            "Highlighted pins are used by SAdiy. Pins 1 and 2 are at the top (the end nearest the 5 V DC jack; confirm with the board silkscreen).",
            BBB_P9, "bbb",
            ["AIN pins: 0 to 1.8 V absolute maximum. VDD_ADC (P9.32) is a 1.8 V reference output, do not load it.",
-            "P9.17-P9.22 are SPI0 (ADF4351). The PE4302 inputs V1..V6 are on P8.7-P8.12; P9.11-P9.16 stay free.",
+            "P9.17, P9.18 and P9.22 are SPI0 (ADF4351), P9.19 and P9.20 are I2C2 (ADS1115). The PE4302 inputs V1..V6 are on P8.7-P8.12; P9.11-P9.16 stay free.",
             "Check config-pin / show-pins. SPI0 is the only hardware SPI used; the PE4302 is plain GPIO.",
-            "Use P9.34 (GNDA_ADC) as the analog return of the detector."],
+            "P9.34 (GNDA_ADC) and P9.39 (AIN0) are optional, for the AIN0 cross-check only. The ADS1115 needs just I2C2 and board GND."],
            "P9 header (odd pins left, even pins right)")
     pinout(OUT / "rpi-gpio-pinout.svg", "Raspberry Pi 40-pin header: pinout and use",
            "Highlighted pins are used by SAdiy. Pin 1 is the corner nearest the SD card slot; odd pins are on the inner row.",
@@ -757,7 +720,7 @@ def main() -> None:
     if not args.no_png:
         for s in made:
             if not render_png(s):
-                print("no PNG renderer found (install librsvg2-bin or cairosvg); SVGs written")
+                print("no PNG renderer found (install librsvg2-bin or cairosvg, or PyQt5); SVGs written")
                 break
     print("wrote", ", ".join(p.name for p in made), "and hw/netlist.md")
 

@@ -25,6 +25,45 @@ A marker keeps its frequency when the span changes and disappears when it leaves
 
 The status bar warns when the step is larger than RBW/2 (narrow signals read low, see "Points versus RBW" in `architecture.md`). With the default 401 points over 30 to 480 MHz it shows up at once. Use "Points = 2·span/RBW" or a narrower span.
 
+## Pins tab
+
+For wiring tests on the BBB. Everything goes through `sweepd`, so it works from a PC against a remote BBB. With `--sim` it drives a fake board; the top of the tab says SIMULATED.
+
+```
+python -m sadiy.server.sweepd --bench-only                # on the BBB, until build_hw_engine exists
+python -m sadiy.ui.sa_gui --host <bbb-ip> --connect       # on the PC
+```
+
+**Enter bench mode** takes over the pins, after asking to stop a running sweep. All lines start safe: PE4302 at 31.5 dB, RF outputs off. **Leave bench mode** returns to the safe state, and so do disconnecting, closing the window, a hardware error, or 5 s without contact with the GUI. Press Run afterwards to sweep again; Run is refused while bench mode is on.
+
+**The board** shows P8 and P9 as in `hw/diagrams/bbb-p*-pinout.svg` (pin 1 at the top, odd pins on the left), coloured by function, with lines to PE4302, ADF4351, ADS1115 and the optional AIN0 cross-check. Dots show live levels (yellow = 1, dark = 0, grey = not known, for example a pin on its SPI bus). Click a pin or a board row to select it.
+
+**Pin page:** net, board pin, kernel GPIO, notes, and Drive 0 / Drive 1 / Input / Read / Back to bus.
+
+| Pin | What you can do |
+|---|---|
+| Wired to a board input | drive, after a confirm the first time per pin |
+| Lock detect, ADC inputs | read only |
+| Free GPIO | locked until **Expert** is ticked |
+| Power, ground, eMMC, HDMI | nothing, display only |
+
+SPI and I2C pins can be driven as GPIO for a wiring check. This switches their mux with `config-pin`, and they return to the bus when a raw command needs them or with **Back to bus**.
+
+**Raw access page:**
+
+- **ADF4351:** send any 32-bit word in hex, one of R5..R0, or all six in order. The boxes check each word's address bits. The R0..R3 and R5 packing is not written yet, so the words come from ADI's software. A word that enables an RF output is refused. To turn one on: send the registers, wait for LD = 1, tick the output, press Apply.
+- **PE4302:** set a dB value or V1..V6 through the driver (make-before-break; the actual write order is shown), or tick **Raw, no ordering** to write V1 to V6 in order for a wiring test. In that mode the attenuation can dip during the change.
+- **ADC:** ADS1115, the main ADC: convert a channel (code, volts, config and conversion registers), or read the registers without starting a conversion. AIN0: raw and volts at the pin and at the detector, as a cross-check.
+
+**Patterns page:** walking one or zero, square wave on one pin, binary counter, PE4302 stage by stage (one out: never below 15.5 dB; one in: goes down to 0.5 dB), repeated ADF4351 frame.
+
+- The preview updates as you change things and warns when the pattern takes the attenuator low. Keep RF off the input then.
+- **Run** once or in a loop, **Stop** at any time. Afterwards the lines go back to safe.
+- **Export CSV** writes the line levels after each edge, to compare with a DSLogic capture. It gives edge order, not timing.
+- **Rates:** Python on sysfs GPIO manages roughly a few kHz at best, fewer steps/s when a step changes several lines. The figure in the preview is an estimate, not measured on a BBB. While running, the page shows the measured rate. Expect jitter: Linux is not real time here. A square wave's frequency is half the step rate. For the ADF4351 frame the step rate is the word rate, and the SPI clock itself is much faster.
+
+**Tested only on the fake backend.** Unverified on a real BBB: the pin map, pin multiplexing and `config-pin` mode names, PE4302 weights and polarity, ADS1115 registers and bus number, SPI device number, and the rate estimates. See `bringup.md` stage 0.
+
 ## Advanced tab
 
 - **Connection**: host and the two ports. On connect the GUI reads sweepd's settings and limits and adopts them (so it shows what a remote BBB is doing). Commands that sweepd rejects show its error in the status bar.
@@ -38,9 +77,11 @@ The status bar warns when the step is larger than RBW/2 (narrow signals read low
 |---|---|
 | `ui/sa_gui.py` | Qt window (PyQtGraph display, controls, tabs) |
 | `ui/sa_core.py` | axis, settings clamping, trace modes, peak search, markers, CSV: no Qt, unit-tested |
+| `ui/bench_tab.py` | the Pins tab: board drawing and controls |
+| `ui/bench_core.py` | bench session, confirm memory, input parsing, pattern preview, board layout and hit test: no Qt, unit-tested |
 | `ui/sweep_client.py` | ZeroMQ SUB (newest frame only) and REQ with short timeouts |
 | `ui/sim_runner.py` | starts / stops `sweepd --sim`, writes the temporary TOML override, keeps the log |
-| `tests/test_sa_gui_smoke.py` | builds the window offscreen, feeds frames, runs the simulator end to end; skipped without PyQt5 / pyqtgraph |
+| `tests/test_sa_gui_smoke.py`, `tests/test_bench_gui_smoke.py` | build the window offscreen, feed frames, drive the Pins tab, run the simulator end to end; skipped without PyQt5 / pyqtgraph |
 
 ## Known limits
 

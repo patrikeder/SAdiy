@@ -106,6 +106,28 @@ def pack_r4(rf_div: int, outputs: Outputs, band_select_div: int) -> int:
     return word
 
 
+def register_of(word: int) -> int:
+    """The register a raw word goes to: its 3 address bits."""
+    return word & 0b111
+
+
+def r4_enables_output(word: int) -> bool:
+    """True when a raw word is an R4 that switches an RF output on."""
+    return register_of(word) == _R4_ADDR and bool(word & (_R4_MAIN_ENABLE | _R4_AUX_ENABLE))
+
+
+def r4_with_outputs(word: int, outputs: Outputs) -> int:
+    """An R4 word with its other fields kept and the output enables / power replaced."""
+    if register_of(word) != _R4_ADDR:
+        raise ValueError("not an R4 word")
+    word &= ~(_R4_AUX_ENABLE | (3 << _R4_AUX_POWER_SHIFT) | _R4_MAIN_ENABLE | (3 << _R4_MAIN_POWER_SHIFT))
+    if outputs.main.enabled:
+        word |= _R4_MAIN_ENABLE | (POWER_CODE[outputs.main.power_dbm] << _R4_MAIN_POWER_SHIFT)
+    if outputs.aux.enabled:
+        word |= _R4_AUX_ENABLE | (POWER_CODE[outputs.aux.power_dbm] << _R4_AUX_POWER_SHIFT)
+    return word
+
+
 class Adf4351:
     def __init__(self, spi: SpiBus, pfd_hz: float, mod_max: int = 4095) -> None:
         self._spi = spi

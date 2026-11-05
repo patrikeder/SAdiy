@@ -68,6 +68,12 @@ class PE4302:
         self._code = self._max_code
         return self.attenuation_db
 
+    def sync_from_lines(self) -> float:
+        """Adopt the attenuation the lines show now, after something else wrote them (bench mode)."""
+        on = 1 if self._active_high else 0
+        self._code = sum(s for ln, s in zip(self._lines, self._steps) if ln.read() == on)
+        return self.attenuation_db
+
     def set_attenuation(self, db: float) -> float:
         """Set the attenuation (rounded to 0.5 dB, clamped). Returns the value set."""
         new, old = self.code_for(db), self._code

@@ -21,7 +21,7 @@ Keep every RF link a short coax (SMA), 50 ohm. Mark each cable with its name.
 | IF_2 | IF filter | IF amp (TODO) | |
 | IF_3 | IF amp | detector RF in | check the detector input coupling and 50 ohm termination |
 | DET | detector VOUT | divider + RC + clamp (TODO) | analog, short and away from the LO and RF cables |
-| ADC | divider block | SBC ADC input | BBB AIN0, or the ADS1115 A0 on the RPi |
+| ADC | divider block | SBC ADC input | ADS1115 A0 (BBB: AIN0 too, as a cross-check) |
 
 ## Practical rules
 

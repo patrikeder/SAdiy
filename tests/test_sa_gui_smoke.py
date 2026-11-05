@@ -37,9 +37,9 @@ def _frame(n=101, atten=10.0, start=100e6, step=1e6, seq=0):
     return header, p
 
 
-def test_window_builds_with_two_tabs(win):
+def test_window_builds_with_three_tabs(win):
     tabs = win.centralWidget()
-    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Spectrum", "Advanced"]
+    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Spectrum", "Pins", "Advanced"]
     assert "REF" in win.info.text() and "Start" in win.lbl_start.text()
 
 

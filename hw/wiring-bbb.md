@@ -25,8 +25,10 @@ The pin map is a proposal. Pin and mux names come from the BBB system reference,
 | ATT_V4 | PE4302 V4 (4 dB) | P8.10 GPIO2_4 | 68 | TIMER6 pin |
 | ATT_V5 | PE4302 V5 (8 dB) | P8.11 GPIO1_13 | 45 | PRU0 R30_15 alternate |
 | ATT_V6 | PE4302 V6 (16 dB) | P8.12 GPIO1_12 | 44 | PRU0 R30_14 alternate |
-| DET_ADC | Detector VOUT via divider | P9.39 AIN0 | n/a | **0 to 1.8 V absolute maximum** |
-| ADC_GND | Detector GND | P9.34 GNDA_ADC | n/a | analog return |
+| I2C_SCL | ADS1115 SCL | P9.19 I2C2_SCL | n/a | main ADC; adapter board, address 0x48. I2C2 already has pull-ups |
+| I2C_SDA | ADS1115 SDA | P9.20 I2C2_SDA | n/a | main ADC |
+| DET_ADC | Detector VOUT via divider | P9.39 AIN0 | n/a | cross-check only. **0 to 1.8 V absolute maximum** |
+| ADC_GND | Detector GND | P9.34 GNDA_ADC | n/a | optional, AIN0 cross-check only |
 | GND | all boards | P9.1, P9.2, P9.43-46, P8.1, P8.2 | n/a | one star point; P8.1 / P8.2 are the nearest ground pins for the PE4302 ribbon |
 
 Kernel GPIO number = bank x 32 + bit (GPIO1_28 = 60, GPIO2_5 = 69). The sysfs backend (`hal/linux.py`) takes these numbers; they are also in `config/default.toml` (`attenuator.gpio_bbb`). The PE4302 sits on P8 because it is plain GPIO and needs no SPI; SPI0 on P9 stays dedicated to the ADF4351. P8.7 to P8.19 and P8.26 are free GPIO on a stock image; P8.3-6 and P8.20-25 are the eMMC and P8.27-46 the HDMI/LCD, so avoid them.
@@ -65,17 +67,23 @@ It switches one stage in at a time. The detector output should RISE by weight x 
 2. Connect **ground first**: BBB GND (P9.1) to the star point, then each board's GND to the star point.
 3. PE4302 board: measure the voltage on its supply pads first, then VDD pad to P9.3 (3.3 V) and `GND` to the star point (P8.2 is the nearest ground pin), then the six lines to P8.7, 8, 9, 10, 11, 12 (optional 2.2 kohm pull-ups on the six lines). Run the walk tool above and note the weights and polarity before connecting any RF.
 4. ADF4351 board: 5 V on the DC jack, `CE` and `PDR` to the board's `3V3` pin (unless the board already pulls them up), then `CLK`, `DAT`, `LE` (P9.22, P9.18, P9.17), `LD` (P9.23) and `GND`. Capture the SPI lines with the DSLogic (`python tools/bringup.py adf4351-pattern --word 0x...`). Do not connect the RF output to anything sensitive yet.
-5. Detector: VCC 5 V, GND. Connect VOUT to the divider, check the divider output with a DMM **before** connecting it to P9.39.
-6. Last: P9.39 (AIN0) and P9.34 (GNDA_ADC).
+5. Detector: VCC 5 V, GND. Connect VOUT to the divider, check the divider output with a DMM **before** connecting it to P9.39 (only if you use the AIN0 cross-check).
+6. Last: the ADS1115 (SCL to P9.19, SDA to P9.20, GND to board GND). P9.39 (AIN0) and P9.34 (GNDA_ADC) are only for the optional AIN0 cross-check; the ADS1115 does not use them.
 
-## Analog input (AIN0)
+## Main ADC (ADS1115)
+
+The ADS1115 reads the detector on every platform, so the code and the calibration do not depend on the SBC. On the adapter board the detector reaches A0 through 1k, 100 nF and a clamp to 3V3 and ground, with no divider, so `detector.divider_ratio` stays 1.0. Full scale is `adc.ads1115_full_scale_v`: 4.096 V by default, because the detector can go above the 2.048 V range with no signal.
+
+## Analog input (AIN0), cross-check
+
+The adapter keeps the on-chip path (JP6). The bench mode reads it to compare against the ADS1115. Its ratio is `adc.ain0_divider_ratio`.
 
 - The AM335x ADC is 12 bit with a 1.8 V full scale, so one LSB is about 0.44 mV.
 - The detector output is about 0.5 V at -1 dBm and about 1.9 V near -58 dBm (datasheet points, about -24.5 mV/dB), and can go higher with no signal. A divider is required.
-- Example: ratio Vadc / Vdet = 0.75 keeps 1.9 V below 1.45 V; one LSB then equals about 0.6 mV at the detector, about 0.024 dB. Put the real ratio in `config/default.toml` as `detector.divider_ratio`.
+- Example: ratio Vadc / Vdet = 0.75 keeps 1.9 V below 1.45 V; one LSB then equals about 0.6 mV at the detector, about 0.024 dB. Put the real ratio in `config/default.toml` as `adc.ain0_divider_ratio`.
 - Add an RC low-pass at the pin and a clamp (for example a low-leakage Schottky diode from the node to VDD_ADC, P9.32) so a fault cannot exceed 1.8 V. Keep the source impedance low, or buffer with an op-amp (check the AM335x datasheet for the allowed source impedance).
 - Do not use P9.32 (VDD_ADC) to supply anything.
-- Route the detector return to P9.34, not to a digital GND pin, and keep the wire short.
+- For the cross-check, route the detector return to P9.34, not to a digital GND pin, and keep the wire short.
 
 ## Power-on checks (DMM)
 

@@ -19,7 +19,9 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
+from .. import config as config_mod
 from . import sa_core as core
+from .bench_tab import PinsTab
 from .sim_runner import SimRunner
 from .sweep_client import SweepClient
 
@@ -206,7 +208,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log_len = -1
 
         tabs = QtWidgets.QTabWidget()
+        attenuator = config_mod.load()["attenuator"]
+        self.pins = PinsTab(self.client.request, self._stop, self._msg, attenuator["weights_db"], attenuator["active_high"])
         tabs.addTab(self._build_spectrum_tab(host), "Spectrum")
+        tabs.addTab(self.pins, "Pins")
         tabs.addTab(self._build_advanced_tab(host, pub_port, rep_port), "Advanced")
         self.setCentralWidget(tabs)
         self.status_conn = QtWidgets.QLabel("not connected")
@@ -222,7 +227,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._poll)
         self.timer.start(self.poll_sb.value())
-        self.resize(1180, 720)
+        self.resize(1280, 780)
 
     # ------------------------------------------------------------ spectrum tab
 
@@ -600,8 +605,12 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------------------------------------------------ run control
 
     def _run(self) -> None:
-        if self.client.request({"cmd": "run"}) is not None:
+        r = self.client.request({"cmd": "run"})
+        if r is not None and r.get("ok"):
             self._remote_running = True
+        elif r is not None:
+            self._single = False
+            self._msg(f"sweepd: {r.get('error', 'rejected')}", warn=True)
         self._redraw()
 
     def _stop(self) -> None:
@@ -767,6 +776,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _toggle_connect(self) -> None:
         if self.client.connected:
+            self.pins.shutdown()
             self.client.disconnect()
             self.synced = False
             self.connect_btn.setText("Connect")
@@ -820,12 +830,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_sim_status()
         if self.autoconnect_chk.isChecked():
             if self.client.connected:
+                self.pins.shutdown()
                 self.client.disconnect()
             self.host_edit.setText("127.0.0.1")
             self._connect()
 
     def _toggle_sim(self) -> None:
         if self.runner.running:
+            self.pins.shutdown()
             self.runner.stop()
             self._sim_exit_reported = True
             self._sim_user_stopped = True
@@ -875,6 +887,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.timer.stop()
+        self.pins.shutdown()
         if self.runner.running:
             self.runner.stop()
         self.client.disconnect()

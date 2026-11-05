@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
+import sys
 import time
+from typing import Optional
 
 from .. import config as config_mod
 from ..core.cal import Cal
@@ -15,6 +18,7 @@ from ..core.detector import Detector
 from ..core.freqplan import build_sweep
 from ..core.sweep import SweepEngine, next_atten_db
 from . import protocol
+from .bench import Bench, fake_backend, linux_backend
 
 SETTABLE = ("start_hz", "stop_hz", "points", "atten_db", "auto_atten", "averages")
 
@@ -52,9 +56,10 @@ def build_hw_engine(cfg: dict) -> SweepEngine:
 
 
 class Sweepd:
-    def __init__(self, cfg: dict, engine: SweepEngine) -> None:
+    def __init__(self, cfg: dict, engine: Optional[SweepEngine], bench: Optional[Bench] = None) -> None:
         self.cfg = cfg
-        self.engine = engine
+        self.engine = engine        # None: no sweep hardware yet, the daemon only offers bench mode
+        self.bench = bench
         self.settings = {
             "start_hz": cfg["rf"]["rf_min_hz"],
             "stop_hz": cfg["rf"]["rf_max_hz"],
@@ -63,13 +68,15 @@ class Sweepd:
             "auto_atten": True,
             "averages": cfg["sweep"]["averages"],
         }
-        self.running = True
+        self.running = engine is not None
         self.seq = 0
         self._points = None
         self._key = None
 
     def apply(self, cmd: dict) -> dict:
         name = cmd.get("cmd")
+        if isinstance(name, str) and name.startswith(protocol.BENCH_PREFIX):
+            return self._bench_command(cmd)
         if name == "set":
             new = dict(self.settings)
             new.update({k: cmd[k] for k in SETTABLE if k in cmd})
@@ -86,6 +93,10 @@ class Sweepd:
             self.settings = new
             return {"ok": True, "settings": self.settings}
         if name == "run":
+            if self.bench_active:
+                return {"ok": False, "error": "bench mode is active: leave it before sweeping"}
+            if self.engine is None:
+                return {"ok": False, "error": "this sweepd has no sweep hardware (--bench-only)"}
             self.running = True
             return {"ok": True}
         if name == "stop":
@@ -98,9 +109,35 @@ class Sweepd:
                 "running": self.running,
                 "seq": self.seq,
                 "settings": self.settings,
+                "bench": {"active": self.bench_active},
                 "limits": {"rf_min_hz": rf["rf_min_hz"], "rf_max_hz": rf["rf_max_hz"], "points_max": 4001},
             }
         return {"ok": False, "error": f"unknown command {name!r}"}
+
+    @property
+    def bench_active(self) -> bool:
+        return self.bench is not None and self.bench.active
+
+    def _bench_command(self, cmd: dict) -> dict:
+        if self.bench is None:
+            return {"ok": False, "error": "this sweepd has no bench backend"}
+        if self.running and cmd["cmd"] != "bench_status":    # sweeping and bench mode are exclusive
+            return {"ok": False, "sweep_running": True, "error": "a sweep is running: stop it first"}
+        return self.bench.handle(cmd)
+
+    def service_bench(self) -> bool:
+        """Between commands: lease check and pattern steps. True when a pattern is running."""
+        if self.bench is None:
+            return False
+        self.bench.tick()
+        if self.bench.pattern_running:
+            self.bench.service()
+            return True
+        return False
+
+    def shutdown(self) -> None:
+        if self.bench is not None:
+            self.bench.close("sweepd is stopping")
 
     def step(self):
         """Run one sweep and return the frame as a list of ZeroMQ parts."""
@@ -138,6 +175,8 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", help="TOML file merged over config/default.toml")
     ap.add_argument("--sim", action="store_true", help="use the simulated RF chain")
+    ap.add_argument("--bench-only", action="store_true",
+                    help="no sweeps, only bench mode (real SPI / GPIO / ADCs unless --sim); works before build_hw_engine exists")
     ap.add_argument("--rt", action="store_true", help="request SCHED_FIFO priority")
     ap.add_argument("--sweeps", type=int, default=0, help="stop after N sweeps (0 = run forever)")
     ap.add_argument(
@@ -148,8 +187,12 @@ def main(argv=None) -> None:
     period = args.period if args.period is not None else (0.1 if args.sim else 0.0)
 
     cfg = config_mod.load(args.config)
-    engine = build_sim_engine(cfg) if args.sim else build_hw_engine(cfg)
-    daemon = Sweepd(cfg, engine)
+    if args.bench_only:
+        engine = None
+    else:
+        engine = build_sim_engine(cfg) if args.sim else build_hw_engine(cfg)
+    bench = Bench(fake_backend() if args.sim else linux_backend(cfg), cfg)
+    daemon = Sweepd(cfg, engine, bench)
     if args.rt:
         _try_realtime()
 
@@ -161,23 +204,29 @@ def main(argv=None) -> None:
     rep = ctx.socket(zmq.REP)
     rep.bind(cfg["server"]["rep"])
 
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # so the finally below runs on systemctl stop
     done = 0
-    while args.sweeps == 0 or done < args.sweeps:
-        try:
-            while True:  # drain pending commands between sweeps
-                cmd = rep.recv_json(flags=zmq.NOBLOCK)
-                rep.send_json(daemon.apply(cmd))
-        except zmq.Again:
-            pass
-        if daemon.running:
-            t0 = time.monotonic()
-            pub.send_multipart(daemon.step())
-            done += 1
-            spare = period - (time.monotonic() - t0)
-            if spare > 0:
-                time.sleep(spare)
-        else:
-            time.sleep(0.05)
+    try:
+        while args.sweeps == 0 or done < args.sweeps:
+            try:
+                while True:  # drain pending commands between sweeps
+                    cmd = rep.recv_json(flags=zmq.NOBLOCK)
+                    rep.send_json(daemon.apply(cmd))
+            except zmq.Again:
+                pass
+            if daemon.service_bench():
+                continue
+            if daemon.running:
+                t0 = time.monotonic()
+                pub.send_multipart(daemon.step())
+                done += 1
+                spare = period - (time.monotonic() - t0)
+                if spare > 0:
+                    time.sleep(spare)
+            else:
+                rep.poll(50)     # idle: wake at once for a command
+    finally:
+        daemon.shutdown()        # lines back to the safe state, whatever ended the loop
 
 
 if __name__ == "__main__":

@@ -33,6 +33,8 @@ class Pattern:
     expected_db: Optional[float] = None
     weights_db: Optional[Sequence[float]] = None   # set for attenuator patterns (V1..V6)
     active_high: bool = True
+    groups: Optional[List[List[Edge]]] = None      # bench patterns: the edges per time slot
+    spi_words: Optional[List[int]] = None          # bench patterns sent through the SPI controller
 
 
 # ----------------------------------------------------------------------------- attenuator
@@ -142,6 +144,163 @@ def adf4351_words(words: Sequence[int]) -> Pattern:
             "LE (= CS) idles high; the register loads on the rising edge at the end of each word",
         ],
     )
+
+
+# ----------------------------------------------------------------------------- bench patterns
+# Pin checks for the bench mode. A pattern is a list of steps, one per time slot; a step can change
+# several lines. Signals are net names ("ATT_V1") or pin ids ("P8.13") from pinmap.
+MAX_STEPS = 100_000
+
+
+def _from_frames(name: str, signals: Sequence[str], idle: Dict[str, int], frames: Sequence[Dict[str, int]],
+                 notes: Sequence[str]) -> Pattern:
+    """Writes only the lines that change. Within a step lines going high are written first: with an
+    active-high PE4302 that keeps the make-before-break order."""
+    level = dict(idle)
+    groups: List[List[Edge]] = []
+    for frame in frames:
+        changes = [Edge(s, frame[s]) for s in signals if frame[s] != level[s]]
+        changes.sort(key=lambda e: -e.level)
+        level.update(frame)
+        groups.append(changes)
+    return Pattern(name, dict(idle), [e for g in groups for e in g], list(notes), groups=groups)
+
+
+def walking(signals: Sequence[str], active: int = 1, cycles: int = 1) -> Pattern:
+    """Walking one (active = 1) or walking zero (active = 0): one line differs at a time. Ends at idle."""
+    if not signals:
+        raise ValueError("pick at least one pin")
+    rest = 1 - active
+    idle = {s: rest for s in signals}
+    frames = [{t: (active if t == s else rest) for t in signals} for _ in range(cycles) for s in signals]
+    what = "one" if active else "zero"
+    return _from_frames(f"Walking {what} over {len(signals)} line(s), {cycles} cycle(s)", signals, idle,
+                        frames + [dict(idle)], [f"exactly one line is {active} in each step: a line that "
+                                                "stays still or moves with another shows an open or a short"])
+
+
+def square_wave(signal: str, cycles: int = 1) -> Pattern:
+    """One line toggling. Two steps per period, so the frequency is half the step rate."""
+    frames = [{signal: v} for _ in range(cycles) for v in (1, 0)]
+    return _from_frames(f"Square wave on {signal}, {cycles} period(s)", [signal], {signal: 0}, frames,
+                        ["two steps per period: frequency = step rate / 2"])
+
+
+def binary_counter(signals: Sequence[str], steps: Optional[int] = None) -> Pattern:
+    """Count up on the lines, first line = LSB, then return to 0."""
+    if not signals:
+        raise ValueError("pick at least one pin")
+    total = 2 ** len(signals) if steps is None else steps
+    if total > MAX_STEPS:
+        raise ValueError(f"at most {MAX_STEPS} steps; pick fewer pins or give a step count")
+    idle = {s: 0 for s in signals}
+    frames = [{s: (n >> i) & 1 for i, s in enumerate(signals)} for n in range(1, total)]
+    return _from_frames(f"Binary counter on {len(signals)} line(s), {total} steps", signals, idle,
+                        frames + [dict(idle)], [f"{signals[0]} is the LSB"])
+
+
+def pe4302_stage_sweep(signals: Sequence[str], weights_db: Sequence[float] = DEFAULT_WEIGHTS_DB,
+                       active_high: bool = True, mode: str = "one_out") -> Pattern:
+    """Through the driver, so with make-before-break order, from the safe state back to it.
+
+    mode "one_out": every stage in except one, so never below the maximum minus the largest stage.
+    mode "one_in": only one stage in. Each stage shows alone, but the attenuation gets low: no RF!
+    """
+    if mode not in ("one_out", "one_in"):
+        raise ValueError("mode must be one_out or one_in")
+    log = PinLog()
+    lines = [FakeGpio(s, log) for s in signals]
+    dev = PE4302(lines, weights_db, active_high)
+    idle = {ln.name: ln.level for ln in lines}
+    groups: List[List[Edge]] = []
+    targets = [w if mode == "one_in" else dev.max_db - w for w in weights_db] + [dev.max_db]
+    for db in targets:
+        log.events.clear()
+        dev.set_attenuation(db)
+        groups.append([Edge(n, v) for n, v in log.events])
+    return Pattern(
+        f"PE4302 stage by stage ({mode.replace('_', ' ')})", idle, [e for g in groups for e in g],
+        ["attenuation per step: " + " -> ".join(f"{t:g}" for t in targets) + " dB"], groups=groups,
+        weights_db=tuple(weights_db), active_high=active_high,
+    )
+
+
+def lowest_attenuation(p: Pattern, att_signals: Sequence[str], weights_db: Sequence[float] = DEFAULT_WEIGHTS_DB,
+                       active_high: bool = True) -> Optional[float]:
+    """Lowest attenuation reached, when lines outside the pattern stay in the safe state. None if no
+    attenuator line takes part."""
+    if not set(att_signals) & set(p.idle):
+        return None
+    safe = 1 if active_high else 0
+    level = {s: p.idle.get(s, safe) for s in att_signals}
+    index = {s: i + 1 for i, s in enumerate(att_signals)}
+
+    def now() -> float:
+        return ParallelModel({f"V{index[s]}": v for s, v in level.items()}, weights_db, active_high).attenuation_db
+
+    low = now()
+    for e in p.edges:
+        if e.signal in level:
+            level[e.signal] = e.level
+            low = min(low, now())
+    return low
+
+
+def step_groups(p: Pattern) -> List[List[Edge]]:
+    """The edges per time slot. Patterns without steps have one edge per slot."""
+    return p.groups if p.groups is not None else [[e] for e in p.edges]
+
+
+def from_spec(spec: dict, att_signals: Sequence[str] = (), weights_db: Sequence[float] = DEFAULT_WEIGHTS_DB,
+              active_high: bool = True) -> Pattern:
+    """Build a bench pattern from its JSON form. The GUI uses this for the preview and CSV and the
+    daemon for the run, so what is previewed is what runs.
+
+    {"kind": "walking", "signals": [...], "active": 1, "cycles": 1}
+    {"kind": "square", "signals": [one], "cycles": 1}
+    {"kind": "counter", "signals": [...], "steps": null}
+    {"kind": "pe4302_stages", "mode": "one_out"}
+    {"kind": "adf4351_frame", "words": [...], "repeat": 1}
+    """
+    kind = spec.get("kind")
+    signals = list(spec.get("signals", ()))
+    cycles = int(spec.get("cycles", 1))
+    if cycles < 1:
+        raise ValueError("cycles must be at least 1")
+    if kind == "walking":
+        if int(spec.get("active", 1)) not in (0, 1):
+            raise ValueError("active must be 0 or 1")
+        p = walking(signals, int(spec.get("active", 1)), min(cycles, MAX_STEPS // max(len(signals), 1)))
+    elif kind == "square":
+        if len(signals) != 1:
+            raise ValueError("a square wave needs exactly one pin")
+        p = square_wave(signals[0], min(cycles, MAX_STEPS // 2))
+    elif kind == "counter":
+        steps = spec.get("steps")
+        if len(signals) > 16 and steps is None:
+            raise ValueError(f"at most {MAX_STEPS} steps; pick fewer pins or give a step count")
+        p = binary_counter(signals, None if steps is None else int(steps))
+    elif kind == "pe4302_stages":
+        p = pe4302_stage_sweep(list(att_signals), weights_db, active_high, spec.get("mode", "one_out"))
+    elif kind == "adf4351_frame":
+        words = [int(w) for w in spec.get("words", ())]
+        if not words:
+            raise ValueError("give at least one 32-bit word")
+        if any(not 0 <= w <= 0xFFFFFFFF for w in words):
+            raise ValueError("SPI words must fit in 32 bits")
+        words = words * max(1, int(spec.get("repeat", 1)))
+        if len(words) > MAX_STEPS // 100:
+            raise ValueError("too many SPI words in one pattern; use Loop instead")
+        p = adf4351_words(words)
+        p.spi_words = words
+        p.notes.append("sent through the SPI controller: its clock is much faster than the step rate")
+        return p
+    else:
+        raise ValueError(f"unknown pattern kind {kind!r}")
+    low = lowest_attenuation(p, att_signals, weights_db, active_high) if att_signals else None
+    if low is not None:
+        p.notes.append(f"attenuation goes down to {low:g} dB during this pattern: keep RF off the input")
+    return p
 
 
 # ----------------------------------------------------------------------------- output
