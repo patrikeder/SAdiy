@@ -636,3 +636,141 @@ def test_linux_i2c_uses_the_device_address(monkeypatch):
     assert os.read(r, 1) == b"\x01"
     bus.close()
     os.close(r)
+
+
+# ---------------------------------------------------------------- what the real BBB showed (kernel 6.18, bbb-info)
+# chip name in sysfs -> (base, label, register address). The label says bank 0 where the hardware is bank 1.
+BBB_618 = {"gpiochip512": (512, "gpio-0-31", "4804c000"), "gpiochip544": (544, "gpio-32-63", "481ac000"),
+           "gpiochip576": (576, "gpio-64-95", "481ae000"), "gpiochip608": (608, "gpio-96-127", "44e07000")}
+
+
+def fake_sysfs(root, chips=BBB_618):
+    for name, (base, label, address) in chips.items():
+        chip = root / name
+        chip.mkdir(parents=True)
+        (chip / "base").write_text(f"{base}\n")
+        (chip / "label").write_text(f"{label}\n")
+        device = root / "platform" / f"{address}.target-module" / f"{address}.gpio"
+        device.mkdir(parents=True)
+        (chip / "device").symlink_to(device)
+    return root
+
+
+def test_banks_are_found_by_address_not_by_chip_order(tmp_path):
+    from sadiy.hal.linux import gpio_bank_bases
+
+    assert gpio_bank_bases(fake_sysfs(tmp_path)) == {0: 608, 1: 512, 2: 544, 3: 576}
+
+
+@pytest.mark.parametrize("pin, chip, line", [
+    # chip index and line as printed by gpioinfo on the real board
+    ("P8.12", 0, 12), ("P8.11", 0, 13), ("P9.23", 0, 17), ("P8.10", 1, 4), ("P9.27", 2, 19),
+    ("P9.22", 3, 2), ("P9.18", 3, 4), ("P9.17", 3, 5), ("P9.20", 3, 12), ("P9.19", 3, 13),
+])
+def test_sysfs_numbers_match_gpioinfo_on_the_real_board(tmp_path, pin, chip, line):
+    from sadiy.hal.linux import gpio_bank_bases, sysfs_number
+
+    bases = gpio_bank_bases(fake_sysfs(tmp_path))
+    assert sysfs_number(pinmap.PINS[pin].gpio, bases) == 512 + 32 * chip + line
+
+
+def test_old_kernel_numbering_still_works(tmp_path):
+    from sadiy.hal.linux import gpio_bank_bases, sysfs_number
+
+    old = {"gpiochip0": (0, "gpio-0-31", "44e07000"), "gpiochip32": (32, "gpio-32-63", "4804c000"),
+           "gpiochip64": (64, "gpio-64-95", "481ac000"), "gpiochip96": (96, "gpio-96-127", "481ae000")}
+    assert sysfs_number(66, gpio_bank_bases(fake_sysfs(tmp_path, old))) == 66
+
+
+def test_unknown_chips_are_refused_rather_than_guessed(tmp_path):
+    from sadiy.hal.linux import gpio_bank_bases
+
+    partial = dict(list(BBB_618.items())[:3])
+    with pytest.raises(OSError, match=r"banks \[0\]"):
+        gpio_bank_bases(fake_sysfs(tmp_path, partial))
+
+
+def test_chip_without_a_device_link_is_refused(tmp_path):
+    from sadiy.hal.linux import gpio_bank_bases
+
+    (tmp_path / "gpiochip512").mkdir()
+    (tmp_path / "gpiochip512" / "base").write_text("512\n")
+    with pytest.raises(OSError):
+        gpio_bank_bases(tmp_path)
+
+
+def test_linux_backend_opens_the_translated_line(tmp_path, monkeypatch):
+    from sadiy.hal import linux
+
+    fake_sysfs(tmp_path)
+    (tmp_path / "gpio546").mkdir()
+    monkeypatch.setattr(linux.SysfsGpio, "ROOT", tmp_path)
+    linux.LinuxBackend().gpio(pinmap.PINS["P8.7"].gpio, output=True, initial=1)
+    assert (tmp_path / "gpio546" / "direction").read_text() == "high"
+
+
+def test_missing_gpio_chips_only_warn_at_open(tmp_path, monkeypatch):
+    """A kernel where the banks can not be identified must not drive anything, or crash the daemon."""
+    from sadiy.hal import linux
+
+    monkeypatch.setattr(linux.SysfsGpio, "ROOT", tmp_path)
+    rig = Rig()
+    rig.bench.backend = linux.LinuxBackend()
+    rig.bench.backend.spi = rig.backend.spi
+    rig.bench.backend.i2c = rig.backend.i2c
+    r = rig.open()
+    assert r["ok"] and any("PE4302 lines not available" in w for w in r["warnings"])
+    assert r["attenuation_db"] is None and rig.cmd("atten", db=3.0, confirm=True)["ok"] is False
+    assert rig.cmd("close")["ok"]
+
+
+@pytest.fixture
+def no_mux():
+    rig = Rig()
+    rig.backend.can_mux = False
+    rig.open()
+    return rig
+
+
+@pytest.mark.parametrize("pin", ["P9.22", "P9.19"])
+def test_without_config_pin_bus_pins_stay_on_their_bus(no_mux, pin):
+    r = no_mux.cmd("pin", pin=pin, action="write", value=1, confirm=True)
+    assert not r["ok"] and "config-pin" in r["error"] and "safe state" not in r["error"]
+    assert "config-pin" in no_mux.cmd("pin", pin=pin, action="input")["error"]
+    assert no_mux.backend.mux_log == [] and no_mux.cmd("status")["last_error"] == ""
+
+
+def test_without_config_pin_a_bus_pattern_is_refused_before_touching_anything(no_mux):
+    no_mux.backend.log.events.clear()
+    r = no_mux.cmd("pattern", action="start", spec={"kind": "walking", "signals": ["ATT_V1", "SYN_CLK"]}, confirm=True)
+    assert not r["ok"] and "config-pin" in r["error"]
+    assert no_mux.backend.log.events == [] and not no_mux.bench.pattern_running
+
+
+def test_without_config_pin_everything_else_still_works(no_mux):
+    assert no_mux.cmd("status")["ok"]
+    assert no_mux.cmd("pin", pin="P8.7", action="write", value=0, confirm=True)["ok"]
+    assert no_mux.cmd("atten", db=3.0, confirm=True)["ok"]
+    assert no_mux.cmd("spi", word=0x00580005, confirm=True)["ok"]
+    assert no_mux.cmd("adc", source="ads1115")["ok"]
+    assert no_mux.cmd("pattern", action="start", spec={"kind": "adf4351_frame", "words": [5]}, confirm=True)["ok"]
+    assert no_mux.cmd("close")["ok"] and no_mux.backend.mux_log == []
+
+
+def test_open_reports_whether_pins_can_change_function(rig):
+    assert rig.open()["limits"]["can_mux"] is True
+
+
+def test_nothing_on_the_i2c_bus_closes_it_and_only_warns():
+    """The dry test: nothing connected, so the ADS1115 does not answer."""
+    rig = Rig()
+    ads = rig.backend.ads
+
+    def no_answer(_data):
+        raise OSError(121, "Remote I/O error")
+
+    ads.write = no_answer
+    r = rig.open()
+    assert r["ok"] and any("ADS1115 not available" in w for w in r["warnings"])
+    assert ads.closed and "not available" in rig.cmd("adc")["error"]
+    assert rig.cmd("close")["ok"]

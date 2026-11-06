@@ -112,7 +112,9 @@ class FakeBackend(BenchBackend):
     name = "fake backend"
     simulated = True
 
-    def __init__(self, lock_gpio: Optional[int] = None, ain_raw: int = 1500, ads_volts=(1.13, 0.0, 0.0, 0.0)) -> None:
+    def __init__(self, lock_gpio: Optional[int] = None, ain_raw: int = 1500, ads_volts=(1.13, 0.0, 0.0, 0.0),
+                 can_mux: bool = True) -> None:
+        self.can_mux = can_mux
         self.log = PinLog()
         self.lines: Dict[int, FakeGpio] = {}
         self.spi_bus: Optional[FakeSpi] = None

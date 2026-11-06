@@ -7,7 +7,7 @@ python -m sadiy.ui.sa_gui --host <bbb-ip> --connect    # view a sweepd running o
 sadiy-gui --sim                           # same, after `pip install -e .`
 ```
 
-On aarch64 (Raspberry Pi) PyPI has no PyQt5 wheel and pip would try to build it from source. Install `python3-pyqt5 python3-pyqtgraph python3-zmq python3-numpy` with apt, create the venv with `--system-site-packages` and run `pip install -e . --no-deps` (see the README quick start).
+On aarch64 (Raspberry Pi) PyPI has no PyQt5 wheel and pip would try to build it from source. Install `python3-pyqt5` (or `python3-pyqt6`, the GUI runs on Qt5 and Qt6) plus `python3-pyqtgraph python3-zmq python3-numpy` with apt, create the venv with `--system-site-packages` and run `pip install -e . --no-deps` (see the README quick start).
 
 The GUI is a client of `sweepd` (ZeroMQ, see `architecture.md`). It never touches SPI / GPIO. Closing it also stops a simulator it started.
 
@@ -40,7 +40,7 @@ python -m sadiy.ui.sa_gui --host <bbb-ip> --connect       # on the PC
 
 **The board** shows P8 and P9 as in `hw/diagrams/bbb-p*-pinout.svg` (pin 1 at the top, odd pins on the left), coloured by function, with lines to PE4302, ADF4351, ADS1115 and the optional AIN0 cross-check. Dots show live levels (yellow = 1, dark = 0, grey = not known, for example a pin on its SPI bus). Click a pin or a board row to select it.
 
-**Pin page:** net, board pin, kernel GPIO, notes, and Drive 0 / Drive 1 / Input / Read / Back to bus.
+**Pin page:** net, board pin, GPIO bank and bit, notes, and Drive 0 / Drive 1 / Input / Read / Back to bus.
 
 | Pin | What you can do |
 |---|---|
@@ -49,7 +49,7 @@ python -m sadiy.ui.sa_gui --host <bbb-ip> --connect       # on the PC
 | Free GPIO | locked until **Expert** is ticked |
 | Power, ground, eMMC, HDMI | nothing, display only |
 
-SPI and I2C pins can be driven as GPIO for a wiring check. This switches their mux with `config-pin`, and they return to the bus when a raw command needs them or with **Back to bus**.
+SPI and I2C pins can be driven as GPIO for a wiring check where the image has `config-pin`; otherwise they stay on their bus and the request is refused (check them with hardware SPI frames and an I2C read instead). This switches their mux with `config-pin`, and they return to the bus when a raw command needs them or with **Back to bus**.
 
 **Raw access page:**
 

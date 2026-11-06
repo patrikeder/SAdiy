@@ -33,6 +33,7 @@ GUI tests run offscreen (`QT_QPA_PLATFORM=offscreen`). PyQt5, pyqtgraph and pyzm
 - **ADF4351 RF outputs are off by default** (`Adf4351.__init__` writes an outputs-off R4 first). Keep it that way. Outputs turn on only via `enable_output()` / `set_outputs()` after lock.
 - **ADS1115** (I2C, 0x48, ADDR to GND) is the main ADC, also on the BBB, for consistency between platforms (user decision, 2026-11-05). BBB I2C2 on P9.19 / P9.20, through the adapter board. No divider on this path (`detector.divider_ratio` = 1.0).
 - **Detector** output reaches about 1.9 V. BBB on-chip ADC (AIN0, P9.39) stays wired as a cross-check; it is 0 to 1.8 V absolute maximum, so there is a divider (ratio 0.751, `adc.ain0_divider_ratio`). Its analog return is GNDA_ADC (P9.34), used only for this cross-check; the ADS1115 needs just I2C2 and board GND. Reference VDD_ADC (P9.32) must not be loaded.
+- **BBB image (read from the board, 2026-11-07):** Debian Trixie, kernel 6.18, Python 3.13. No `config-pin` and no cape-universal. I2C2 is on (`/dev/i2c-2`). SPI0 needs `BB-SPIDEV0-00A0.dtbo` as an overlay. sysfs GPIO bases are 608, 512, 544, 576 for banks 0 to 3, and chip labels are misleading, so `hal/linux.py` finds banks by hardware address.
 - Test instruments: several DMMs, Rigol MSO5354 (350 MHz), Rigol DS2072 (200 MHz), DSLogic logic analyzer.
 
 ## BBB pin map (a proposal until verified on the image; single source is `src/sadiy/pinmap.py`)
@@ -42,7 +43,7 @@ GUI tests run offscreen (`QT_QPA_PLATFORM=offscreen`). PyQt5, pyqtgraph and pyzm
 | SYN_CLK / SYN_DATA / SYN_LE | P9.22 / P9.18 / P9.17 | SPI0, mode 0, MSB first, 32-bit words, LE = CS0 |
 | SYN_LD | P9.23 | lock detect, input |
 | SYN_CE | P9.27 | optional, CE header pin is jumpered high on the adapter |
-| ATT_V1..V6 | P8.7, 8, 9, 10, 11, 12 | kernel GPIO 66, 67, 69, 68, 45, 44; adapter has 2.2k pull-ups, default 31.5 dB |
+| ATT_V1..V6 | P8.7, 8, 9, 10, 11, 12 | GPIO numbers 66, 67, 69, 68, 45, 44 (bank*32+bit, not sysfs); adapter has 2.2k pull-ups, default 31.5 dB |
 | I2C_SCL / I2C_SDA | P9.19 / P9.20 | I2C2, ADS1115 (main ADC) |
 | DET_ADC | P9.39 AIN0 | cross-check, via divider, 1.8 V max |
 

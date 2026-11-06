@@ -59,7 +59,7 @@ def test_init_sequence_checks_the_address_bits():
 # ---------------------------------------------------------------- pin text
 def test_describe_pin_has_net_board_pin_gpio_and_notes():
     text = core.describe_pin(pinmap.PINS["P8.7"])
-    assert all(s in text for s in ("P8.7", "ATT_V1", "PE4302 V1", "66", "confirm", "pe4302-walk"))
+    assert all(s in text for s in ("P8.7", "ATT_V1", "PE4302 V1", "66", "confirm", "pe4302-walk", "GPIO2_2"))
     assert "display-only" in core.describe_pin(pinmap.PINS["P9.1"])
     assert "AIN0" in core.describe_pin(pinmap.PINS["P9.39"])
     assert "Expert" in core.describe_pin(pinmap.PINS["P9.15"])

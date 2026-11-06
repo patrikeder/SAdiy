@@ -20,7 +20,7 @@ out_aux_power_dbm = -4
 # PE4302 module with parallel control only: inputs V1..V6, no serial interface.
 weights_db = [0.5, 1.0, 2.0, 4.0, 8.0, 16.0]   # per the module description; confirm with tools/bringup.py pe4302-walk
 active_high = true                              # per the module description (high = stage in); confirm with the walk tool
-gpio_bbb = [66, 67, 69, 68, 45, 44]             # kernel GPIO numbers: P8.7, 8, 9, 10, 11, 12
+gpio_bbb = [66, 67, 69, 68, 45, 44]             # pin map numbers, bank*32+bit: P8.7, 8, 9, 10, 11, 12
 gpio_rpi_bcm = [5, 6, 12, 13, 20, 21]           # BCM GPIO numbers: pins 29, 31, 32, 33, 38, 40
 max_db = 31.5
 
@@ -50,7 +50,7 @@ settle_s = 0.0005         # measure PLL lock + detector settling, then tighten
 
 [bench]
 # Bench mode (Pins tab). Device numbers depend on the image: VERIFY with ls /dev/spidev* /dev/i2c-*
-spi_bus = 1               # /dev/spidev1.0 is SPI0 on many images
+spi_bus = 1               # /dev/spidev1.0 is SPI0 on many images; check after enabling the overlay
 spi_device = 0
 spi_hz = 1000000
 i2c_bus = 2               # I2C2 on P9.19 / P9.20 is /dev/i2c-2 on recent kernels

@@ -227,11 +227,17 @@ class Bench:
         except (OSError, ImportError) as exc:
             warnings.append(f"SPI not available, the RF output state is unknown: {exc}")
         try:
-            self._ads = Ads1115(self.backend.i2c(), self.ads_full_scale_v, self.ads_sps, sleep=self._sleep)
-            self._ads.read_register(ADS1115_CONFIG_REG)
+            bus = self.backend.i2c()
         except (OSError, ImportError) as exc:
-            self._ads = None
-            warnings.append(f"ADS1115 not available: {exc}")
+            warnings.append(f"I2C not available, so no ADS1115: {exc}")
+        else:
+            try:
+                self._ads = Ads1115(bus, self.ads_full_scale_v, self.ads_sps, sleep=self._sleep)
+                self._ads.read_register(ADS1115_CONFIG_REG)
+            except OSError as exc:              # expected with nothing on the bus
+                self._ads = None
+                bus.close()
+                warnings.append(f"ADS1115 not available: {exc}")
         reply = self._status({})
         reply.update(
             token=self.token, warnings=warnings,
@@ -239,6 +245,7 @@ class Bench:
                 "backend": self.backend.name, "simulated": self.backend.simulated,
                 "max_writes_per_s": self.backend.max_writes_per_s,
                 "max_spi_words_per_s": self.backend.max_spi_words_per_s,
+                "can_mux": self.backend.can_mux,
             },
         )
         return reply
@@ -343,6 +350,8 @@ class Bench:
                 wired.append(pin)
             if as_gpio and pin.id in SPI_PINS:
                 self._require_rf_off(f"{pin.id} ({pin.net}) as a GPIO")
+            if as_gpio:
+                self._require_mux(pin)
         if wired and not cmd.get("confirm"):
             names = ", ".join(f"{p.id} = {p.net} ({p.board} {p.board_pin})" for p in wired)
             raise NeedsConfirm(f"This drives lines wired to board inputs: {names}")
@@ -350,6 +359,10 @@ class Bench:
     def _require_rf_off(self, what: str) -> None:
         if self._outputs.main.enabled or self._outputs.aux.enabled:
             raise Refused(f"an RF output is on: turn it off before using {what}")
+
+    def _require_mux(self, pin: pinmap.Pin) -> None:
+        if pin.id in BUS_PINS and pin.id not in self._gpio_mode and not self.backend.can_mux:
+            raise Refused(f"{pin.id} ({pin.net}) stays on its bus: this image has no config-pin to make it a GPIO")
 
     def _require_no_pattern(self) -> None:
         if self._run is not None:
@@ -453,6 +466,7 @@ class Bench:
             raise Refused(f"{pin.id} is not in the pin map: tick Expert to use it")
         if pin.id in SPI_PINS:
             self._require_rf_off(f"{pin.id} ({pin.net}) as a GPIO")
+        self._require_mux(pin)
         line = self._as_gpio(pin, False, 0)
         return {"ok": True, "pin": pin.id, "level": line.read(), "dir": "in", "attenuation_db": self._att_db()}
 

@@ -4,7 +4,7 @@ the unpacked tree in dist/sadiy-bbb.
 
     python tools/make_bbb_package.py [--out dist]
 
-The name ends in -dirty when the checkout has uncommitted changes, which are included. The package mirrors
+The name ends in -dirty when a packaged file has uncommitted changes, which are included. The package mirrors
 the target file system and leaves out what the BBB does not need: the Qt GUI, tests, KiCad files, photos.
 Older archives in the output folder are kept.
 """
@@ -62,17 +62,18 @@ def version() -> str:
     return re.search(r'^version = "([^"]+)"', (ROOT / "pyproject.toml").read_text(), re.M).group(1)
 
 
-def commit_label() -> tuple:
-    """(short name for the file, full id for the archive header)."""
-    dirty = "-dirty" if git("status", "--porcelain") else ""
+def commit_label(sources: list) -> tuple:
+    """(short name for the file, full id for the archive header). Dirty only if a packaged file differs."""
+    dirty = "-dirty" if git("status", "--porcelain", "--", "pyproject.toml", *sources) else ""
     return git("rev-parse", "--short", "HEAD") + dirty, git("rev-parse", "HEAD") + dirty
 
 
 def build(out: Path) -> Path:
-    short, full = commit_label()
+    files = [*FILES.items(), *source_files()]
+    short, full = commit_label([source for _target, source in files])
     stage = out / TOP
     shutil.rmtree(stage, ignore_errors=True)
-    for target, source in [*FILES.items(), *source_files()]:
+    for target, source in files:
         dest = stage / target
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / source, dest)

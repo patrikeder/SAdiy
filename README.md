@@ -31,7 +31,7 @@ pytest
 On a Raspberry Pi (aarch64) PyPI has no PyQt5 wheel, so use the Debian packages and a venv that can see them:
 
 ```bash
-sudo apt install python3-pyqt5 python3-pyqtgraph python3-zmq python3-numpy
+sudo apt install python3-pyqt5 python3-pyqtgraph python3-zmq python3-numpy    # python3-pyqt6 works too
 python3 -m venv --system-site-packages .venv && . .venv/bin/activate
 pip install -e . --no-deps
 ```
@@ -92,7 +92,7 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 
 | Path | What |
 |---|---|
-| `src/sadiy/pinmap.py` | the BBB pin map: nets, kernel GPIO numbers, what each pin may do. Read by the diagram generator, the daemon and the GUI |
+| `src/sadiy/pinmap.py` | the BBB pin map: nets, GPIO numbers, what each pin may do. Read by the diagram generator, the daemon and the GUI |
 | `src/sadiy/hal/` | SPI, GPIO, I2C and ADC abstraction: Linux backends and recording fakes |
 | `src/sadiy/drivers/` | PE4302, ADF4351, ADS1115 and on-chip ADC drivers |
 | `src/sadiy/core/` | frequency plan, detector model, calibration, sweep engine (no hardware access) |

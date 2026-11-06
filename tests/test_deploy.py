@@ -58,9 +58,9 @@ def test_pinmux_script_tries_every_pin_and_reports_a_failure(tmp_path):
     assert len(log.read_text().splitlines()) == len(expected_modes())
 
 
-def test_pinmux_script_says_when_config_pin_is_missing(tmp_path):
-    result = run_script(tmp_path)
-    assert result.returncode == 1 and "not found" in result.stderr
+def test_pinmux_script_is_fine_without_config_pin(tmp_path):
+    result = run_script(tmp_path)                           # normal on the Trixie image
+    assert result.returncode == 0 and "not found" in result.stdout
 
 
 def test_service_uses_bench_only_until_the_hardware_engine_exists():
@@ -306,6 +306,16 @@ def test_update_leaves_identical_units_alone(rig):
     (rig.units / "sweepd.service").write_text((DEPLOY / "sweepd.service").read_text())
     assert rig.run(rig.archive()).returncode == 0
     assert "systemctl daemon-reload" not in rig.log()
+
+
+def test_update_does_not_warn_without_config_pin(make_rig):
+    rig = make_rig()
+    (rig.bin / "config-pin").unlink()
+    path = os.environ["PATH"]
+    if any((Path(d) / "config-pin").exists() for d in path.split(os.pathsep)):
+        pytest.skip("this machine has a real config-pin")
+    r = rig.run(rig.archive())
+    assert r.returncode == 0 and "warning: could not set" not in r.stdout and "leaving the pin modes" in r.stdout
 
 
 def test_update_only_warns_when_pin_modes_fail(make_rig):

@@ -5,17 +5,18 @@
                            line levels V1..V6 and the write order for an attenuator change, with the
                            attenuation after every write. The lowest value during the change must not
                            drop below the lower of old and new. Compare with a logic analyzer capture.
-  pe4302-walk --gpio 30,60,31,50,48,51 [--active-low] [--dry-run]
+  pe4302-walk --gpio 66,67,69,68,45,44 [--active-low] [--dry-run]
                            run ON THE SBC: switches one PE4302 input at a time so you can identify the
                            weight of V1..V6 and the polarity with the detector and a DMM
   adf4351-pattern --word 0x00580005 [--word ...]
                            SPI frame for ADF4351 register words (MSB first, 32 clocks each)
+  gpio-map                 run ON THE SBC, read-only: pin map number and sysfs number of every pin we use
   pll --mhz 110.7          divider / INT / FRAC / MOD and the real output frequency
   sim-sweep                one simulated sweep, prints the strongest points
 """
 import argparse
 
-from sadiy import config, patterns
+from sadiy import config, patterns, pinmap
 from sadiy.bringup import walk_lines
 from sadiy.core.freqplan import build_sweep, plan_pll
 from sadiy.hal.fake import FakeGpio, PinLog
@@ -40,13 +41,32 @@ def cmd_walk(args):
         lines = [FakeGpio(f"V{i + 1}", log) for i in range(len(numbers))]
         walk_lines(lines, active_high, ask=lambda m: "")
         return
-    from sadiy.hal.linux import SysfsGpio
+    from sadiy.hal.linux import SysfsGpio, gpio_bank_bases, sysfs_number
 
     # start with every stage switched in so the outputs never glitch to minimum attenuation
     safe = 1 if active_high else 0
-    lines = [SysfsGpio(n, initial=safe) for n in numbers]
+    bases = gpio_bank_bases()
+    lines = [SysfsGpio(sysfs_number(n, bases), initial=safe) for n in numbers]
     print("Keep the RF level at the module input below -20 dBm while walking the lines.")
     walk_lines(lines, active_high)
+
+
+def cmd_gpio_map(_args):
+    from sadiy.hal.linux import SysfsGpio, gpio_bank_bases, sysfs_number
+
+    for chip in sorted(SysfsGpio.ROOT.glob("gpiochip*")):
+        print(f"{chip.name}: base {(chip / 'base').read_text().strip()}, label {(chip / 'label').read_text().strip()}, "
+              f"device {(chip / 'device').resolve()}")
+    try:
+        bases = gpio_bank_bases()
+    except OSError as exc:
+        raise SystemExit(f"{exc}\nSend the lines above: the code can not tell which chip is which bank yet.")
+    print("bank -> base:", dict(sorted(bases.items())))
+    print("pin    net       GPIO      map  sysfs")
+    for name in sorted(pinmap.BY_NET):
+        pin = pinmap.BY_NET[name]
+        if pin.gpio is not None:
+            print(f"{pin.id:<6} {name:<9} GPIO{pin.gpio // 32}_{pin.gpio % 32:<3} {pin.gpio:>4}  {sysfs_number(pin.gpio, bases)}")
 
 
 def cmd_adf(args):
@@ -79,10 +99,12 @@ def main():
     a.add_argument("--csv")
     a.set_defaults(fn=cmd_pe4302)
     w = sub.add_parser("pe4302-walk")
-    w.add_argument("--gpio", required=True, help="kernel GPIO numbers of V1..V6, comma separated")
+    w.add_argument("--gpio", required=True, help="pin map numbers (bank*32+bit) of V1..V6, comma separated")
     w.add_argument("--active-low", action="store_true")
     w.add_argument("--dry-run", action="store_true", help="no hardware, just print the procedure")
     w.set_defaults(fn=cmd_walk)
+    g = sub.add_parser("gpio-map")
+    g.set_defaults(fn=cmd_gpio_map)
     f = sub.add_parser("adf4351-pattern")
     f.add_argument("--word", action="append", required=True, help="register word, e.g. 0x00580005")
     f.set_defaults(fn=cmd_adf)

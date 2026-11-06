@@ -18,13 +18,24 @@ None of this has been tried on a real BBB yet. Verify every pin and overlay name
 
 ## Buses and pins
 
-4. Enable SPI0 with the spidev overlay (U-Boot overlay line in `/boot/uEnv.txt`, name depends on the image). Then run `ls /dev/spidev*` and note the bus number: `/dev/spidev1.0` means 1, `/dev/spidev0.0` means 0.
-5. Check the wiring against the map: SPI0 (ADF4351) on P9.17 CS0, P9.18 MOSI, P9.22 SCLK. PE4302 V1..V6 as plain GPIO on P8.7, 8, 9, 10, 11, 12 (kernel GPIO 66, 67, 69, 68, 45, 44). See `hw/wiring-bbb.md`.
-6. Set the pin modes. Check what your image offers with `config-pin -l P9_17`, then run the script:
+4. Enable SPI0 with the spidev overlay, a U-Boot overlay line in `/boot/uEnv.txt`. The name depends on the image. On Debian Trixie with kernel 6.18 the file is `/boot/dtbs/<kernel>/overlays/BB-SPIDEV0-00A0.dtbo`, and the line uses the bare name:
+   ```
+   uboot_overlay_addr4=BB-SPIDEV0-00A0.dtbo
+   ```
+   Keep a copy of `uEnv.txt`, then reboot. Run `ls /dev/spidev*` and note the bus number: `/dev/spidev1.0` means 1, `/dev/spidev0.0` means 0.
+5. Check the wiring against the map: SPI0 (ADF4351) on P9.17 CS0, P9.18 MOSI, P9.22 SCLK. PE4302 V1..V6 as plain GPIO on P8.7, 8, 9, 10, 11, 12 (GPIO numbers 66, 67, 69, 68, 45, 44). See `hw/wiring-bbb.md`. Check how they map on this kernel; this only reads:
+   ```bash
+   cd /opt/sadiy && PYTHONPATH=src python3 tools/bringup.py gpio-map
+   ```
+6. Set the pin modes where the image has `config-pin`:
    ```bash
    sudo /opt/sadiy/deploy/sadiy-pinmux.sh
    ```
-   If a mode name differs on your image, correct it in both the script and `src/sadiy/pinmap.py` (`mux=`). Newer images may not have `config-pin`: the script then stops with an error, and the pin modes have to come from overlays. Bench mode also calls `config-pin` when a bus pin is used as GPIO and back, so that feature won't work without it.
+   If a mode name differs on your image (`config-pin -l P9_17`), correct it in both the script and `src/sadiy/pinmap.py` (`mux=`). The Debian Trixie image has no `config-pin`: the script then says so and does nothing, I2C2 is already on, SPI0 comes from step 4, and the rest stay at their defaults. Check that the GPIO pins really are in GPIO mode, shown by a last digit of 7 (or `f`) in the register value. Pins 12, 13, 17, 36, 37, 38, 39 and 105 are P8.12, P8.11, P9.23, P8.7, P8.8, P8.10, P8.9 and P9.27:
+   ```bash
+   sudo grep -E '^pin (12|13|17|36|37|38|39|105) ' /sys/kernel/debug/pinctrl/*pinmux*/pins
+   ```
+   Without `config-pin`, bench mode refuses to use SPI and I2C pins as GPIO.
 7. ADS1115 (main ADC, on I2C2, P9.19 / P9.20): `i2cdetect -y -r 2` should show 0x48. I2C2 is usually `/dev/i2c-2` on recent kernels and `/dev/i2c-1` on old 3.8 kernels. The same bus probes cape EEPROMs, so other addresses may show up.
 8. On-chip ADC, used as a cross-check: IIO, `/sys/bus/iio/devices/iio:device0/in_voltage0_raw`. 0 to 1.8 V only.
 9. CPU governor: `sudo cpufreq-set -g performance`.

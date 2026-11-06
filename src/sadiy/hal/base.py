@@ -59,10 +59,11 @@ class BenchBackend(ABC):
     simulated = False
     max_writes_per_s = SYSFS_WRITES_PER_S
     max_spi_words_per_s = SPIDEV_WORDS_PER_S
+    can_mux = True      # False: bus pins can not change function here (no config-pin on this image)
 
     @abstractmethod
     def gpio(self, number: int, output: bool = False, initial: int = 0) -> GpioLine:
-        """Open a line by kernel GPIO number."""
+        """Open a line by its pin map number, bank * 32 + bit."""
 
     @abstractmethod
     def spi(self) -> SpiBus:

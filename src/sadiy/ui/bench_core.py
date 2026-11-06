@@ -58,7 +58,7 @@ def describe_pin(pin: pinmap.Pin) -> str:
     if pin.net:
         rows.append(f"Net: {pin.net}")
         rows.append(f"Board pin: {pin.board} {pin.board_pin}")
-    rows.append(f"Kernel GPIO: {pin.gpio}" if pin.gpio is not None else "Kernel GPIO: none")
+    rows.append(f"GPIO: GPIO{pin.gpio // 32}_{pin.gpio % 32} (number {pin.gpio})" if pin.gpio is not None else "GPIO: none")
     if pin.ain is not None:
         rows.append(f"ADC channel: AIN{pin.ain}")
     rows.append(f"Use: {access}")

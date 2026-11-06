@@ -4,7 +4,8 @@
 (the clickable board) all read this module, so they cannot disagree. No hardware access, no Qt.
 
 The map is a proposal until it is verified on a real image (overlays, `config-pin`). Pin names come
-from the BBB system reference. Kernel GPIO number = bank * 32 + bit (GPIO1_28 = 60).
+from the BBB system reference. GPIO number = bank * 32 + bit (GPIO1_28 = 60). That is not always the number
+sysfs uses: `hal/linux.py` translates it for the running kernel.
 """
 from __future__ import annotations
 
@@ -118,7 +119,7 @@ class Pin:
     access: str                   # WIRED, INPUT_ONLY, ANALOG, EXPERT or DISPLAY
     category: str                 # colour on the clickable board: spi, pe4302, lock, synth, adc, i2c, gnd, power, reserved, free
     short: str                    # label next to the pin
-    gpio: Optional[int] = None    # kernel GPIO number
+    gpio: Optional[int] = None    # bank * 32 + bit
     ain: Optional[int] = None     # AIN channel
     net: Optional[str] = None
     board: Optional[str] = None

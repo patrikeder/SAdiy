@@ -12,7 +12,7 @@ The pin map is a proposal. Pin and mux names come from the BBB system reference,
 
 ## Pins used
 
-| Net | Board pin | BBB pin | Kernel GPIO | Notes |
+| Net | Board pin | BBB pin | GPIO number | Notes |
 |---|---|---|---|---|
 | SYN_CLK | ADF4351 CLK | P9.22 SPI0_SCLK | n/a | SPI mode 0, MSB first |
 | SYN_DATA | ADF4351 DAT | P9.18 SPI0_D1 (MOSI) | n/a | 32-bit words |
@@ -31,7 +31,7 @@ The pin map is a proposal. Pin and mux names come from the BBB system reference,
 | ADC_GND | Detector GND | P9.34 GNDA_ADC | n/a | optional, AIN0 cross-check only |
 | GND | all boards | P9.1, P9.2, P9.43-46, P8.1, P8.2 | n/a | one star point; P8.1 / P8.2 are the nearest ground pins for the PE4302 ribbon |
 
-Kernel GPIO number = bank x 32 + bit (GPIO1_28 = 60, GPIO2_5 = 69). The sysfs backend (`hal/linux.py`) takes these numbers; they are also in `config/default.toml` (`attenuator.gpio_bbb`). The PE4302 sits on P8 because it is plain GPIO and needs no SPI; SPI0 on P9 stays dedicated to the ADF4351. P8.7 to P8.19 and P8.26 are free GPIO on a stock image; P8.3-6 and P8.20-25 are the eMMC and P8.27-46 the HDMI/LCD, so avoid them.
+GPIO number = bank x 32 + bit (GPIO1_28 = 60, GPIO2_5 = 69). This is not always the number sysfs uses: on kernel 6.18 the bases are 608, 512, 544, 576 for banks 0 to 3, so P8.7 (GPIO2_2) is 546. `hal/linux.py` translates, and `python tools/bringup.py gpio-map` prints the result on the board. The code takes the numbers in this table; they are also in `config/default.toml` (`attenuator.gpio_bbb`). The PE4302 sits on P8 because it is plain GPIO and needs no SPI; SPI0 on P9 stays dedicated to the ADF4351. P8.7 to P8.19 and P8.26 are free GPIO on a stock image; P8.3-6 and P8.20-25 are the eMMC and P8.27-46 the HDMI/LCD, so avoid them.
 
 ## Attenuator control (PE4302 module, parallel only)
 

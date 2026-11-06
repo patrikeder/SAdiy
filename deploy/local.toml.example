@@ -1,7 +1,7 @@
 # Copy to /etc/sadiy/local.toml. Merged over config/default.toml, so list only what differs on this board.
 
 [bench]
-spi_bus = 1      # /dev/spidev1.0 means 1, /dev/spidev0.0 means 0
+spi_bus = 1      # /dev/spidev1.0 means 1, /dev/spidev0.0 means 0; check after enabling the overlay
 i2c_bus = 2      # the bus where i2cdetect shows 0x48
 
 # sweepd has no authentication, and whoever reaches the command port can drive pins. To listen on one

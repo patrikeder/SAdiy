@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import fcntl
 import os
+import re
+import shutil
 import subprocess
 from pathlib import Path
+from typing import Dict
 
 from .base import AnalogInput, BenchBackend, GpioLine, I2cBus, SpiBus
 
@@ -30,8 +33,13 @@ class SpidevBus(SpiBus):
         self._spi.close()
 
 
+# AM335x GPIO banks by register address. Neither the chip order nor the labels can be trusted: on kernel
+# 6.18 the chip labelled gpio-0-31 (base 512) is really bank 1, and bank 0 is last (base 608).
+AM335X_GPIO_BANKS = {"44e07000": 0, "4804c000": 1, "481ac000": 2, "481ae000": 3}
+
+
 class SysfsGpio(GpioLine):
-    """GPIO via /sys/class/gpio. `number` is the kernel GPIO number (bank*32 + bit)."""
+    """GPIO via /sys/class/gpio. `number` is the number sysfs uses, see `sysfs_number`."""
 
     ROOT = Path("/sys/class/gpio")
 
@@ -51,6 +59,27 @@ class SysfsGpio(GpioLine):
 
     def set_direction(self, output: bool, initial: int = 0) -> None:
         (self._dir / "direction").write_text(("high" if initial else "low") if output else "in")
+
+
+def gpio_bank_bases(root: Path = None) -> Dict[int, int]:
+    """The sysfs base number of each GPIO bank, found from each chip's hardware address.
+    OSError when a bank can not be identified: a wrong guess would drive the wrong pin."""
+    root = SysfsGpio.ROOT if root is None else root
+    bases: Dict[int, int] = {}
+    for chip in root.glob("gpiochip*"):
+        addresses = re.findall(r"([0-9a-f]{8})\.gpio", str((chip / "device").resolve()))
+        if addresses and addresses[-1] in AM335X_GPIO_BANKS:
+            bases[AM335X_GPIO_BANKS[addresses[-1]]] = int((chip / "base").read_text())
+    missing = sorted(set(AM335X_GPIO_BANKS.values()) - set(bases))
+    if missing:
+        raise OSError(f"could not identify GPIO banks {missing} in {root}: see tools/bringup.py gpio-map")
+    return bases
+
+
+def sysfs_number(number: int, bases: Dict[int, int] = None) -> int:
+    """Pin map number (bank * 32 + bit) to the number sysfs uses on this kernel."""
+    bases = gpio_bank_bases() if bases is None else bases
+    return bases[number // 32] + number % 32
 
 
 class LinuxI2c(I2cBus):
@@ -96,9 +125,16 @@ class LinuxBackend(BenchBackend):
         self._spi_args = (spi_bus, spi_device, spi_hz)
         self._i2c_args = (i2c_bus, i2c_address)
         self._iio_device = iio_device
+        self._bases: Dict[int, int] = {}
+
+    @property
+    def can_mux(self) -> bool:
+        return shutil.which("config-pin") is not None
 
     def gpio(self, number: int, output: bool = False, initial: int = 0) -> SysfsGpio:
-        return SysfsGpio(number, output, initial)
+        if not self._bases:
+            self._bases = gpio_bank_bases()
+        return SysfsGpio(sysfs_number(number, self._bases), output, initial)
 
     def spi(self) -> SpidevBus:
         return SpidevBus(*self._spi_args)

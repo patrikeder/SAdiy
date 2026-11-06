@@ -5,8 +5,9 @@
 set -u
 
 if ! command -v config-pin >/dev/null 2>&1; then
-    echo "sadiy-pinmux: config-pin not found" >&2
-    exit 1
+    # Normal on the Trixie images: no cape-universal, so the modes come from overlays and defaults.
+    echo "sadiy-pinmux: config-pin not found, leaving the pin modes as they are"
+    exit 0
 fi
 
 status=0
