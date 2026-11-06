@@ -28,6 +28,14 @@ pip install -e .[dev,ui]      # ui adds PyQtGraph and PyQt5, only needed for the
 pytest
 ```
 
+On a Raspberry Pi (aarch64) PyPI has no PyQt5 wheel, so use the Debian packages and a venv that can see them:
+
+```bash
+sudo apt install python3-pyqt5 python3-pyqtgraph python3-zmq python3-numpy
+python3 -m venv --system-site-packages .venv && . .venv/bin/activate
+pip install -e . --no-deps
+```
+
 Run the spectrum analyzer GUI. It starts its own simulated hardware, and its Pins tab drives a fake board:
 
 ```bash
@@ -52,7 +60,7 @@ Run from a project checkout: the config is read from `config/default.toml` next 
 
 ## On the BBB
 
-Setup is in [deploy/bbb-setup.md](deploy/bbb-setup.md). Sweeping on real hardware is not written yet, so for now the daemon runs in bench mode only:
+Setup is in [deploy/bbb-setup.md](deploy/bbb-setup.md), including first install and updates without internet: `python tools/make_bbb_package.py` builds the package in `dist/`, and `deploy/sadiy-update.sh` updates an existing installation from it. Sweeping on real hardware is not written yet, so for now the daemon runs in bench mode only:
 
 ```bash
 cd /opt/sadiy && sudo PYTHONPATH=src python3 -m sadiy.server.sweepd --bench-only --config /etc/sadiy/local.toml   # on the BBB
@@ -95,9 +103,10 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 | `config/` | TOML configuration; values marked VERIFY need checking on the real boards |
 | `hw/` | wiring, diagrams, netlist, per-board notes, test points, missing parts, adapter board (KiCad) |
 | `docs/` | architecture, bring-up plan, GUI manual |
-| `deploy/` | BBB setup notes, systemd units, pin mode script, example local config |
+| `deploy/` | BBB setup notes, systemd units, install, update and pin mode scripts, example local config |
 | `sna/` | second project: a scalar network analyzer reusing the same chain |
-| `tools/` | bring-up and calibration helpers, `gen_diagrams.py` |
+| `tools/` | bring-up and calibration helpers, `gen_diagrams.py`, `make_bbb_package.py` |
+| `dist/` | BBB packages built by `make_bbb_package.py`; not in git |
 | `tests/` | pytest suite, runs on a PC; GUI tests run offscreen and are skipped without the GUI packages |
 | `native/` | placeholder for C++ or Rust |
 

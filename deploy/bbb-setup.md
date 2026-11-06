@@ -65,70 +65,67 @@ The service uses `--bench-only` until `build_hw_engine` exists, because `sweepd`
 
 ## Without internet
 
-This replaces steps 2 and 3 when the BBB has only SSH and SFTP from a PC, and it is also how to update later. The examples use the usual default user `debian`; change it if yours differs.
+This replaces steps 2 and 3 when the BBB has only SSH and SFTP from a PC, and it is also how to update later. The code goes over as a package built on the PC. The examples use the usual default user `debian`; change it if yours differs.
 
-### Copy the code
+### Build the package
 
-On the PC, from the repo root, pack `main` and send it. The archive holds commits only, so commit first:
-
-```bash
-git archive --format=tar.gz --prefix=sadiy/ -o ~/sadiy.tar.gz main
-```
+On the PC, from the repo root:
 
 ```bash
-sftp debian@<bbb-ip>
+python tools/make_bbb_package.py
 ```
 
-At the `sftp>` prompt, replacing `<pc-home>` with your home folder on the PC:
+This writes `dist/sadiy-bbb-<version>-<commit>.tar.gz` and its `.sha256`. The name ends in `-dirty` if there are uncommitted changes, which are included. Send both files with SFTP. At the `sftp debian@<bbb-ip>` prompt, from the repo root:
 
 ```
-put <pc-home>/sadiy.tar.gz
+put dist/sadiy-bbb-<name>.tar.gz
+put dist/sadiy-bbb-<name>.tar.gz.sha256
 bye
 ```
 
-On the BBB, unpack it:
+On the BBB, check the copy:
 
 ```bash
-rm -rf ~/sadiy-new && mkdir ~/sadiy-new && tar -xzf ~/sadiy.tar.gz -C ~/sadiy-new
+sha256sum -c sadiy-bbb-<name>.tar.gz.sha256
 ```
 
-If the service is installed, stop it:
+### Update an existing installation
+
+On the BBB, take the update script from the new package and run it:
 
 ```bash
-sudo systemctl stop sweepd
-```
-
-Swap the folders. The previous copy is kept as `/opt/sadiy.old` until the next update, and `/etc/sadiy/local.toml` is not touched:
-
-```bash
-if [ -d /opt/sadiy ]; then sudo rm -rf /opt/sadiy.old; sudo mv /opt/sadiy /opt/sadiy.old; fi
+tar -xzf ~/sadiy-bbb-<name>.tar.gz -C /tmp sadiy-bbb/sadiy-update.sh
 ```
 
 ```bash
-sudo mv ~/sadiy-new/sadiy /opt/sadiy && sudo chown -R root:root /opt/sadiy
+sudo sh /tmp/sadiy-bbb/sadiy-update.sh ~/sadiy-bbb-<name>.tar.gz
 ```
 
-A BBB without internet may have the wrong time, so `tar` can warn about timestamps in the future. That is harmless. If you correct something directly on the BBB, such as a `config-pin` mode name, copy the change back to the PC, or the next update replaces it.
+Stop `sweepd` first if it is running by hand; the script refuses otherwise. It then:
 
-### Check the packages
+- checks the package and that the new code loads with your `local.toml`, before changing anything
+- stops the `sweepd` service if it is running, which returns any driven lines to the safe state
+- swaps the code, keeping one previous copy in `/opt/sadiy.old`
+- keeps `/etc/sadiy/local.toml` and the calibration data in `/opt/sadiy/cal`
+- replaces the unit files that are already installed, keeping the old ones in `/opt/sadiy.old/.units`
+- sets the pin modes again and starts the service again, if it was running
+- restores the previous copy and unit files if the service does not come back
+
+To install the pin mode service on a board that does not have it yet, see step 13. If you correct something directly on the BBB, such as a `config-pin` mode name, copy the change back to the PC, or the next update replaces it. A BBB without internet may have the wrong time, so `tar` can warn about timestamps in the future. That is harmless.
+
+### First install
+
+On the BBB, from your home folder:
 
 ```bash
-python3 --version
+tar -xzf sadiy-bbb-<name>.tar.gz && cd sadiy-bbb && sudo ./install.sh
 ```
 
-```bash
-cd /opt/sadiy && PYTHONPATH=src python3 -c "import numpy, zmq, spidev; import sadiy.server.sweepd; print('ok')"
-```
-
-```bash
-which i2cdetect
-```
-
-It needs Python 3.9 or newer. If the second command prints `ok` and `i2cdetect` is found, nothing is missing. Otherwise the error names the missing module.
+It reports any missing packages, then stops. Next, continue with step 4.
 
 ### Install missing packages
 
-On the BBB, list the download links, including dependencies. Below Python 3.11, add `python3-tomli`:
+`install.sh` lists what is missing. On the BBB, list the download links, including dependencies. Below Python 3.11, add `python3-tomli`:
 
 ```bash
 apt-get install --print-uris -qq python3-numpy python3-zmq python3-spidev i2c-tools | cut -d"'" -f2 > ~/debs.txt
@@ -150,6 +147,8 @@ Send them to the BBB:
 sftp debian@<bbb-ip>
 ```
 
+At the `sftp>` prompt, replacing `<pc-home>` with your home folder on the PC:
+
 ```
 mkdir debs
 put <pc-home>/bbb-debs/* debs/
@@ -163,14 +162,6 @@ sudo apt install ~/debs/*.deb
 ```
 
 The BBB's package lists may be old, so some links can return 404 and the list can come out empty. Then download the same packages for your Debian release (`cat /etc/os-release`) and `armhf` from packages.debian.org.
-
-### After copying
-
-On a first install, continue with step 4. On an update, set the pin modes again if the boot service is not installed (step 6), then start `sweepd` by hand (step 11). If you use the services, install their unit files again in case they changed (step 13), which restarts nothing that is already running, so finish with:
-
-```bash
-sudo systemctl restart sadiy-pinmux sweepd
-```
 
 ## Network safety
 

@@ -7,6 +7,8 @@ python -m sadiy.ui.sa_gui --host <bbb-ip> --connect    # view a sweepd running o
 sadiy-gui --sim                           # same, after `pip install -e .`
 ```
 
+On aarch64 (Raspberry Pi) PyPI has no PyQt5 wheel and pip would try to build it from source. Install `python3-pyqt5 python3-pyqtgraph python3-zmq python3-numpy` with apt, create the venv with `--system-site-packages` and run `pip install -e . --no-deps` (see the README quick start).
+
 The GUI is a client of `sweepd` (ZeroMQ, see `architecture.md`). It never touches SPI / GPIO. Closing it also stops a simulator it started.
 
 ## Spectrum tab

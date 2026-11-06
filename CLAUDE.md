@@ -20,6 +20,7 @@ python -m sadiy.ui.sa_gui --sim         # GUI against its own simulator
 python -m sadiy.server.sweepd --bench-only       # on the BBB: only bench mode, real hardware (add --sim for the fake board)
 python -m sadiy.ui.sa_gui --host <bbb-ip> --connect   # GUI against a real sweepd
 python tools/bringup.py pe4302-pattern --db 16 --from-db 15.5
+python tools/make_bbb_package.py         # BBB package in dist/ (git-ignored); update it whenever code the BBB runs changes
 ```
 
 GUI tests run offscreen (`QT_QPA_PLATFORM=offscreen`). PyQt5, pyqtgraph and pyzmq must already be in `.venv`; if not, ask.

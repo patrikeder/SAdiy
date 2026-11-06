@@ -11,7 +11,7 @@ dependencies = ["numpy", "pyzmq", "tomli; python_version < '3.11'"]
 
 [project.optional-dependencies]
 hw = ["spidev"]
-ui = ["pyqtgraph", "PyQt5"]
+ui = ["pyqtgraph", "PyQt5; platform_machine != 'aarch64'"]
 dev = ["pytest", "ruff"]
 
 [project.scripts]
