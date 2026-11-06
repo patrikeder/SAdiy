@@ -82,7 +82,7 @@ class BoardCanvas(QtWidgets.QWidget):
 
     def paintEvent(self, _event) -> None:
         p = QtGui.QPainter(self)
-        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         s, ox, oy = self._scale()
         p.translate(ox, oy)
         p.scale(s, s)
@@ -105,9 +105,9 @@ class BoardCanvas(QtWidgets.QWidget):
         p.drawRoundedRect(QtCore.QRectF(212, top, 410, height), 8, 8)
         p.setPen(QtGui.QColor("#ffffff"))
         p.setFont(bold)
-        p.drawText(QtCore.QRectF(212, top + 2, 410, 16), QtCore.Qt.AlignHCenter, "BeagleBone Black")
+        p.drawText(QtCore.QRectF(212, top + 2, 410, 16), QtCore.Qt.AlignmentFlag.AlignHCenter, "BeagleBone Black")
         for title, x in (("P8", 280.0), ("P9", 470.0)):
-            p.drawText(QtCore.QRectF(x, top + 22, 2 * core.PIN_W + 3, 16), QtCore.Qt.AlignHCenter, title)
+            p.drawText(QtCore.QRectF(x, top + 22, 2 * core.PIN_W + 3, 16), QtCore.Qt.AlignmentFlag.AlignHCenter, title)
         p.setFont(small)
 
     def _draw_wires(self, p) -> None:
@@ -120,9 +120,9 @@ class BoardCanvas(QtWidgets.QWidget):
                 colour = colour.lighter(135)
             pen = QtGui.QPen(colour, width)
             if pin.category == "gnd":
-                pen.setStyle(QtCore.Qt.DashLine)
+                pen.setStyle(QtCore.Qt.PenStyle.DashLine)
             p.setPen(pen)
-            p.setBrush(QtCore.Qt.NoBrush)
+            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
             (x0, y0), (x1, y1), (x2, y2) = wire.points
             path = QtGui.QPainterPath(QtCore.QPointF(x0, y0))
             path.lineTo(x1, y1)
@@ -145,7 +145,7 @@ class BoardCanvas(QtWidgets.QWidget):
             light = fill.lightness() > 150
             p.setPen(QtGui.QColor("#212529" if light else "#ffffff"))
             p.setFont(bold if pin.net else small)
-            p.drawText(rect.adjusted(0, 0, -5, 0), QtCore.Qt.AlignCenter, str(pin.number))
+            p.drawText(rect.adjusted(0, 0, -5, 0), QtCore.Qt.AlignmentFlag.AlignCenter, str(pin.number))
             level, _direction = self.level_of(pin.id)
             if level is not None:
                 p.setPen(QtGui.QPen(QtGui.QColor("#000000"), 0.6))
@@ -156,7 +156,7 @@ class BoardCanvas(QtWidgets.QWidget):
             p.setPen(QtGui.QColor("#ffffff" if pin.net else "#86a890" if locked else "#b8d4bf"))
             odd = pin.number % 2 == 1
             box = QtCore.QRectF(x - 66, y, 63, h) if odd else QtCore.QRectF(x + w + 3, y, 63, h)
-            align = (QtCore.Qt.AlignRight if odd else QtCore.Qt.AlignLeft) | QtCore.Qt.AlignVCenter
+            align = (QtCore.Qt.AlignmentFlag.AlignRight if odd else QtCore.Qt.AlignmentFlag.AlignLeft) | QtCore.Qt.AlignmentFlag.AlignVCenter
             p.drawText(box, align, pin.short)
 
     def _draw_blocks(self, p, small, bold) -> None:
@@ -167,24 +167,24 @@ class BoardCanvas(QtWidgets.QWidget):
             p.drawRoundedRect(QtCore.QRectF(x, y, w, h), 6, 6)
             p.setPen(QtGui.QColor("#212529"))
             p.setFont(bold)
-            p.drawText(QtCore.QRectF(x + 8, y + 4, w - 16, 16), QtCore.Qt.AlignLeft, block.board.title)
+            p.drawText(QtCore.QRectF(x + 8, y + 4, w - 16, 16), QtCore.Qt.AlignmentFlag.AlignLeft, block.board.title)
             p.setFont(small)
             p.setPen(QtGui.QColor("#6c757d"))
-            p.drawText(QtCore.QRectF(x + 8, y + 20, w - 16, 16), QtCore.Qt.AlignLeft, block.board.subtitle)
+            p.drawText(QtCore.QRectF(x + 8, y + 20, w - 16, 16), QtCore.Qt.AlignmentFlag.AlignLeft, block.board.subtitle)
             for row in block.rows:
                 self._draw_row(p, row, small, bold)
             sy = y + core._BLOCK_HEAD + len(block.rows) * core._BLOCK_ROW_H + 4
             p.setFont(small)
             p.setPen(QtGui.QColor("#6c757d"))
             for strap in block.board.straps:
-                p.drawText(QtCore.QRectF(x + 8, sy, w - 12, core._STRAP_H), QtCore.Qt.AlignLeft, strap)
+                p.drawText(QtCore.QRectF(x + 8, sy, w - 12, core._STRAP_H), QtCore.Qt.AlignmentFlag.AlignLeft, strap)
                 sy += core._STRAP_H
 
     def _draw_row(self, p, row: core.BlockRow, small, bold) -> None:
         x, y, w, h = row.rect
         pin = pinmap.PINS[row.pin_id]
         if row.pin_id == self.selected:
-            p.setPen(QtCore.Qt.NoPen)
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
             p.setBrush(QtGui.QColor("#ffe3e3"))
             p.drawRect(QtCore.QRectF(x, y, w, h))
         level, direction = self.level_of(row.pin_id)
@@ -193,12 +193,12 @@ class BoardCanvas(QtWidgets.QWidget):
         p.drawEllipse(QtCore.QPointF(x + 11, y + h / 2), 5, 5)
         p.setPen(QtGui.QColor("#212529"))
         p.setFont(bold)
-        p.drawText(QtCore.QRectF(x + 21, y, w - 21, h), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft,
+        p.drawText(QtCore.QRectF(x + 21, y, w - 21, h), QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft,
                    pin.board_pin.split(" via")[0])
         p.setFont(small)
         p.setPen(QtGui.QColor("#495057"))
         text = f"{row.pin_id}  {direction or ''}"
-        p.drawText(QtCore.QRectF(x + 21, y, w - 27, h), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight, text)
+        p.drawText(QtCore.QRectF(x + 21, y, w - 27, h), QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight, text)
 
     def _draw_legend(self, p, small) -> None:
         p.setFont(small)
@@ -210,8 +210,8 @@ class BoardCanvas(QtWidgets.QWidget):
             p.setPen(QtGui.QPen(QtGui.QColor("#343a40"), 0.6))
             p.setBrush(QtGui.QColor(core.CATEGORY_COLOURS[key]))
             p.drawRect(QtCore.QRectF(x, y + 2, 11, 11))
-            p.setPen(self.palette().color(QtGui.QPalette.WindowText))
-            p.drawText(QtCore.QRectF(x + 15, y, width, 15), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, label)
+            p.setPen(self.palette().color(QtGui.QPalette.ColorRole.WindowText))
+            p.drawText(QtCore.QRectF(x + 15, y, width, 15), QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft, label)
             x += width
 
 
@@ -263,7 +263,7 @@ class PinsTab(QtWidgets.QWidget):
         area = QtWidgets.QScrollArea()
         area.setWidget(page)
         area.setWidgetResizable(True)
-        area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         return area
 
     def _ask_dialog(self, text: str) -> bool:
@@ -276,7 +276,7 @@ class PinsTab(QtWidgets.QWidget):
         col = QtWidgets.QVBoxLayout(page)
         self.pin_info = QtWidgets.QLabel()
         self.pin_info.setWordWrap(True)
-        self.pin_info.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.pin_info.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         col.addWidget(self.pin_info)
         self.pin_level = QtWidgets.QLabel("Level: -")
         self.pin_level.setFont(_mono())
@@ -442,7 +442,7 @@ class PinsTab(QtWidgets.QWidget):
         self.preview = QtWidgets.QPlainTextEdit()
         self.preview.setReadOnly(True)
         self.preview.setFont(_mono())
-        self.preview.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.preview.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
         self.preview.setMinimumHeight(180)
         col.addWidget(self.preview, 1)
         self._fill_pin_list()
@@ -456,17 +456,17 @@ class PinsTab(QtWidgets.QWidget):
             if pin.access == pinmap.WIRED or (pin.access == pinmap.EXPERT and self.expert_chk.isChecked()):
                 label = f"{pin.id}  {pin.net}" if pin.net else f"{pin.id}  {pin.name}  (expert)"
                 item = QtWidgets.QListWidgetItem(label)
-                item.setData(QtCore.Qt.UserRole, pin.signal)
-                item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled)
+                item.setData(QtCore.Qt.ItemDataRole.UserRole, pin.signal)
+                item.setFlags(QtCore.Qt.ItemFlag.ItemIsUserCheckable | QtCore.Qt.ItemFlag.ItemIsEnabled)
                 on = pin.signal in checked or (not checked and pin.net in pinmap.ATT_NETS)
-                item.setCheckState(QtCore.Qt.Checked if on else QtCore.Qt.Unchecked)
+                item.setCheckState(QtCore.Qt.CheckState.Checked if on else QtCore.Qt.CheckState.Unchecked)
                 self.pin_list.addItem(item)
         self.pin_list.blockSignals(False)
 
     def checked_pins(self) -> List[str]:
         return [
-            self.pin_list.item(i).data(QtCore.Qt.UserRole) for i in range(self.pin_list.count())
-            if self.pin_list.item(i).checkState() == QtCore.Qt.Checked
+            self.pin_list.item(i).data(QtCore.Qt.ItemDataRole.UserRole) for i in range(self.pin_list.count())
+            if self.pin_list.item(i).checkState() == QtCore.Qt.CheckState.Checked
         ]
 
     # ------------------------------------------------------------ mode
