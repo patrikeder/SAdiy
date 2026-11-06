@@ -1,0 +1,12 @@
+[Unit]
+Description=SAdiy BBB pin modes
+After=local-fs.target
+Before=sweepd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/sadiy/deploy/sadiy-pinmux.sh
+
+[Install]
+WantedBy=multi-user.target

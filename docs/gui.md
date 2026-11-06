@@ -30,7 +30,7 @@ The status bar warns when the step is larger than RBW/2 (narrow signals read low
 For wiring tests on the BBB. Everything goes through `sweepd`, so it works from a PC against a remote BBB. With `--sim` it drives a fake board; the top of the tab says SIMULATED.
 
 ```
-python -m sadiy.server.sweepd --bench-only                # on the BBB, until build_hw_engine exists
+cd /opt/sadiy && sudo PYTHONPATH=src python3 -m sadiy.server.sweepd --bench-only --config /etc/sadiy/local.toml   # on the BBB, or the service, see deploy/bbb-setup.md
 python -m sadiy.ui.sa_gui --host <bbb-ip> --connect       # on the PC
 ```
 

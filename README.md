@@ -55,7 +55,7 @@ Run from a project checkout: the config is read from `config/default.toml` next 
 Setup is in [deploy/bbb-setup.md](deploy/bbb-setup.md). Sweeping on real hardware is not written yet, so for now the daemon runs in bench mode only:
 
 ```bash
-python -m sadiy.server.sweepd --bench-only       # on the BBB
+cd /opt/sadiy && sudo PYTHONPATH=src python3 -m sadiy.server.sweepd --bench-only --config /etc/sadiy/local.toml   # on the BBB
 python -m sadiy.ui.sa_gui --host <bbb-ip> --connect   # on the PC
 ```
 
@@ -95,7 +95,7 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 | `config/` | TOML configuration; values marked VERIFY need checking on the real boards |
 | `hw/` | wiring, diagrams, netlist, per-board notes, test points, missing parts, adapter board (KiCad) |
 | `docs/` | architecture, bring-up plan, GUI manual |
-| `deploy/` | BBB setup notes, systemd unit |
+| `deploy/` | BBB setup notes, systemd units, pin mode script, example local config |
 | `sna/` | second project: a scalar network analyzer reusing the same chain |
 | `tools/` | bring-up and calibration helpers, `gen_diagrams.py` |
 | `tests/` | pytest suite, runs on a PC; GUI tests run offscreen and are skipped without the GUI packages |

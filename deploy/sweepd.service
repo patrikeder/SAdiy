@@ -1,9 +1,13 @@
 [Unit]
 Description=SAdiy sweep daemon
-After=network.target
+After=network.target sadiy-pinmux.service
+Wants=sadiy-pinmux.service
 
 [Service]
-ExecStart=/usr/bin/python3 -m sadiy.server.sweepd --rt --config /etc/sadiy/local.toml
+# --bench-only until build_hw_engine exists: without it sweepd exits at once on hardware.
+# It touches no pin until a client opens bench mode. Remove the flag when sweeps work on hardware.
+# No User= on purpose: runs as root, the simple way to reach GPIO, SPI, I2C and config-pin.
+ExecStart=/usr/bin/python3 -m sadiy.server.sweepd --bench-only --rt --config /etc/sadiy/local.toml
 Environment=PYTHONPATH=/opt/sadiy/src
 Restart=on-failure
 CPUSchedulingPolicy=fifo

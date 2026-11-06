@@ -1,0 +1,11 @@
+# Copy to /etc/sadiy/local.toml. Merged over config/default.toml, so list only what differs on this board.
+
+[bench]
+spi_bus = 1      # /dev/spidev1.0 means 1, /dev/spidev0.0 means 0
+i2c_bus = 2      # the bus where i2cdetect shows 0x48
+
+# sweepd has no authentication, and whoever reaches the command port can drive pins. To listen on one
+# network only, uncomment these and put the BBB's address on that network in both lines:
+# [server]
+# pub = "tcp://192.168.7.2:5556"
+# rep = "tcp://192.168.7.2:5557"

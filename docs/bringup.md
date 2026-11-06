@@ -5,7 +5,7 @@ Each stage lists the board test points it uses (see `hw/test-points.md`). Tick a
 
 ## Stage 0: rails and control lines
 - Measure each rail at its board before connecting the next board (`hw/test-points.md`).
-- Pin check from the GUI: on the BBB, `python -m sadiy.server.sweepd --bench-only` (setup in `deploy/bbb-setup.md`), on the PC, `python -m sadiy.ui.sa_gui --host <bbb-ip> --connect`, then Pins tab, Enter bench mode. No RF connected yet.
+- Pin check from the GUI: start `sweepd` on the BBB (`deploy/bbb-setup.md`, Run), then on the PC run `python -m sadiy.ui.sa_gui --host <bbb-ip> --connect`, then Pins tab, Enter bench mode. No RF connected yet.
   1. With no boards connected, first check the pin map itself: DMM or DSLogic on each pin in turn, Drive 0 / Drive 1 from the Pin page. This is the first test of the pin map and the pin mux on the real image, so correct `src/sadiy/pinmap.py` if a pin does not move.
   2. With boards connected, DSLogic on the module headers: Patterns page, walking one over the PE4302 lines, then over SYN_CLK, SYN_DATA and SYN_LE. Export the CSV and compare the edge order. A line that stays still or moves with another is an open or a short. Walking the SPI lines can latch junk into the ADF4351; the daemon sends an outputs-off R4 afterwards.
   3. Raw access page: read the ADS1115 config register. The power-on value is 0x8583. If the read fails, check the bus number (`i2cdetect`, `bench.i2c_bus`).
