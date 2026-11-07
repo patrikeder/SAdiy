@@ -99,6 +99,7 @@ class SaSettings:
     averages: int = 4
     atten_db: float = 10.0
     auto_atten: bool = True
+    image_reject: bool = False
     ref_dbm: float = -20.0
     db_per_div: float = 10.0
 
@@ -133,6 +134,7 @@ class SaSettings:
             "atten_db": float(self.atten_db),
             "auto_atten": bool(self.auto_atten),
             "averages": int(self.averages),
+            "image_reject": bool(self.image_reject),
         }
 
     def apply_server(self, d: dict) -> None:
@@ -144,6 +146,8 @@ class SaSettings:
                 setattr(self, key, int(d[key]))
         if "auto_atten" in d:
             self.auto_atten = bool(d["auto_atten"])
+        if "image_reject" in d:
+            self.image_reject = bool(d["image_reject"])
 
 
 def recommended_points(span_hz: float, rbw_hz: float, max_points: int = 4001) -> int:

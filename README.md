@@ -17,7 +17,7 @@ ADF4351 (LO = RF + 10.7 MHz) -> LPF + pad -----------------------+
 Built so far: PE4302, amp, AD831, detector and ADF4351. The missing stages are listed in priority order in [hw/todo-parts.md](hw/todo-parts.md).
 
 - **Range:** 30 to 480 MHz by default (`config/default.toml`). The AD831 LO limit puts the ceiling at about 489 MHz.
-- **Image:** the low IF puts an image 21.4 MHz above each RF, so every signal also shows a copy 21.4 MHz lower on the sweep axis.
+- **Image:** the low IF puts an image 21.4 MHz above each RF, so every signal also shows a copy 21.4 MHz lower on the sweep axis. The optional **Image reject** setting (two sweeps per trace with the LO on both sides, lower reading kept) removes it above about 45 MHz at twice the sweep time; tested in the simulator only.
 - **ADC:** an ADS1115 on I2C reads the detector. The BBB on-chip AIN0 stays wired as an optional cross-check.
 
 ## Quick start (PC, no hardware)
@@ -138,6 +138,7 @@ The adapter board is BBB only: its Raspberry Pi connector was removed. The Raspb
 | Frequency plan and PLL math, detector model, calibration, auto-ranging | done, tested |
 | Sweep engine, `sweepd`, protocol, terminal client, simulator | done, tested against the simulator |
 | Per-point lock gating, median of the reads, flags (unlocked, overload, at floor, outlier) | done, tested with fakes and the simulator; thresholds (`max_dbm`, `floor_dbm`, `outlier_db`) not yet checked on the real detector, and the lock line is not read from a real GPIO until `build_hw_engine` exists |
+| Image rejection (two sweeps, opposite LO side, lower reading kept) | done, tested against the simulator; the real mixer with a low-side LO is not verified |
 | Logging on the BBB (levels, journald, ring, `log` command) and the GUI Device log | done, tested; never run on a real BBB |
 | Spectrum analyzer GUI | done, smoke-tested offscreen against the simulator; not yet used with real hardware or on a real display |
 | PE4302 driver | done, tested with fakes; weights and polarity not yet confirmed on the module (`pe4302-walk`) |

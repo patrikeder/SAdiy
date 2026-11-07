@@ -1,10 +1,11 @@
 """Wire format. A sweep frame is a topic, a JSON header and float32 power data (dBm), and optionally a
 fourth part with one flag byte per point (bits in `core.sweep`: unlocked, overload, at floor, outlier
-rejected; header["flags"] is true then). The fourth part is additive, so readers that know nothing of
+rejected, image not suppressed; header["flags"] is true then). The fourth part is additive, so readers that know nothing of
 it keep working and `VERSION` stays 1.
 
 Commands (REQ/REP, JSON):
-  {"cmd": "set", "start_hz":..., "stop_hz":..., "points":..., "atten_db":..., "auto_atten":true|false}
+  {"cmd": "set", "start_hz":..., "stop_hz":..., "points":..., "atten_db":..., "auto_atten":true|false,
+           "averages":..., "image_reject": true|false}   (image_reject: two sweeps per trace, see core/sweep.py)
   {"cmd": "run"} | {"cmd": "stop"} | {"cmd": "status"}
   {"cmd": "log", "since": seq, "level": "debug" | 10, "limit": n}
       -> {"ok": true, "entries": [{seq, t, level, name, msg, repeats, boot}, ...], "last_seq": n, "boot": id}
@@ -43,7 +44,8 @@ LOG_TOPIC = b"log"
 BENCH_PREFIX = "bench_"
 
 
-def encode_frame(seq: int, f_start_hz: float, f_step_hz: float, atten_db: float, p_dbm, flags=None) -> List[bytes]:
+def encode_frame(seq: int, f_start_hz: float, f_step_hz: float, atten_db: float, p_dbm, flags=None,
+                 image_reject: bool = False) -> List[bytes]:
     p = np.asarray(p_dbm, dtype="<f4")
     header = {
         "v": VERSION,
@@ -54,6 +56,8 @@ def encode_frame(seq: int, f_start_hz: float, f_step_hz: float, atten_db: float,
         "n": int(p.size),
         "atten_db": atten_db,
     }
+    if image_reject:
+        header["image_reject"] = True       # the points are the lower of two sweeps, one per LO side
     parts = [TOPIC, json.dumps(header).encode(), p.tobytes()]
     if flags is not None:
         f = np.asarray(flags, dtype=np.uint8)

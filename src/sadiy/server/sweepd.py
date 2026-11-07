@@ -19,14 +19,14 @@ from .. import config as config_mod
 from .. import logs
 from ..core.cal import Cal
 from ..core.detector import Detector
-from ..core.freqplan import build_sweep
+from ..core.freqplan import build_opposite_sweep, build_sweep
 from ..core.sweep import SweepEngine, next_atten_db
 from . import protocol
 from .bench import Bench, fake_backend, linux_backend
 
 log = logging.getLogger("sadiy.server.sweepd")      # not __name__: that is __main__ under python -m
 
-SETTABLE = ("start_hz", "stop_hz", "points", "atten_db", "auto_atten", "averages")
+SETTABLE = ("start_hz", "stop_hz", "points", "atten_db", "auto_atten", "averages", "image_reject")
 
 
 def build_sim_engine(cfg: dict) -> SweepEngine:
@@ -84,6 +84,7 @@ class Sweepd:
             "atten_db": 10.0,
             "auto_atten": True,
             "averages": cfg["sweep"]["averages"],
+            "image_reject": bool(cfg["sweep"].get("image_reject", False)),
         }
         self.running = engine is not None
         self.seq = 0
@@ -121,6 +122,7 @@ class Sweepd:
         if name == "set":
             new = dict(self.settings)
             new.update({k: cmd[k] for k in SETTABLE if k in cmd})
+            new["image_reject"] = bool(new["image_reject"])
             if not new["start_hz"] < new["stop_hz"]:
                 return {"ok": False, "error": "start_hz must be below stop_hz"}
             if not 2 <= int(new["points"]) <= 4001:
@@ -136,7 +138,7 @@ class Sweepd:
             if changed:
                 log.info("settings: %s", ", ".join(f"{k}={v:g}" if isinstance(v, float) else f"{k}={v}"
                                                    for k, v in changed.items()))
-                if set(changed) & {"start_hz", "stop_hz", "points", "averages"}:
+                if set(changed) & {"start_hz", "stop_hz", "points", "averages", "image_reject"}:
                     self._announce = True
             return {"ok": True, "settings": self.settings}
         if name == "run":
@@ -207,24 +209,39 @@ class Sweepd:
     def step(self):
         """Run one sweep and return the frame as a list of ZeroMQ parts."""
         st = self.settings
-        key = (st["start_hz"], st["stop_hz"], int(st["points"]))
+        key = (st["start_hz"], st["stop_hz"], int(st["points"]), bool(st["image_reject"]))
         if key != self._key:
+            rf = self.cfg["rf"]
             self._points = build_sweep(
                 st["start_hz"],
                 st["stop_hz"],
                 int(st["points"]),
-                self.cfg["rf"]["if_hz"],
-                self.cfg["rf"]["injection"],
+                rf["if_hz"],
+                rf["injection"],
                 self.cfg["synth"]["pfd_hz"],
             )
+            self._other = None
+            if st["image_reject"]:
+                self._other, self._have_other = build_opposite_sweep(
+                    self._points, rf["if_hz"], rf["injection"], self.cfg["synth"]["pfd_hz"])
+                missing = int((~self._have_other).sum())
+                if missing:
+                    first = self._points[int(self._have_other.argmax())].f_rf_hz if self._have_other.any() else None
+                    log.info("image rejection: %d of %d points have no opposite-side LO (ADF4351 or AD831 limit)%s; "
+                             "they keep their image and are flagged", missing, len(self._points),
+                             "" if first is None else f", suppression starts at {first / 1e6:.3f} MHz")
             self._key = key
         self.engine.averages = int(st["averages"])
-        p_dbm = self.engine.run(self._points, st["atten_db"])
+        if st["image_reject"]:
+            p_dbm = self.engine.run_rejecting(self._points, self._other, self._have_other, st["atten_db"])
+        else:
+            p_dbm = self.engine.run(self._points, st["atten_db"])
         used_atten = self.engine.last_atten_db
         if st["auto_atten"]:
             st["atten_db"] = next_atten_db(self.engine.last_peak_det_dbm, used_atten)
         step_hz = (st["stop_hz"] - st["start_hz"]) / (int(st["points"]) - 1)
-        frame = protocol.encode_frame(self.seq, st["start_hz"], step_hz, used_atten, p_dbm, self.engine.last_flags)
+        frame = protocol.encode_frame(self.seq, st["start_hz"], step_hz, used_atten, p_dbm, self.engine.last_flags,
+                                       image_reject=bool(st["image_reject"]))
         self.seq += 1
         return frame
 
@@ -246,8 +263,9 @@ class Sweepd:
         self._report(self.engine.last_stats, st)
         if self._announce:
             self._announce = False
-            log.info("sweeping %.3f to %.3f MHz, %d points, %d averages: %.2f s per sweep, attenuation %.1f dB",
-                     st["start_hz"] / 1e6, st["stop_hz"] / 1e6, int(st["points"]), int(st["averages"]), dt,
+            log.info("sweeping %.3f to %.3f MHz, %d points, %d averages%s: %.2f s per sweep, attenuation %.1f dB",
+                     st["start_hz"] / 1e6, st["stop_hz"] / 1e6, int(st["points"]), int(st["averages"]),
+                     ", image rejection on (two sweeps per trace)" if st["image_reject"] else "", dt,
                      self.engine.last_atten_db)
         else:
             log.log(logs.TRACE, "sweep %d: %.3f s, attenuation %.1f dB", self.seq - 1, dt, self.engine.last_atten_db)

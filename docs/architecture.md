@@ -37,6 +37,8 @@ What only the BBB side can do, and what the GUI therefore never has to guess. Pe
 2. **Robust read.** The ADC drivers give the n samples (`read_samples`), and the point is their **median** (`[sweep] combine`: median, trimmed or mean; with fewer than 3 samples all are the mean). One I2C glitch or noisy conversion no longer moves the point. A sample more than `outlier_db` from the result flags the point *outlier rejected*.
 3. **Rails.** A point at or above `[detector] max_dbm` is flagged *overload* (not trusted), at or below `floor_dbm` *at floor* (only an upper bound).
 
+4. **Image rejection (optional, `image_reject`).** The low IF puts an image 21.4 MHz (2 IF) below every signal. With the option on, `run_rejecting()` sweeps twice, with the LO above and below the signal, and keeps the lower reading per point. A tone appears at the same place in both sweeps, its image moves from 2 IF below (high-side LO) to 2 IF above (low-side LO), so the image drops out; two tones exactly 2 IF apart are kept too. It takes twice as long. Points whose opposite LO is out of range (low-side LO below the ADF4351 minimum of 34.375 MHz, so RF below about 45.1 MHz; high-side LO above the AD831 limit of 500 MHz) keep their image and get the flag *image not suppressed*. If one side was unlocked, the other side's reading is used and flagged the same way. The simulator models both sides, so it shows the effect; the real mixer's behaviour with a low-side LO is **not verified**.
+
 `SweepEngine.run()` returns the dBm values; `last_flags` and `last_stats` hold the flags and counts of that sweep. `sweepd` sends the flags with the frame, reports a lasting fault once and then at most every 10 s with the number of sweeps in between (and again when it is gone), and puts the counts in `status`. If a sweep raises (SPI, I2C or GPIO error), `sweepd` logs it, puts the attenuator to maximum and the RF outputs off, stops sweeping and stays up, so the GUI can read why and bench mode still works.
 
 What stays in the GUI: trace modes, markers, peak search, smoothing, dB/div. They are stateful and reversible, and the GUI always gets the cleanest calibrated single sweep. The GUI marks the flagged points on the trace and names the flags at a marker. Software cannot replace the missing IF filter: with an analog detector after the mixer there is no digital IF, so the RBW can not be narrowed afterwards. Only post-detection work (this section, calibration, averaging sweeps) is possible.
@@ -72,7 +74,7 @@ Direct pin control for wiring tests on the BBB (`server/bench.py`, GUI side in `
 ## Frequency plan
 
 - IF 10.7 MHz, high-side injection: LO = RF + 10.7 MHz. RF range about 25 to 489 MHz (ADF4351 minimum 34.375 MHz via /64, AD831 LO maximum 500 MHz).
-- Low IF means an image 21.4 MHz above each RF (it shows 21.4 MHz lower on the sweep axis). The simulator reproduces this.
+- Low IF means an image 21.4 MHz above each RF (it shows 21.4 MHz lower on the sweep axis). The simulator reproduces this. The optional image rejection (two sweeps, see "Per-point handling") removes it above about 45 MHz.
 - The ADF4351 divider is always the lowest that keeps the VCO at or above 2200 MHz, so the VCO stays in 2200 to 4400 MHz. FRAC / MOD come from the best rational approximation with MOD <= 4095.
 
 ## Points versus RBW
@@ -93,6 +95,7 @@ The sweep samples the response of the IF filter, so the step must be no larger t
 | ZeroMQ PUB/SUB + REQ/REP | simple, multi-client, works across hosts |
 | Precompute all sweep points and PLL words | keeps the inner loop to tune, settle, read |
 | Median of the reads, lock gating and per-point flags on the BBB | only the BBB sees lock detect and the raw samples; the GUI keeps the reversible, stateful processing |
+| Image rejection as two sweeps, lower reading kept, off by default | the ghost can not be told from a signal in one sweep; the cost is twice the sweep time and it needs a low-side LO, so it is a switch |
 | Flags as an optional fourth frame part, not a new protocol version | older GUIs and the terminal client keep working |
 | Log as a second PUB topic plus a `log` command, with a numbered ring | live and cheap, and a late or lossy client can still fill in what it missed |
 | Per-sweep and per-fault log lines throttled, per-point lines only at trace | a fault that recurs on every point must not flood the ring, the network or the sweep time |

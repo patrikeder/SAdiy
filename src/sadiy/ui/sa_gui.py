@@ -204,6 +204,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.trace_a = core.TraceProcessor()
         self.trace_b = None                 # (axis, levels) stored with "Store B"
         self.flags_a = None                 # per-point flags behind trace A (or-ed over a hold / average)
+        self.image_active = False           # the frames on screen are the lower of two sweeps (image rejection)
         self.axis: Optional[core.Axis] = None
         self.last_atten = self.settings.atten_db
         self.rbw_hz = 230e3
@@ -353,6 +354,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.avg_sb = _ispin(1, 64, self.settings.averages)
         self.points_sb.valueChanged.connect(lambda _v: self._on_sweep_params())
         self.avg_sb.valueChanged.connect(lambda _v: self._on_sweep_params())
+        self.img_chk = QtWidgets.QCheckBox("Image reject (2 sweeps)")
+        self.img_chk.setToolTip(
+            "Sweeps with the LO above and below the signal and keeps the lower reading, which removes the\n"
+            "low-IF image (the copy 21.4 MHz below each signal). Takes twice as long. Points below about\n"
+            "45 MHz can not be done and keep their image (flagged).")
+        self.img_chk.toggled.connect(lambda _c: self._on_sweep_params())
         g = QtWidgets.QGridLayout()
         g.addWidget(_button("Run", self._run), 0, 0)
         g.addWidget(_button("Stop", self._stop), 0, 1)
@@ -361,6 +368,7 @@ class MainWindow(QtWidgets.QMainWindow):
         g.addWidget(self.points_sb, 1, 1, 1, 2)
         g.addWidget(QtWidgets.QLabel("Averages"), 2, 0)
         g.addWidget(self.avg_sb, 2, 1, 1, 2)
+        g.addWidget(self.img_chk, 4, 0, 1, 3)
         g.addWidget(
             _button("Points = 2·span/RBW", self._auto_points, "Step of at most RBW/2, so narrow signals read right"),
             3, 0, 1, 3,
@@ -635,6 +643,7 @@ class MainWindow(QtWidgets.QMainWindow):
         _quiet(self.ref_sb, s.ref_dbm)
         _quiet(self.scale_cb, core.DB_PER_DIV_CHOICES.index(s.db_per_div))
         _quiet(self.auto_att_chk, s.auto_atten)
+        _quiet(self.img_chk, s.image_reject)
         self.att_sb.setMaximum(self.limits.atten_max_db)
         _quiet(self.att_sb, self.last_atten if s.auto_atten else s.atten_db)
         self.att_sb.setEnabled(not s.auto_atten)
@@ -711,6 +720,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_sweep_params(self) -> None:
         self.settings.set_points(self.points_sb.value(), self.limits)
         self.settings.averages = self.avg_sb.value()
+        self.settings.image_reject = self.img_chk.isChecked()
         self._push()
         self._redraw()
 
@@ -844,6 +854,7 @@ class MainWindow(QtWidgets.QMainWindow):
         axis = core.Axis.from_header(header)
         self.axis = axis
         self.last_atten = float(header.get("atten_db", self.last_atten))
+        self.image_active = bool(header.get("image_reject"))
         t = header.get("t")
         if t is not None and self._last_t is not None and t > self._last_t:
             dt = t - self._last_t
@@ -912,7 +923,8 @@ class MainWindow(QtWidgets.QMainWindow):
         state = "" if self._remote_running else "   STOPPED"
         self.info.setText(
             f"REF {s.ref_dbm:g} dBm   ATT {att}   RBW {core.format_hz(self.rbw_hz, 0)}   "
-            f"{s.db_per_div:g} dB/div   {axis.n} pts   SWP {self.sweep_period_s * 1e3:.0f} ms{state}"
+            f"{s.db_per_div:g} dB/div   {axis.n} pts   SWP {self.sweep_period_s * 1e3:.0f} ms"
+            f"{'   IMG REJ' if self.image_active else ''}{state}"
         )
         self.lbl_start.setText(f"Start {core.format_hz(axis.start_hz)}")
         self.lbl_center.setText(f"Center {core.format_hz(axis.center_hz)}   Span {core.format_hz(axis.span_hz)}")

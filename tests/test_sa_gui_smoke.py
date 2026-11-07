@@ -274,3 +274,19 @@ def test_flags_accumulate_over_a_hold_and_clear_without_flags(win):
     assert win.view.bad.getData()[0] is None or len(win.view.bad.getData()[0]) == 0
     win.handle_frame(header, p)                                      # an older sweepd sends no flags at all
     assert win.flags_a is None
+
+
+# ---------------------------------------------------------------- image rejection
+
+def test_image_reject_checkbox_goes_to_the_command_and_the_info_line(win):
+    assert win.settings.to_command()["image_reject"] is False
+    win.img_chk.setChecked(True)
+    assert win.settings.image_reject and win.settings.to_command()["image_reject"] is True
+    header, p = _frame()
+    win.handle_frame(header, p)
+    assert "IMG REJ" not in win.info.text()                                  # the tag follows what sweepd sends
+    win.handle_frame(dict(header, image_reject=True), p)
+    assert "IMG REJ" in win.info.text()
+    win.settings.apply_server({"image_reject": False})                      # adopted from sweepd on connect
+    win._refresh_controls()
+    assert not win.img_chk.isChecked()

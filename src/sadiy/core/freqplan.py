@@ -78,6 +78,39 @@ def lo_for_rf(f_rf_hz: float, if_hz: float, injection: str = "high") -> float:
     raise ValueError("injection must be 'high' or 'low'")
 
 
+LO_MAX_HZ = 500_000_000   # AD831 LO input limit
+
+
+def opposite_injection(injection: str) -> str:
+    if injection not in ("high", "low"):
+        raise ValueError("injection must be 'high' or 'low'")
+    return "low" if injection == "high" else "high"
+
+
+def build_opposite_sweep(
+    points: List[SweepPoint],
+    if_hz: float,
+    injection: str = "high",
+    f_pfd_hz: Optional[float] = None,
+    lo_max_hz: float = LO_MAX_HZ,
+):
+    """The same RF points swept with the opposite LO side, for image suppression. The image of a tone moves
+    from f - 2 IF (high-side LO) to f + 2 IF (low-side LO), the tone itself stays, so the lower of the two
+    readings is the tone. Points whose opposite LO is outside what the ADF4351 (minimum 34.375 MHz) and the
+    AD831 (`lo_max_hz`) can do are left out. Returns (points, have): `have[i]` says whether point i of
+    `points` has an opposite-side partner in the returned list (which is shorter then)."""
+    other = opposite_injection(injection)
+    out: List[SweepPoint] = []
+    have = []
+    for pt in points:
+        f_lo = lo_for_rf(pt.f_rf_hz, if_hz, other)
+        ok = OUT_MIN_HZ <= f_lo <= lo_max_hz
+        have.append(ok)
+        if ok:
+            out.append(SweepPoint(pt.f_rf_hz, f_lo, plan_pll(f_lo, f_pfd_hz) if f_pfd_hz else None))
+    return out, np.array(have, dtype=bool)
+
+
 def build_sweep(
     start_hz: float,
     stop_hz: float,

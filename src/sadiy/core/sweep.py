@@ -6,7 +6,9 @@ Per point the engine does what only the BBB side can:
 - takes the ADC samples one by one and combines them with the median (or a trimmed mean), so one
   glitch on the I2C bus or one noisy conversion does not move the point; a sample far from the result
   flags the point;
-- flags points at the detector's rails (overload: not trusted, floor: only an upper bound).
+- flags points at the detector's rails (overload: not trusted, floor: only an upper bound);
+- `run_rejecting()` sweeps twice, with the LO above and below the signal, and keeps the lower reading per
+  point: a tone stays, its low-IF image (which moves from 2 IF below to 2 IF above the tone) drops out.
 
 `run()` still returns the dBm values. The flags and counts of the last sweep are in `last_flags` and
 `last_stats`; `sweepd` sends the flags with the frame and reports the counts in its log.
@@ -27,8 +29,10 @@ FLAG_UNLOCKED = 1      # PLL not locked when read: the value is not a measuremen
 FLAG_OVERRANGE = 2     # detector in overload: the value is not trusted (raise the attenuation)
 FLAG_UNDERRANGE = 4    # detector at its floor: the value is only an upper bound
 FLAG_OUTLIER = 8       # a sample was far from the others and did not count
+FLAG_IMAGE = 16        # image rejection was on but this point had no usable opposite-side reading: an image may show
 FLAG_NAMES = ((FLAG_UNLOCKED, "unlocked"), (FLAG_OVERRANGE, "overload"),
-              (FLAG_UNDERRANGE, "at floor"), (FLAG_OUTLIER, "outlier rejected"))
+              (FLAG_UNDERRANGE, "at floor"), (FLAG_OUTLIER, "outlier rejected"),
+              (FLAG_IMAGE, "image not suppressed"))
 FLAGS_UNRELIABLE = FLAG_UNLOCKED | FLAG_OVERRANGE     # what the GUI marks on the trace
 
 COMBINE_METHODS = ("median", "trimmed", "mean")
@@ -65,6 +69,7 @@ class SweepStats:
     retunes: int = 0            # points that needed a second tune to lock
     first_unlocked_hz: Optional[float] = None
     lock_checked: bool = False  # False: no lock detect available, nothing was gated
+    image_unresolved: int = 0   # points kept without an opposite-side partner (image rejection on)
 
 
 class SweepEngine:
@@ -149,6 +154,37 @@ class SweepEngine:
         self.last_stats = stats
         return out
 
+    def run_rejecting(self, points: Sequence[SweepPoint], other_points: Sequence[SweepPoint], have_other,
+                      atten_db: float) -> np.ndarray:
+        """Two sweeps, one with each LO side, merged (see `merge_image_sweeps`). `other_points` and
+        `have_other` come from `freqplan.build_opposite_sweep`. The attenuator is the same for both; the
+        peak for auto-ranging is the higher of the two. Takes twice as long as `run`."""
+        n = len(points)
+        p_main = self.run(points, atten_db)
+        flags_main, stats_main, peak = self.last_flags, self.last_stats, self.last_peak_det_dbm
+        p_other = np.full(n, np.nan)
+        flags_other = np.zeros(n, dtype=np.uint8)
+        have = np.asarray(have_other, dtype=bool)
+        retunes, lock_checked = stats_main.retunes, stats_main.lock_checked
+        if len(other_points):
+            p_other[have] = self.run(other_points, atten_db)
+            flags_other[have] = self.last_flags
+            peak = max(peak, self.last_peak_det_dbm)
+            retunes += self.last_stats.retunes
+            lock_checked = lock_checked or self.last_stats.lock_checked
+        p, flags = merge_image_sweeps(p_main, flags_main, p_other, flags_other, have)
+        stats = SweepStats(points=n, retunes=retunes, lock_checked=lock_checked)
+        stats.unlocked = int(((flags & FLAG_UNLOCKED) != 0).sum())
+        stats.overrange = int(((flags & FLAG_OVERRANGE) != 0).sum())
+        stats.underrange = int(((flags & FLAG_UNDERRANGE) != 0).sum())
+        stats.outliers = int(((flags & FLAG_OUTLIER) != 0).sum())
+        stats.image_unresolved = int(((flags & FLAG_IMAGE) != 0).sum())
+        bad = np.flatnonzero(flags & FLAG_UNLOCKED)
+        if bad.size:
+            stats.first_unlocked_hz = points[int(bad[0])].f_rf_hz
+        self.last_flags, self.last_stats, self.last_peak_det_dbm = flags, stats, peak
+        return p
+
     def _settle(self) -> None:
         if self.settle_s:
             self._sleep(self.settle_s)
@@ -173,6 +209,30 @@ class SweepEngine:
         stats.retunes += 1
         self._sleep(wait)
         return bool(self._lock())
+
+
+def merge_image_sweeps(p_main, flags_main, p_other, flags_other, have_other):
+    """Combine a sweep and its opposite-LO-side sweep into one. `p_other` / `flags_other` are full length;
+    where `have_other` is False they are ignored. Per point:
+    - no partner: the main reading, flagged FLAG_IMAGE;
+    - both locked, or both unlocked: the lower reading, flags of both;
+    - only one side unlocked: the locked side's reading and flags, plus FLAG_IMAGE (nothing to compare with)."""
+    p = np.array(p_main, dtype=float)
+    flags = np.array(flags_main, dtype=np.uint8)
+    have = np.asarray(have_other, dtype=bool)
+    flags[~have] |= FLAG_IMAGE
+    both = have.copy()
+    unl_m = (flags_main & FLAG_UNLOCKED) != 0
+    unl_o = have & ((np.asarray(flags_other) & FLAG_UNLOCKED) != 0)
+    only_main_bad = have & unl_m & ~unl_o
+    only_other_bad = have & unl_o & ~unl_m
+    both &= ~(only_main_bad | only_other_bad)
+    p[both] = np.minimum(p[both], np.asarray(p_other, dtype=float)[both])
+    flags[both] = np.asarray(flags_main, dtype=np.uint8)[both] | np.asarray(flags_other, dtype=np.uint8)[both]
+    p[only_main_bad] = np.asarray(p_other, dtype=float)[only_main_bad]
+    flags[only_main_bad] = np.asarray(flags_other, dtype=np.uint8)[only_main_bad] | FLAG_IMAGE
+    flags[only_other_bad] |= FLAG_IMAGE
+    return p, flags
 
 
 def _safe_state_of(engine: "SweepEngine") -> list:

@@ -51,6 +51,8 @@ averages = 4
 settle_s = 0.0005         # measure PLL lock + detector settling, then tighten
 combine = "median"        # how the reads of one point become one value: median, trimmed (drop min and max), mean
 outlier_db = 3.0          # a read this far (in dB) from the result flags the point as having had an outlier
+image_reject = false      # two sweeps per trace (LO above and below), lower reading kept: removes the low-IF image. Halves the
+                          # sweep rate; points whose opposite LO is out of range (RF below about 45 MHz) keep their image. VERIFY on hardware
 lock_retries = 2          # extra lock detect checks after the settle time, then one more tune, then flag the point
 
 [bench]

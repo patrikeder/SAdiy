@@ -19,7 +19,7 @@ Black display, 10 x 10 graticule, yellow trace A, blue stored trace B, red marke
 |---|---|
 | Frequency | center, span, start, stop in MHz; Full span, Span ÷2, Span ×2. Entries are clamped to the limits sweepd reports (30 to 480 MHz by default); center is clamped given the span, as on a bench analyzer |
 | Amplitude | reference level and dB/div (display only), attenuator Auto or manual in 0.5 dB steps (sent to sweepd), Auto scale fits level and scale to the trace |
-| Sweep | Run, Stop, Single; points; averages (per point, in sweepd); "Points = 2·span/RBW" |
+| Sweep | Run, Stop, Single; points; averages (per point, in sweepd); "Points = 2·span/RBW"; **Image reject (2 sweeps)** |
 | Trace | Clear/Write, Max hold, Min hold, Average, View (freeze), Blank; Clear; Store B and Show B |
 | Marker | M1, M2 with delta; Peak, Next (next lower peak), Pk ← / Pk →; M→Center, M→Ref; Track peak. Click the display to put M1, Shift+click for M2 |
 
@@ -95,7 +95,7 @@ SPI and I2C pins can be driven as GPIO for a wiring check where the image has `c
 - The RBW is fixed by the IF filter (in the simulator, `[sim] rbw_hz`). The RBW box is only for the display and the points rule, there is no RBW command.
 - Reference level and dB/div do not change the attenuator: auto-ranging keeps the sweep peak at -15 dBm at the detector (`core/sweep.py`), same as before.
 - A command with no answer blocks the window for up to 0.5 s (the REQ timeout). Sync after connecting uses 0.15 s tries.
-- The low-IF image 21.4 MHz away shows up as a second copy of every signal (also in the simulator).
+- The low-IF image 21.4 MHz away shows up as a second copy of every signal (also in the simulator) unless **Image reject** is ticked: `sweepd` then sweeps twice with the LO above and below and keeps the lower reading, so a trace takes twice as long and the info line shows `IMG REJ`. Points below about 45 MHz can not be done that way and keep their image (flag `[image not suppressed]` at a marker; the daemon logs where suppression starts). Not verified on the real mixer.
 - Peak search treats a rising plateau as a peak at its first point; harmless on real traces.
 - The Device log keeps 2000 lines in the GUI and the daemon 500; older ones are gone. A fetch (on connect, after a gap) blocks the window for up to 0.15 s when the daemon is slow.
 - Log lines of a simulator the GUI started also appear in the simulator's own process box under "Simulated hardware", because that box shows the child's stderr.
