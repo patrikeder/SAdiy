@@ -55,7 +55,7 @@ SPI and I2C pins can be driven as GPIO for a wiring check where the image has `c
 
 **Raw access page:**
 
-- **ADF4351:** send any 32-bit word in hex, one of R5..R0, or all six in order. The boxes check each word's address bits. The R0..R3 and R5 packing is not written yet, so the words come from ADI's software. A word that enables an RF output is refused. To turn one on: send the registers, wait for LD = 1, tick the output, press Apply.
+- **ADF4351:** send any 32-bit word in hex, one of R5..R0, or all six in order. The boxes check each word's address bits. `python tools/bringup.py pll --mhz <f>` prints the six words for a frequency; compare them with ADI's software before the first RF test. A word that enables an RF output is refused. To turn one on: send the registers, wait for LD = 1, tick the output, press Apply.
 - **PE4302:** set a dB value or V1..V6 through the driver (make-before-break; the actual write order is shown), or tick **Raw, no ordering** to write V1 to V6 in order for a wiring test. In that mode the attenuation can dip during the change.
 - **ADC:** ADS1115, the main ADC: convert a channel (code, volts, config and conversion registers), or read the registers without starting a conversion. AIN0: raw and volts at the pin and at the detector, as a cross-check.
 

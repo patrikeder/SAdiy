@@ -33,5 +33,5 @@ stops. Without internet on the BBB, see "Install missing packages" in `opt/sadiy
 - Messages: `journalctl -u sweepd -f` (levels error to trace; `-v`, `-vv`, `-q`, or `[log] level` in `local.toml`).
   The GUI shows error, warning, info and debug in the Device log of its Advanced tab.
 - `tools/bringup.py`: `gpio-map`, `pe4302-walk --gpio 66,67,69,68,45,44` (GPIO as root), `pe4302-pattern`, `adf4351-pattern`, `pll`, `sim-sweep`.
-- **Sweeping on real hardware is not implemented:** `build_hw_engine`, ADF4351 register packing R0..R3/R5.
+- **Sweeping on real hardware is not implemented:** `build_hw_engine`. The ADF4351 register words exist but are unchecked against ADI's software.
   The service therefore runs with `--bench-only`.

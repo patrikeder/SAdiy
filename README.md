@@ -144,8 +144,8 @@ The adapter board is BBB only: its Raspberry Pi connector was removed. The Raspb
 | PE4302 driver | done, tested with fakes; weights and polarity not yet confirmed on the module (`pe4302-walk`) |
 | ADS1115 driver | done, tested against a register model only; sweeps do not use it yet |
 | Bench mode (Pins tab) | done, **tested on the fake backend only**; the Linux backend has never run on a BBB |
-| ADF4351 register packing | R4 done but unchecked against the datasheet; **R0..R3 and R5 not written** |
-| Sweeping on real hardware (`build_hw_engine`) | **not written**: waits for the ADF4351 registers |
+| ADF4351 register packing | R0..R5 written and unit-tested for field positions; **not yet checked against the datasheet text or ADI's software** |
+| Sweeping on real hardware (`build_hw_engine`) | **not written** |
 | GPIO backend | sysfs; moves to libgpiod once the image is fixed |
 
 Unverified on a real BBB: the pin map, pin multiplexing and `config-pin` modes, and the SPI and I2C device numbers.

@@ -17,7 +17,7 @@ Each stage lists the board test points it uses (see `hw/test-points.md`). Tick a
 
 ## Stage 1: ADF4351 and the detector alone
 - Lock detect gating needs the `SYN_LD` line read by the real engine (`build_hw_engine`): check in the Device log that sweeps report no unlocked points.
-- Needs `Adf4351.registers()` first (see `src/sadiy/drivers/adf4351.py`). Verify the register words against ADI's evaluation software for the same frequency.
+- Words from `python tools/bringup.py pll --mhz <f>` (`Adf4351.registers()` in `src/sadiy/drivers/adf4351.py`). Verify them against ADI's evaluation software for the same frequency first.
 - ADF4351 -> fixed pad -> detector. MSO5354 on the pad output (50 ohm termination) for frequency and level; DMM on the detector output.
 - Build the detector curve with the pad values known, then add the ADC path. The ADS1115 is the main ADC: read A0 from the Raw access page and compare with the DMM. Then read AIN0 as a cross-check, after confirming the divider output never exceeds 1.8 V at P9.39.
 - [ ] Pass: detector voltage follows -24.5 mV/dB within the datasheet tolerance over at least 40 dB.

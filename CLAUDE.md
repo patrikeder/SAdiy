@@ -57,6 +57,6 @@ Free on a stock image: P8.7-P8.19 and P8.26 as GPIO. Not usable: P8.3-6 and P8.2
 
 ## Not done yet
 
-- ADF4351 register packing for R0..R3 and R5 (`drivers/adf4351.py`); R4 packing is done but unchecked against the datasheet or ADI's software.
+- ADF4351 register words (`drivers/adf4351.py`, R0..R5, `Adf4351.registers()`) are written and unit-tested for field positions, but not checked against the datasheet text or ADI's software. `python tools/bringup.py pll --mhz 100` prints the six words for a first-light test.
 - `build_hw_engine` in `sweepd` (real SPI, GPIO, ADS1115 for the sweep, enabling the outputs after lock), libgpiod instead of sysfs.
 - Bench mode and the ADS1115 driver have only run on the fake backend. Pin map, `config-pin` modes, SPI and I2C device numbers, PE4302 weights and polarity are unverified on a real BBB.

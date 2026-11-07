@@ -11,7 +11,7 @@
   adf4351-pattern --word 0x00580005 [--word ...]
                            SPI frame for ADF4351 register words (MSB first, 32 clocks each)
   gpio-map                 run ON THE SBC, read-only: pin map number and sysfs number of every pin we use
-  pll --mhz 110.7          divider / INT / FRAC / MOD and the real output frequency
+  pll --mhz 110.7          divider / INT / FRAC / MOD, the real output frequency and the six register words
   sim-sweep                one simulated sweep, prints the strongest points
 """
 import argparse
@@ -19,7 +19,8 @@ import argparse
 from sadiy import config, patterns, pinmap
 from sadiy.bringup import walk_lines
 from sadiy.core.freqplan import build_sweep, plan_pll
-from sadiy.hal.fake import FakeGpio, PinLog
+from sadiy.drivers.adf4351 import Adf4351
+from sadiy.hal.fake import FakeGpio, FakeSpi, PinLog
 from sadiy.server.sweepd import Sweepd, build_sim_engine
 
 
@@ -79,6 +80,9 @@ def cmd_pll(args):
     p = plan_pll(args.mhz * 1e6, cfg["synth"]["pfd_hz"])
     print(p)
     print(f"error: {p.f_actual_hz - p.f_out_hz:+.1f} Hz")
+    # RF outputs off, as the Raw access page requires; enable the output after LD = 1
+    words = Adf4351(FakeSpi(), cfg["synth"]["pfd_hz"]).registers(p)
+    print("words, write order R5..R0 (outputs off):  " + "  ".join(f"0x{w:08X}" for w in words))
 
 
 def cmd_sim(args):
