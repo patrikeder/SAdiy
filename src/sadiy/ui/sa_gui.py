@@ -10,6 +10,7 @@ Needs the `ui` extra (PyQtGraph + PyQt5) and pyzmq. The GUI never touches hardwa
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import time
 from pathlib import Path
@@ -20,6 +21,9 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from .. import config as config_mod
+from ..core.sweep import FLAGS_UNRELIABLE, flag_names
+from ..logs import format_entry
+from . import log_core
 from . import sa_core as core
 from .bench_tab import PinsTab
 from .sim_runner import SimRunner
@@ -120,6 +124,8 @@ class SpectrumView(pg.PlotWidget):
 
         self.trace_b = pi.plot(pen=pg.mkPen(C_TRACE_B, width=1))
         self.trace_a = pi.plot(pen=pg.mkPen(C_TRACE_A, width=1))
+        # points sweepd flagged as not reliable (PLL not locked, detector overload): red crosses on the trace
+        self.bad = pi.plot(pen=None, symbol="x", symbolSize=8, symbolPen=pg.mkPen(C_MARKER, width=1), symbolBrush=None)
         self._marks = []
         for name in ("1", "2"):
             sc = pg.ScatterPlotItem(size=12, pen=pg.mkPen(None), brush=pg.mkBrush(C_MARKER), symbol="t")
@@ -166,6 +172,12 @@ class SpectrumView(pg.PlotWidget):
         else:
             item.setData(f, p, skipFiniteCheck=True)
 
+    def set_bad(self, f, p, mask) -> None:
+        if p is None or mask is None or not mask.any():
+            self.bad.setData([], [])
+        else:
+            self.bad.setData(f[mask], p[mask], skipFiniteCheck=True)
+
     def set_marker(self, n: int, f: Optional[float], level: Optional[float], ref: float, dpd: float) -> None:
         sc, lab = self._marks[n]
         if f is None:
@@ -191,6 +203,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.runner = SimRunner()
         self.trace_a = core.TraceProcessor()
         self.trace_b = None                 # (axis, levels) stored with "Store B"
+        self.flags_a = None                 # per-point flags behind trace A (or-ed over a hold / average)
         self.axis: Optional[core.Axis] = None
         self.last_atten = self.settings.atten_db
         self.rbw_hz = 230e3
@@ -206,20 +219,35 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sim_exit_reported = True
         self._sim_user_stopped = False
         self._log_len = -1
+        self.dev_log = log_core.LogBuffer()  # what sweepd said (and what the GUI noted), Advanced tab
+        self.dev_log_level = log_core.DEFAULT_LEVEL
+        self._log_fetch_tries = 0
+        self._bad_seen = 0
+        self._last_note = None
 
         tabs = QtWidgets.QTabWidget()
+        self.tabs = tabs
         attenuator = config_mod.load()["attenuator"]
         self.pins = PinsTab(self.client.request, self._stop, self._msg, attenuator["weights_db"], attenuator["active_high"])
         tabs.addTab(self._build_spectrum_tab(host), "Spectrum")
         tabs.addTab(self.pins, "Pins")
-        tabs.addTab(self._build_advanced_tab(host, pub_port, rep_port), "Advanced")
+        self._advanced_page = self._build_advanced_tab(host, pub_port, rep_port)
+        tabs.addTab(self._advanced_page, "Advanced")
+        tabs.currentChanged.connect(lambda _i: self._update_log_badge())
         self.setCentralWidget(tabs)
         self.status_conn = QtWidgets.QLabel("not connected")
         self.status_msg = QtWidgets.QLabel("")
         self.status_warn = QtWidgets.QLabel("")
         self.status_warn.setStyleSheet("color:#c05000;")
+        self.status_log = QtWidgets.QPushButton()
+        self.status_log.setFlat(True)
+        self.status_log.setStyleSheet("color:#c05000;")
+        self.status_log.setToolTip("Unread errors and warnings in the device log (Advanced tab)")
+        self.status_log.clicked.connect(lambda _c=False: self.tabs.setCurrentWidget(self._advanced_page))
+        self.status_log.hide()
         self.statusBar().addWidget(self.status_conn)
         self.statusBar().addWidget(self.status_msg, 1)
+        self.statusBar().addPermanentWidget(self.status_log)
         self.statusBar().addPermanentWidget(self.status_warn)
 
         self._refresh_controls()
@@ -400,6 +428,35 @@ class MainWindow(QtWidgets.QMainWindow):
         g.addWidget(self.conn_label, 1, 1, 1, 5)
         col.addWidget(_group("Connection to sweepd", g))
 
+        # device log: what sweepd reports. Low-level detail stays on the BBB (journalctl over ssh).
+        self.dev_level_cb = QtWidgets.QComboBox()
+        for label, level in log_core.LEVEL_CHOICES:
+            self.dev_level_cb.addItem(label, level)
+        self.dev_level_cb.setCurrentIndex([lv for _l, lv in log_core.LEVEL_CHOICES].index(log_core.DEFAULT_LEVEL))
+        self.dev_level_cb.setToolTip("Lowest level shown. sweepd sends error, warning, info and debug.")
+        self.dev_level_cb.currentIndexChanged.connect(lambda _i: self._on_dev_log_level())
+        self.dev_pause_chk = QtWidgets.QCheckBox("Pause")
+        self.dev_pause_chk.setToolTip("Stop adding lines (they are still kept); untick to catch up")
+        self.dev_pause_chk.toggled.connect(lambda paused: None if paused else self._render_dev_log())
+        self.dev_log_view = QtWidgets.QPlainTextEdit()
+        self.dev_log_view.setReadOnly(True)
+        self.dev_log_view.setFont(_mono())
+        self.dev_log_view.setMaximumBlockCount(2000)
+        self.dev_log_view.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
+        self.dev_log_view.setMinimumHeight(120)
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(QtWidgets.QLabel("Show"))
+        row.addWidget(self.dev_level_cb)
+        row.addWidget(self.dev_pause_chk)
+        row.addWidget(_button("Clear", self._clear_dev_log))
+        row.addWidget(_button("Save…", self._save_dev_log))
+        row.addStretch(1)
+        row.addWidget(QtWidgets.QLabel("Per point and per SPI word detail: sweepd -vv, read with journalctl -u sweepd -f over ssh"))
+        v = QtWidgets.QVBoxLayout()
+        v.addLayout(row)
+        v.addWidget(self.dev_log_view, 1)
+        col.addWidget(_group("Device log (messages from sweepd)", v), 1)
+
         # simulated hardware
         self.sim_btn = _button("Start simulated hardware", self._toggle_sim)
         self.sim_label = QtWidgets.QLabel("stopped")
@@ -481,9 +538,87 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------ messages / status
 
-    def _msg(self, text: str, warn: bool = False) -> None:
+    def _msg(self, text: str, warn: bool = False, log: bool = True) -> None:
         self.status_msg.setText(text)
         self.status_msg.setStyleSheet("color:#c05000;" if warn else "")
+        if warn and log:
+            self._dev_note(logging.WARNING, text)      # the status bar forgets, the device log keeps it
+
+    # ------------------------------------------------------------ device log
+
+    def _dev_note(self, level: int, text: str) -> None:
+        """A line from the GUI itself in the device log (connection events, status-bar warnings)."""
+        if (level, text) == self._last_note:
+            return
+        self._last_note = (level, text)
+        self._show_log_entries([self.dev_log.note(level, text)])
+
+    def _show_log_entries(self, entries) -> None:
+        """New entries: append the ones the level box allows (unless paused), update the counters."""
+        if not entries:
+            return
+        if not self.dev_pause_chk.isChecked():
+            for e in entries:
+                if e.level >= self.dev_log_level:
+                    self.dev_log_view.appendHtml(log_core.entry_html(e))
+        for e in entries:
+            if e.name != log_core.LOCAL_NAME and e.level >= logging.ERROR and not e.repeats:
+                self._msg(f"sweepd: {e.msg}", warn=True, log=False)
+        self._update_log_badge()
+
+    def _render_dev_log(self) -> None:
+        self.dev_log_view.setUpdatesEnabled(False)
+        self.dev_log_view.clear()
+        for e in self.dev_log.visible(self.dev_log_level):
+            self.dev_log_view.appendHtml(log_core.entry_html(e))
+        self.dev_log_view.setUpdatesEnabled(True)
+        bar = self.dev_log_view.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
+    def _on_dev_log_level(self) -> None:
+        self.dev_log_level = int(self.dev_level_cb.currentData())
+        self._render_dev_log()
+
+    def _clear_dev_log(self) -> None:
+        self.dev_log.clear()
+        self._render_dev_log()
+        self._update_log_badge()
+
+    def _update_log_badge(self) -> None:
+        if self.tabs.currentWidget() is self._advanced_page:
+            self.dev_log.mark_seen()                  # it is on screen: nothing is unread
+        badge = self.dev_log.badge
+        self.tabs.setTabText(self.tabs.indexOf(self._advanced_page), "Advanced" + badge)
+        self.status_log.setText(badge.strip(" ()"))
+        self.status_log.setVisible(bool(badge))
+
+    def _poll_dev_log(self) -> None:
+        """Live records from the socket; a fetch from sweepd when there is a gap (connect, lost record)."""
+        live = self.client.take_logs()
+        if self.client.bad_frames != self._bad_seen:
+            self._bad_seen = self.client.bad_frames
+            self._dev_note(logging.WARNING, f"{self._bad_seen} undecodable message(s) from sweepd (version mismatch?)")
+        if not self.client.connected:
+            return
+        if not self.dev_log.gap:
+            self._show_log_entries(self.dev_log.add_live(live))
+        elif self.synced and self._tick % 10 == 0 and self._log_fetch_tries < 5:
+            got = self.client.fetch_log(self.dev_log.last_seq, 150)
+            if got is None:
+                self._log_fetch_tries += 1
+                if self._log_fetch_tries == 5:
+                    self._dev_note(logging.WARNING, "sweepd sent no log: it may be an older version without one")
+            else:
+                self._log_fetch_tries = 0
+                self._show_log_entries(self.dev_log.add_fetched(*got))
+
+    def _save_dev_log(self) -> None:
+        default = str(Path("captures") / time.strftime("devlog-%Y%m%d-%H%M%S.txt"))
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save device log", default, "Text (*.txt)")
+        if path:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_text("\n".join(format_entry(e, with_date=True) for e in self.dev_log.entries) + "\n")
+            self._msg(f"Saved {path}")
 
     def _set_conn(self, text: str) -> None:
         self.status_conn.setText(text)
@@ -701,10 +836,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._tick % 10 == 0:
             self._update_sim_status()
         frame = self.client.poll_latest()
+        self._poll_dev_log()
         if frame is not None:
-            self.handle_frame(*frame)
+            self.handle_frame(*frame, flags=self.client.last_flags)
 
-    def handle_frame(self, header: dict, p) -> None:
+    def handle_frame(self, header: dict, p, flags=None) -> None:
         axis = core.Axis.from_header(header)
         self.axis = axis
         self.last_atten = float(header.get("atten_db", self.last_atten))
@@ -716,7 +852,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._frames += 1
         if self.client.connected and not self.status_conn.text().startswith("connected"):
             self._set_conn(f"connected to {self.host_edit.text().strip() or '127.0.0.1'} (receiving)")
+        mode = self.trace_a.mode
+        fresh = self.trace_a.data is None or axis != self.trace_a.axis_key
         self.trace_a.update(axis, p)
+        if mode != "view":                  # a frozen trace keeps the flags it was drawn with
+            if flags is None:
+                self.flags_a = None
+            elif mode in ("max_hold", "min_hold", "average") and not fresh and self.flags_a is not None \
+                    and self.flags_a.size == flags.size:
+                self.flags_a = self.flags_a | flags      # a point that was bad in any sweep stays marked
+            else:
+                self.flags_a = np.array(flags, dtype=np.uint8)
         data = self.trace_a.data
         if self.track_chk.isChecked() and self.m[0].enabled and data is not None:
             self.m[0].place(axis, core.peak_index(data))
@@ -739,6 +885,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view.set_scale(axis.start_hz, axis.stop_hz, s.ref_dbm, s.db_per_div)
         f = axis.freqs()
         self.view.set_trace("a", f, data)
+        flags = self.flags_a if (data is not None and self.flags_a is not None and self.flags_a.size == data.size) else None
+        self.view.set_bad(f, data, None if flags is None else (flags & FLAGS_UNRELIABLE) != 0)
         if self.trace_b is not None and self.show_b_chk.isChecked() and self.trace_b[0] == axis:
             self.view.set_trace("b", f, self.trace_b[1])
         else:
@@ -752,7 +900,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             levels[n] = (axis.freq_at(i), float(data[i]))
             self.view.set_marker(n, levels[n][0], levels[n][1], s.ref_dbm, s.db_per_div)
-            readout.append(core.marker_text(f"M{n + 1}", *levels[n]))
+            line = core.marker_text(f"M{n + 1}", *levels[n])
+            if flags is not None and flags[i]:
+                line += "   [" + ", ".join(flag_names(int(flags[i]))) + "]"
+            readout.append(line)
         if 0 in levels and 1 in levels:
             readout.append(core.delta_text(*levels[0], *levels[1]))
         self.readout.setText("\n".join(readout))
@@ -781,6 +932,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.synced = False
             self.connect_btn.setText("Connect")
             self._set_conn("not connected")
+            self._dev_note(logging.INFO, "disconnected")
             return
         self._connect()
 
@@ -790,6 +942,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._set_conn("connecting…")
         self.synced = False
         self._sync_tries = 0
+        self.dev_log.gap = True                 # fetch what sweepd said before we came
+        self._log_fetch_tries = 0
+        self._dev_note(logging.INFO, f"connecting to {self.host_edit.text().strip() or '127.0.0.1'}")
         self._try_sync()
 
     def _try_sync(self) -> None:
@@ -803,6 +958,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(300, self._try_sync)
         else:
             self._set_conn("socket open, but sweepd does not answer on the command port")
+            self._dev_note(logging.WARNING, "sweepd does not answer on the command port")
 
     def start_sim(self) -> None:
         tones = []

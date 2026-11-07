@@ -47,6 +47,7 @@ Or run the daemon and a terminal client separately:
 ```bash
 python -m sadiy.server.sweepd --sim &      # publishes on tcp 5556, takes commands on tcp 5557
 python -m sadiy.ui.cli_client --count 5    # prints the peak of each sweep
+python -m sadiy.ui.cli_client --log-level warning   # also what sweepd reports: its history, then live
 ```
 
 Bring-up helpers that need no hardware:
@@ -75,18 +76,23 @@ The GUI's **Pins** tab then gives wiring tests over the network:
 
 The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outputs stay off until the PLL is locked, and all lines return to a safe state if the client disappears. See [docs/gui.md](docs/gui.md).
 
+**Messages from the daemon.** `sweepd` logs at five levels. The default (info) goes to stderr, which is the journal under systemd: `journalctl -u sweepd -f` over ssh. `-v` is debug, `-vv` adds trace (every point and SPI word, ssh only), `-q` is warning; `[log] level` in the config does the same. Errors, warnings, info and debug also reach the GUI, in the Device log on the Advanced tab, with a count of unread problems on the tab. See "Logging" in [docs/architecture.md](docs/architecture.md).
+
 ## How it fits together
 
 ```
- sweepd (one process, on the BBB)              clients (any number, any host)
- +----------------------------------+          +------------------------+
- | sweep engine or bench mode       |   PUB    | sa_gui / cli_client    |
- | PE4302 (GPIO) ADF4351 (SPI)      | -------> | plot, markers, Pins    |
- | ADS1115 (I2C) AIN0 (IIO)         |   REP    |                        |
- +----------------------------------+ <------- | commands (JSON)        |
+ sweepd (one process, on the BBB)               clients (any number, any host)
+ +-----------------------------------+          +---------------------------+
+ | sweep engine or bench mode        |   PUB    | sa_gui / cli_client       |
+ | lock detect, median, flags, cal   | -------> |  sweeps: dBm + flags      |
+ | PE4302 (GPIO) ADF4351 (SPI)       |          |  log: errors, warnings    |
+ | ADS1115 (I2C) AIN0 (IIO)          |   REP    | plot, markers, Pins,      |
+ | log ring                          | <------- | Device log                |
+ +-----------------------------------+          | commands (JSON)           |
+        +--> stderr / journald (ssh)             +---------------------------+
 ```
 
-`sweepd` is the only process that touches the hardware. Clients talk to it over ZeroMQ: frames on port 5556, JSON commands on port 5557. Code layers as `hal` -> `drivers` -> `core` -> `server` -> `ui`, and only `hal` touches the OS, so everything above it runs on a PC against fakes and the simulator. Details and the design decisions are in [docs/architecture.md](docs/architecture.md).
+`sweepd` is the only process that touches the hardware. Clients talk to it over ZeroMQ: sweep frames and log records on port 5556, JSON commands on port 5557. The BBB does the per-point work (lock detect, median of the reads, calibration, flags for points it does not trust); the GUI keeps the trace modes, markers and peak search. Code layers as `hal` -> `drivers` -> `core` -> `server` -> `ui`, and only `hal` touches the OS, so everything above it runs on a PC against fakes and the simulator. Details and the design decisions are in [docs/architecture.md](docs/architecture.md).
 
 ## Repository layout
 
@@ -95,9 +101,10 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 | `src/sadiy/pinmap.py` | the BBB pin map: nets, GPIO numbers, what each pin may do. Read by the diagram generator, the daemon and the GUI |
 | `src/sadiy/hal/` | SPI, GPIO, I2C and ADC abstraction: Linux backends and recording fakes |
 | `src/sadiy/drivers/` | PE4302, ADF4351, ADS1115 and on-chip ADC drivers |
-| `src/sadiy/core/` | frequency plan, detector model, calibration, sweep engine (no hardware access) |
+| `src/sadiy/core/` | frequency plan, detector model, calibration, sweep engine with lock gating, median and flags (no hardware access) |
 | `src/sadiy/server/` | `sweepd` daemon, wire protocol, bench mode |
-| `src/sadiy/ui/` | terminal client and GUI (`sa_gui.py`, `bench_tab.py`); logic without Qt is in `sa_core.py` and `bench_core.py`. `qt_client.py` is an old skeleton |
+| `src/sadiy/logs.py` | log levels, the numbered ring buffer the GUI fetches from, repeat folding; standard library only |
+| `src/sadiy/ui/` | terminal client and GUI (`sa_gui.py`, `bench_tab.py`); logic without Qt is in `sa_core.py`, `bench_core.py` and `log_core.py`. `qt_client.py` is an old skeleton |
 | `src/sadiy/sim.py` | simulated RF chain |
 | `src/sadiy/patterns.py` | pin patterns and SPI frames, for logic analyzer comparison |
 | `config/` | TOML configuration; values marked VERIFY need checking on the real boards |
@@ -130,6 +137,8 @@ The adapter board is BBB only: its Raspberry Pi connector was removed. The Raspb
 |---|---|
 | Frequency plan and PLL math, detector model, calibration, auto-ranging | done, tested |
 | Sweep engine, `sweepd`, protocol, terminal client, simulator | done, tested against the simulator |
+| Per-point lock gating, median of the reads, flags (unlocked, overload, at floor, outlier) | done, tested with fakes and the simulator; thresholds (`max_dbm`, `floor_dbm`, `outlier_db`) not yet checked on the real detector, and the lock line is not read from a real GPIO until `build_hw_engine` exists |
+| Logging on the BBB (levels, journald, ring, `log` command) and the GUI Device log | done, tested; never run on a real BBB |
 | Spectrum analyzer GUI | done, smoke-tested offscreen against the simulator; not yet used with real hardware or on a real display |
 | PE4302 driver | done, tested with fakes; weights and polarity not yet confirmed on the module (`pe4302-walk`) |
 | ADS1115 driver | done, tested against a register model only; sweeps do not use it yet |

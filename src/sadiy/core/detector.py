@@ -9,6 +9,8 @@ class Detector:
     slope_v_per_db: float = -0.0245
     intercept_dbm: float = 20.0
     divider_ratio: float = 1.0   # Vadc / Vdet when a divider sits between detector and ADC
+    floor_dbm: float = -65.0     # at or below this the output has flattened: a reading is only an upper bound
+    max_dbm: float = -1.0        # at or above this the detector is in overload: the reading is not trusted
 
     @classmethod
     def from_config(cls, section: dict) -> "Detector":
@@ -16,6 +18,8 @@ class Detector:
             slope_v_per_db=section["slope_v_per_db"],
             intercept_dbm=section["intercept_dbm"],
             divider_ratio=section.get("divider_ratio", 1.0),
+            floor_dbm=section.get("floor_dbm", -65.0),
+            max_dbm=section.get("max_dbm", -1.0),
         )
 
     def dbm_from_volts(self, v_det: float) -> float:

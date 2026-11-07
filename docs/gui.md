@@ -25,6 +25,8 @@ Black display, 10 x 10 graticule, yellow trace A, blue stored trace B, red marke
 
 A marker keeps its frequency when the span changes and disappears when it leaves the screen.
 
+**Flagged points.** `sweepd` marks points it does not trust (see "Per-point handling" in `architecture.md`). Points read without PLL lock, and points at detector overload, get a red × on the trace. In Max hold, Min hold and Average a point stays marked if it was bad in any sweep since the trace was cleared. The marker readout names every flag of its point in brackets: `[unlocked]`, `[overload]`, `[at floor]` (only an upper bound) or `[outlier rejected]`. A `sweepd` that sends no flags (older version) simply shows none.
+
 The status bar warns when the step is larger than RBW/2 (narrow signals read low, see "Points versus RBW" in `architecture.md`). With the default 401 points over 30 to 480 MHz it shows up at once. Use "Points = 2·span/RBW" or a narrower span.
 
 ## Pins tab
@@ -69,6 +71,7 @@ SPI and I2C pins can be driven as GPIO for a wiring check where the image has `c
 ## Advanced tab
 
 - **Connection**: host and the two ports. On connect the GUI reads sweepd's settings and limits and adopts them (so it shows what a remote BBB is doing). Commands that sweepd rejects show its error in the status bar.
+- **Device log**: what `sweepd` reports, plus the GUI's own notes (connecting, connection problems, and every warning that the status bar showed). Records come live from the daemon, and on connect the GUI also fetches what the daemon kept before, so the box is complete after a reconnect or a late start. Lines are coloured by level (red error, amber warning, grey debug). Controls: **Show** is the lowest level listed (Error, Warning, Info, Debug; the default is Info; changing it re-lists everything kept, up to 2000 lines), **Pause** stops adding lines but keeps them (they appear when unticked), **Clear**, **Save…** (all lines with the date, to `captures/` by default). While you are on another tab, the Advanced tab title and the status bar count unread warnings and errors, for example `Advanced (1 error, 2 warnings)`; the status-bar count jumps to the tab when clicked, and an error also shows in the status bar. A daemon restart shows as a marker line. Per-point and per-SPI-word detail (trace) never reaches the GUI: start `sweepd` with `-vv` and read it over ssh with `journalctl -u sweepd -f`. A `sweepd` without a log (older version) shows a note after a few tries.
 - **Simulated hardware**: starts `python -m sadiy.server.sweepd --sim` as a separate process on this PC, bound to 127.0.0.1 on the ports above. Parameters: sweep period, input noise floor, simulated RBW, up to four test tones (frequency, level, on/off). They are applied when the simulator starts; stop and start it to change them. "Connect after start" connects automatically. The process output shows in the log box.
 - **Analyzer**: RBW used for the display and the points rule (follows the simulated RBW when the simulator starts), frequency limits, peak threshold above the median, number of sweeps in Average mode, GUI poll interval.
 - **Data**: save the trace as CSV (`freq_hz,level_dbm`), save a screenshot as PNG. Both default to `captures/`, which is git-ignored.
@@ -79,11 +82,13 @@ SPI and I2C pins can be driven as GPIO for a wiring check where the image has `c
 |---|---|
 | `ui/sa_gui.py` | Qt window (PyQtGraph display, controls, tabs) |
 | `ui/sa_core.py` | axis, settings clamping, trace modes, peak search, markers, CSV: no Qt, unit-tested |
+| `ui/log_core.py` | the Device log's state: numbered, duplicate-free records, gap and restart detection, unread counters, levels: no Qt, unit-tested |
 | `ui/bench_tab.py` | the Pins tab: board drawing and controls |
 | `ui/bench_core.py` | bench session, confirm memory, input parsing, pattern preview, board layout and hit test: no Qt, unit-tested |
-| `ui/sweep_client.py` | ZeroMQ SUB (newest frame only) and REQ with short timeouts |
+| `ui/sweep_client.py` | ZeroMQ SUB (newest frame only, all log records, flags of the last frame) and REQ with short timeouts, `fetch_log` |
 | `ui/sim_runner.py` | starts / stops `sweepd --sim`, writes the temporary TOML override, keeps the log |
-| `tests/test_sa_gui_smoke.py`, `tests/test_bench_gui_smoke.py` | build the window offscreen, feed frames, drive the Pins tab, run the simulator end to end; skipped without PyQt5 / pyqtgraph |
+| `tests/test_sa_gui_smoke.py`, `tests/test_bench_gui_smoke.py` | build the window offscreen, feed frames and flags, drive the Pins tab and the Device log, run the simulator end to end; skipped without PyQt5 / pyqtgraph |
+| `tests/test_log_core.py`, `tests/test_sweep_client_log.py` | log buffer logic; the client against real ZeroMQ sockets on localhost |
 
 ## Known limits
 
@@ -92,3 +97,5 @@ SPI and I2C pins can be driven as GPIO for a wiring check where the image has `c
 - A command with no answer blocks the window for up to 0.5 s (the REQ timeout). Sync after connecting uses 0.15 s tries.
 - The low-IF image 21.4 MHz away shows up as a second copy of every signal (also in the simulator).
 - Peak search treats a rising plateau as a peak at its first point; harmless on real traces.
+- The Device log keeps 2000 lines in the GUI and the daemon 500; older ones are gone. A fetch (on connect, after a gap) blocks the window for up to 0.15 s when the daemon is slow.
+- Log lines of a simulator the GUI started also appear in the simulator's own process box under "Simulated hardware", because that box shows the child's stderr.

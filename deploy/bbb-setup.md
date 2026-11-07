@@ -1,10 +1,10 @@
 # BeagleBone Black setup notes
 
-None of this has been tried on a real BBB yet. Verify every pin and overlay name on your image (`uname -r`, `cat /etc/dogtag`, `config-pin -q`).
+The image was read from a real board (Debian Trixie, kernel 6.18, no `config-pin`), but none of the pin, SPI, I2C and bench-mode code has run on it yet. Verify every pin and overlay name on your image (`uname -r`, `cat /etc/dogtag`).
 
 ## Install
 
-1. Debian IoT image, headless. Check `python3 --version`: the project needs 3.9 or newer.
+1. Debian Trixie IoT image, headless. Check `python3 --version`: the project needs 3.9 or newer.
 2. Install the packages:
    ```bash
    sudo apt install python3-numpy python3-zmq python3-spidev i2c-tools
@@ -70,7 +70,28 @@ None of this has been tried on a real BBB yet. Verify every pin and overlay name
     ```bash
     sudo systemctl enable --now sadiy-pinmux sweepd
     ```
-    Check it with `systemctl status sweepd` and `journalctl -u sadiy-pinmux`. Stop the service before running `sweepd` by hand, because both use the same ports.
+    Check it with `systemctl status sweepd`, `journalctl -u sweepd -f` and `journalctl -u sadiy-pinmux`. Stop the service before running `sweepd` by hand, because both use the same ports.
+
+### Messages from sweepd
+
+`sweepd` now says what it does and what goes wrong, at five levels: error, warning, info, debug, trace. It writes to stderr, so by hand you see it in the terminal and under systemd it is in the journal:
+
+```bash
+journalctl -u sweepd -f              # follow it live over ssh
+```
+
+```bash
+journalctl -u sweepd -b -p warning   # since boot, warnings and errors only
+```
+
+The default is info (start-up, settings, bench open and close, RF output changes, sweep faults). For more detail by hand add `-v` (debug) or `-vv` (trace: every SPI word and sweep, a lot of output), or `-q` for warnings only. For the service, set it in `/etc/sadiy/local.toml` and restart (`sudo systemctl restart sweepd`):
+
+```toml
+[log]
+level = "debug"      # error, warning, info, debug, trace
+```
+
+Errors, warnings, info and debug are also sent to the GUI, whose Advanced tab has a Device log with a level box. Trace is never sent. From a terminal on the PC: `python -m sadiy.ui.cli_client --host <bbb-ip> --log-level warning`. A hardware error in a sweep is logged with its traceback in the journal, stops sweeping, puts the attenuator to maximum and the RF outputs off, and leaves `sweepd` running.
 
 The service uses `--bench-only` until `build_hw_engine` exists, because `sweepd` exits at once on hardware without it, so the Run button is refused for now. Remove the flag when sweeps work on hardware. `sweepd` touches no pin until a client opens bench mode, so until then the PE4302 stays at the 31.5 dB default set by the adapter's pull-ups.
 

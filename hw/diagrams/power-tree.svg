@@ -41,7 +41,7 @@
 <text x="1306.0" y="320.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">tiny</text>
 <path d="M680.0,315.0 C740.0,315.0 740.0,315.0 800.0,315.0" fill="none" stroke="#1971c2" stroke-width="2.2" marker-end="url(#a1971c2)" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="800.0" y="338.0" width="520.0" height="34.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
-<text x="814.0" y="360.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">optional pull-ups on V1..V6</text>
+<text x="814.0" y="360.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">pull-ups on V1..V6 (adapter)</text>
 <text x="1306.0" y="360.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">few mA</text>
 <path d="M680.0,315.0 C740.0,315.0 740.0,355.0 800.0,355.0" fill="none" stroke="#1971c2" stroke-width="2.2" marker-end="url(#a1971c2)" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="360.0" y="430.0" width="320.0" height="90.0" rx="8" fill="#fff9db" stroke="#e67700" stroke-width="2" stroke-dasharray="6 4"/>

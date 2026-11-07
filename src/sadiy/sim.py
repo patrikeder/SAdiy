@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 from .core.detector import Detector
 from .core.freqplan import SweepPoint
@@ -34,8 +34,11 @@ class SimChain:
         self.noise_v = noise_v
         self.lo_hz = 0.0
         self.atten_db = 0.0
+        self.pll_unlocked = False       # set by SimSynth: the detector then sees whatever the VCO is doing
 
     def detector_dbm(self) -> float:
+        if self.pll_unlocked:
+            return random.uniform(-60.0, -10.0)
         sigma = self.rbw_hz / 2.355
         f_sig = self.lo_hz - self.if_hz      # wanted response
         f_img = self.lo_hz + self.if_hz      # image response of the low-IF mixer
@@ -54,12 +57,20 @@ class SimChain:
 
 
 class SimSynth:
-    def __init__(self, chain: SimChain) -> None:
+    def __init__(self, chain: SimChain, unlocked_rf_ranges: Sequence[Tuple[float, float]] = ()) -> None:
         self.chain = chain
+        self.unlocked_rf_ranges = tuple((float(a), float(b)) for a, b in unlocked_rf_ranges)
+        self._unlocked = False
 
     def tune(self, point: SweepPoint) -> None:
         # Use the quantised PLL frequency when available, like the real synthesizer would.
         self.chain.lo_hz = point.pll.f_actual_hz if point.pll else point.f_lo_hz
+        self._unlocked = any(a <= point.f_rf_hz <= b for a, b in self.unlocked_rf_ranges)
+        self.chain.pll_unlocked = self._unlocked
+
+    def locked(self) -> bool:
+        """Lock detect. Fails inside the ranges given for testing the lock gating (`[sim] unlock_ranges_hz`)."""
+        return not self._unlocked
 
 
 class SimAtten:
@@ -77,6 +88,8 @@ class SimAdc:
     def __init__(self, chain: SimChain) -> None:
         self.chain = chain
 
+    def read_samples(self, n: int = 1) -> List[float]:
+        return [self.chain.detector_volts() * self.chain.detector.divider_ratio for _ in range(n)]
+
     def read_volts(self, n: int = 1) -> float:
-        v = sum(self.chain.detector_volts() for _ in range(n)) / n
-        return v * self.chain.detector.divider_ratio
+        return sum(self.read_samples(n)) / n

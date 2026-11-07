@@ -18,6 +18,8 @@ pytest                                  # all passed at last check; GUI tests ar
 python -m sadiy.server.sweepd --sim &   # simulated chain, tcp 5556 (frames) / 5557 (commands)
 python -m sadiy.ui.sa_gui --sim         # GUI against its own simulator
 python -m sadiy.server.sweepd --bench-only       # on the BBB: only bench mode, real hardware (add --sim for the fake board)
+python -m sadiy.server.sweepd -v ...              # log level: -q warning, default info, -v debug, -vv trace (ssh only); or [log] level in the config
+python -m sadiy.ui.cli_client --log-level warning # terminal client: sweepd's log history, then live
 python -m sadiy.ui.sa_gui --host <bbb-ip> --connect   # GUI against a real sweepd
 python tools/bringup.py pe4302-pattern --db 16 --from-db 15.5
 python tools/make_bbb_package.py         # BBB package in dist/ (git-ignored); update it whenever code the BBB runs changes
@@ -51,7 +53,7 @@ Free on a stock image: P8.7-P8.19 and P8.26 as GPIO. Not usable: P8.3-6 and P8.2
 
 ## Architecture in one paragraph
 
-`sweepd` is the only process that touches SPI, GPIO and the ADC; it publishes sweeps over ZeroMQ PUB (5556) and takes commands over REQ/REP JSON (5557). GUI and terminal clients never touch hardware and can run on another host. Layering: `hal` -> `drivers` -> `core` -> `server` -> `ui`. `hal/base.py` has the interfaces, `hal/linux.py` the real backends, `hal/fake.py` recording fakes. Bench mode (Pins tab, `docs/gui.md`) lives in `server/bench.py`, which enforces the safety rules, and is exclusive with sweeping. `patterns.py` already makes PE4302 write sequences and ADF4351 SPI frames for logic analyzer comparison.
+`sweepd` is the only process that touches SPI, GPIO and the ADC; it publishes sweeps over ZeroMQ PUB (5556) and takes commands over REQ/REP JSON (5557). GUI and terminal clients never touch hardware and can run on another host. Layering: `hal` -> `drivers` -> `core` -> `server` -> `ui`. `hal/base.py` has the interfaces, `hal/linux.py` the real backends, `hal/fake.py` recording fakes. Bench mode (Pins tab, `docs/gui.md`) lives in `server/bench.py`, which enforces the safety rules, and is exclusive with sweeping. Per point the sweep engine waits for lock detect, takes the median of the ADC reads and flags points (unlocked, overload, at floor, outlier) in an optional fourth frame part; trace modes, markers and peak search stay in the GUI. Logging (`logs.py`): levels error to trace, stderr/journald on the BBB, a numbered ring served by the `log` command and published on topic `log` for the GUI's Device log (Advanced tab); trace never leaves the BBB. `patterns.py` already makes PE4302 write sequences and ADF4351 SPI frames for logic analyzer comparison.
 
 ## Not done yet
 

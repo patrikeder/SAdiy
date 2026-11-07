@@ -1,4 +1,5 @@
 """Smoke tests of the Qt front end. Skipped when PyQt / pyqtgraph / pyzmq are not installed."""
+import logging
 import os
 import socket
 import time
@@ -12,6 +13,7 @@ pytest.importorskip("zmq")
 pg = pytest.importorskip("pyqtgraph")
 pytest.importorskip("pyqtgraph.Qt.QtWidgets")
 
+from sadiy import logs  # noqa: E402
 from sadiy.ui import sa_core as core  # noqa: E402
 from sadiy.ui.sa_gui import MainWindow  # noqa: E402
 
@@ -148,6 +150,14 @@ def test_start_simulated_hardware_end_to_end(app):
         assert w.runner.running and w._frames >= 3 and w.synced
         assert w.status_conn.text().startswith("connected")
         assert w.limits.rf_max_hz == 480e6                                  # adopted from sweepd status
+        # what the daemon said before the GUI connected arrives by the `log` fetch, and live after that
+        _spin(app, 15, lambda: "sweeping" in w.dev_log_view.toPlainText())
+        text = w.dev_log_view.toPlainText()
+        assert "sweepd starting: simulated chain" in text and "sweeping 30.000 to 480.000 MHz" in text
+        assert not w.dev_log.gap
+        w.client.request({"cmd": "set", "points": 99999})                   # refused: a warning, live
+        _spin(app, 15, lambda: "points must be 2..4001" in w.dev_log_view.toPlainText())
+        assert w.tabs.tabText(2).startswith("Advanced") and "1 warning" in w.status_log.text()
         # the sim tones from the Advanced tab show up in the trace: strongest peak is the 100 MHz tone or its image
         w.span_sb.setValue(20.0)
         w.center_sb.setValue(100.0)
@@ -159,3 +169,108 @@ def test_start_simulated_hardware_end_to_end(app):
         assert not w.runner.running and w.sim_label.text() == "stopped"
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- device log (Advanced tab)
+
+def _entry(seq, level, msg, boot="b1"):
+    return logs.LogEntry(seq, 1000.0 + seq, level, "sadiy.server.sweepd", msg, 0, boot)
+
+
+def test_device_log_shows_entries_and_counts_unread(win):
+    win.tabs.setCurrentIndex(0)
+    win.dev_log.add_fetched([], boot="b1", last_seq=0)
+    win._show_log_entries(win.dev_log.add_live([
+        _entry(1, logging.INFO, "sweepd starting"), _entry(2, logging.DEBUG, "fine detail"),
+        _entry(3, logging.WARNING, "PLL unlocked on 3 points"),
+    ]))
+    text = win.dev_log_view.toPlainText()
+    assert "sweepd starting" in text and "PLL unlocked on 3 points" in text
+    assert "fine detail" not in text                                        # below the default level (info)
+    assert win.tabs.tabText(2) == "Advanced (1 warning)"
+    assert win.status_log.isVisibleTo(win) and win.status_log.text() == "1 warning"
+    win._show_log_entries(win.dev_log.add_live([_entry(4, logging.ERROR, "SPI write failed")]))
+    assert win.tabs.tabText(2) == "Advanced (1 error, 1 warning)"
+    assert "SPI write failed" in win.status_msg.text()                      # errors also reach the status bar
+    win.tabs.setCurrentIndex(2)                                             # looking at it: nothing is unread
+    assert win.tabs.tabText(2) == "Advanced" and not win.status_log.isVisibleTo(win)
+
+
+def test_device_log_level_pause_and_clear(win):
+    win.dev_log.add_fetched([], boot="b1", last_seq=0)
+    win._show_log_entries(win.dev_log.add_live([
+        _entry(1, logging.DEBUG, "fine detail"), _entry(2, logging.INFO, "routine"), _entry(3, logging.WARNING, "careful"),
+    ]))
+    box = win.dev_log_view
+    win.dev_level_cb.setCurrentIndex(3)                                     # Debug
+    assert "fine detail" in box.toPlainText()
+    win.dev_level_cb.setCurrentIndex(1)                                     # Warning
+    assert box.toPlainText().strip().endswith("careful") and "routine" not in box.toPlainText()
+    win.dev_pause_chk.setChecked(True)
+    win._show_log_entries(win.dev_log.add_live([_entry(4, logging.WARNING, "while paused")]))
+    assert "while paused" not in box.toPlainText()                          # kept, not shown yet
+    win.dev_pause_chk.setChecked(False)
+    assert "while paused" in box.toPlainText()
+    win._clear_dev_log()
+    assert box.toPlainText() == "" and win.dev_log.badge == ""
+    assert win.dev_log.add_live([_entry(4, logging.WARNING, "while paused")]) == []    # does not come back
+
+
+def test_status_bar_warnings_are_kept_in_the_device_log(win):
+    win._msg("Could not start the simulator: boom", warn=True)
+    win._msg("Could not start the simulator: boom", warn=True)             # repeats are not listed twice
+    win._msg("just information")
+    text = win.dev_log_view.toPlainText()
+    assert text.count("Could not start the simulator: boom") == 1 and "just information" not in text
+    assert "gui:" in text
+
+
+def test_save_device_log(win, tmp_path, monkeypatch):
+    from pyqtgraph.Qt import QtWidgets
+    win.dev_log.add_fetched([_entry(1, logging.WARNING, "careful")], boot="b1", last_seq=1)
+    out = tmp_path / "log.txt"
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(out), "")))
+    win._save_dev_log()
+    line = out.read_text().strip()
+    assert "WARNING" in line and "server.sweepd: careful" in line and line[:4].isdigit()   # with the date
+
+
+# ---------------------------------------------------------------- flagged points
+
+def _flags(n=101, bad=()):
+    f = np.zeros(n, dtype=np.uint8)
+    for i, bit in bad:
+        f[i] |= bit
+    return f
+
+
+def test_unreliable_points_are_marked_and_named_at_the_marker(win):
+    from sadiy.core.sweep import FLAG_OVERRANGE, FLAG_UNDERRANGE, FLAG_UNLOCKED
+    header, p = _frame()
+    win.handle_frame(header, p, flags=_flags(bad=[(20, FLAG_UNLOCKED), (30, FLAG_OVERRANGE), (40, FLAG_UNDERRANGE)]))
+    xs, _ys = win.view.bad.getData()
+    assert len(xs) == 2                                              # at floor is not drawn on the trace
+    win.m1_chk.setChecked(True)
+    win.m[0].place(win.axis, 20)
+    win._redraw()
+    assert "[unlocked]" in win.readout.text()
+    win.m[0].place(win.axis, 40)
+    win._redraw()
+    assert "[at floor]" in win.readout.text() and "[unlocked]" not in win.readout.text()
+
+
+def test_flags_accumulate_over_a_hold_and_clear_without_flags(win):
+    from sadiy.core.sweep import FLAG_UNLOCKED
+    win.mode_cb.setCurrentIndex(1)                                   # Max hold
+    header, p = _frame()
+    win.handle_frame(header, p, flags=_flags(bad=[(20, FLAG_UNLOCKED)]))
+    win.handle_frame(header, p, flags=_flags(bad=[(50, FLAG_UNLOCKED)]))
+    assert len(win.view.bad.getData()[0]) == 2                       # bad in any sweep of the hold stays marked
+    win._clear_trace()
+    win.handle_frame(header, p, flags=_flags(bad=[(60, FLAG_UNLOCKED)]))
+    assert len(win.view.bad.getData()[0]) == 1
+    win.mode_cb.setCurrentIndex(0)                                   # Clear / Write: only the last sweep
+    win.handle_frame(header, p, flags=_flags())
+    assert win.view.bad.getData()[0] is None or len(win.view.bad.getData()[0]) == 0
+    win.handle_frame(header, p)                                      # an older sweepd sends no flags at all
+    assert win.flags_a is None

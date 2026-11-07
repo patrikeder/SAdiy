@@ -20,8 +20,8 @@ Keep every RF link a short coax (SMA), 50 ohm. Mark each cable with its name.
 | IF_1 | AD831 IF out | 10.7 MHz IF filter (TODO) | |
 | IF_2 | IF filter | IF amp (TODO) | |
 | IF_3 | IF amp | detector RF in | check the detector input coupling and 50 ohm termination |
-| DET | detector VOUT | divider + RC + clamp (TODO) | analog, short and away from the LO and RF cables |
-| ADC | divider block | SBC ADC input | ADS1115 A0 (BBB: AIN0 too, as a cross-check) |
+| DET | detector VOUT | RC + clamp (1k, 100 nF) on the adapter board | analog, short and away from the LO and RF cables |
+| ADC | RC + clamp | ADS1115 A0 (BBB: AIN0 too, through a divider, as a cross-check) |
 
 ## Practical rules
 

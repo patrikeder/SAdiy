@@ -16,7 +16,7 @@ ADF4351 -> 6 dB pad -> PE4302 -> [DUT] -> detector -> ADC
 ## 3. Software tasks
 - [ ] ADF4351 register packing (`../src/sadiy/drivers/adf4351.py`), golden tests against ADI's eval software.
 - [ ] SNA mode in `freqplan`: LO = RF directly, no f_if, 35 to 4400 MHz, RF divider handled by the packing code.
-- [ ] ADS1115 driver (I2C, +/-2.048 V range, 860 SPS) and BBB on-chip ADC path with divider.
+- [x] ADS1115 driver (`drivers/adc.py`, tested against a register model; the SA uses 4.096 V full scale and 128 SPS by default, an SNA may want 860 SPS) and BBB on-chip ADC path with divider (AIN0 cross-check).
 - [ ] `build_hw_engine` in `sweepd`: real SPI/GPIO, switch GPIO from sysfs to libgpiod.
 - [ ] Thru normalisation and S21 trace in `cal.py`, saved as JSON/NPZ.
 - [ ] Client: S21 trace in dB, markers, thru-store button. Terminal first; later an SNA mode in `ui/sa_gui.py` (markers, trace B, CSV export and the Advanced tab carry over; the level axis becomes dB relative to the thru).
@@ -39,5 +39,5 @@ ADF4351 -> 6 dB pad -> PE4302 -> [DUT] -> detector -> ADC
 - Amp gain curve reproducible between two sweeps.
 
 ## 6. Open points
-- Which ADC path first: ADS1115 on the RPi, or BBB on-chip ADC (0 to 1.8 V, needs divider)?
+- Answered 2026-11-05: the ADS1115 is the main ADC on every platform; the BBB on-chip AIN0 stays as a cross-check.
 - Answered 2026-11-01: the PE4302 module has parallel control only (V1..V6), no serial mode. Still open: is its RF input DC-blocked (series capacitors seen on the photos, verify)?

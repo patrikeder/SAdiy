@@ -4,6 +4,10 @@
 spi_bus = 1      # /dev/spidev1.0 means 1, /dev/spidev0.0 means 0; check after enabling the overlay
 i2c_bus = 2      # the bus where i2cdetect shows 0x48
 
+# Messages from sweepd (journalctl -u sweepd -f). The default is info; trace is for ssh only and very verbose.
+# [log]
+# level = "info"      # error, warning, info, debug, trace
+
 # sweepd has no authentication, and whoever reaches the command port can drive pins. To listen on one
 # network only, uncomment these and put the BBB's address on that network in both lines:
 # [server]

@@ -28,12 +28,13 @@ BBB = BeagleBone Black headers P8 and P9. RPi = 40-pin header (physical pin numb
 
 | Board | Pin | Tie to | Why |
 |---|---|---|---|
-| PE4302 | V1 ... V6 | module: 10k pull-downs | open inputs = 0 dB attenuation (the unsafe state). Optional 2.2k pull-ups to 3V3 give about 2.7 V at the pin, above the 2.3 V threshold, so the default becomes maximum attenuation |
+| PE4302 | V1 ... V6 | module: 10k pull-downs | open inputs = 0 dB attenuation (the unsafe state). The adapter board's 2.2k pull-ups to 3V3 (R27..R32) give about 2.7 V at the pin, above the 2.3 V threshold, so the default is maximum attenuation; remove them for 0 dB |
 | PE4302 | VDD pad | 3V3 (SBC pin) | the module has no regulator and is meant for 3.3 V (Silicon Chip). Two separate pads next to the chip, not on the 7-pin header (GND, V1 ... V6) |
 | ADF4351 | DC jack | 5 V | on-board AMS1117-3.3 supplies the chip; check the polarity marking next to the jack. The 3V3 header pin is the regulator output: do not feed it |
-| ADF4351 | CE | 3V3 | header pin, chip enable (or an SBC pin, see SYN_CE); measure whether the board already pulls it up |
-| ADF4351 | PDR | 3V3 | RF power-down pin (PDBRF): high = RF outputs on; measure whether the board already pulls it up |
+| ADF4351 | CE | 3V3 | header pin, chip enable. Adapter board jumper J12: 1-2 tied high (default), 2-3 from the SBC pin (see SYN_CE) |
+| ADF4351 | PDR | 3V3 | RF power-down pin (PDBRF): high = RF outputs on. Tied high on the adapter board (JP5); remove JP5 if the eval board already pulls it up |
 | ADF4351 | AOUT- / AOUT+ | 50 ohm on the unused output | differential outputs, use one for the LO and terminate the other; MCLK is the external reference input (25 MHz oscillator fitted) |
+| ADS1115 | A0 | detector VOUT via 1k, 100 nF, clamp | adapter board; no divider, the clamp holds A0 within 0 to 3.3 V |
 | ADS1115 | ADDR | GND | I2C address 0x48 |
 | ADS1115 | VDD | 3V3 (SBC pin) | 2.0 to 5.5 V |
 | Detector | VCC pad | 5 V (verify) | about 68 mA at 5 V per the listing; the board has its own regulator (SOT-223), read its marking for the allowed input range |

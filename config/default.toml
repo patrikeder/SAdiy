@@ -27,6 +27,8 @@ max_db = 31.5
 [detector]
 slope_v_per_db = -0.0245  # AD8318 typical; calibrate per frequency
 intercept_dbm = 20.0
+floor_dbm = -65.0         # at or below: the output has flattened, a point is flagged "at floor" (only an upper bound)
+max_dbm = -1.0            # at or above: overload, a point is flagged and not trusted (VERIFY on the real detector)
 divider_ratio = 1.0       # Vadc / Vdet of the main ADC. The ADS1115 path on the adapter has no divider (1k, 100 nF, clamp)
 
 [cal]
@@ -47,6 +49,9 @@ ain0_divider_ratio = 0.751     # Vain0 / Vdet: 1k over 3.01k on the adapter. Onl
 points = 401
 averages = 4
 settle_s = 0.0005         # measure PLL lock + detector settling, then tighten
+combine = "median"        # how the reads of one point become one value: median, trimmed (drop min and max), mean
+outlier_db = 3.0          # a read this far (in dB) from the result flags the point as having had an outlier
+lock_retries = 2          # extra lock detect checks after the settle time, then one more tune, then flag the point
 
 [bench]
 # Bench mode (Pins tab). Device numbers depend on the image: VERIFY with ls /dev/spidev* /dev/i2c-*
@@ -58,6 +63,13 @@ ads1115_address = 0x48
 iio_device = "iio:device0"
 lease_s = 5.0             # no command from the client for this long: back to the safe state
 
+[log]
+# Verbosity of sweepd on stderr (journalctl -u sweepd -f under systemd). The command line overrides it:
+# --log-level, -v (debug), -vv (trace: per point and per SPI word, ssh only), -q (warning).
+level = "info"            # error, warning, info, debug, trace
+ring_lines = 500          # records kept for the GUI (never trace); routine lines go before warnings
+dedup_s = 5.0             # identical records within this window are folded into "repeated N more times"
+
 [server]
 pub = "tcp://*:5556"
 rep = "tcp://*:5557"
@@ -67,3 +79,4 @@ rep = "tcp://*:5557"
 tones = [[100e6, -30.0], [250e6, -45.0]]   # [frequency Hz, level dBm at the analyzer input]
 noise_dbm_in = -100.0                      # input-referred noise floor
 rbw_hz = 230e3                             # Gaussian IF filter width of the simulated receiver
+unlock_ranges_hz = []                      # [[start, stop], ...] RF ranges where the simulated PLL never locks (tests the gating)

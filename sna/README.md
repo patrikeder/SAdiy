@@ -18,4 +18,4 @@ ADF4351 -> 6 dB pad -> PE4302 -> [DUT] -> detector -> ADS1115 -> SBC
 - `bringup-plan.md`: signal path, calibration, software tasks, timeline, done criteria
 
 ## Status
-Planned 2026-11-01. Nothing implemented yet.
+Planned 2026-11-01. The shared parts listed above exist for the spectrum analyzer; the SNA mode itself (`freqplan` LO = RF, thru normalisation) is not written.

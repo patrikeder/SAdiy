@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from typing import Callable
+from typing import Callable, List
 
 from ..hal.base import I2cBus
 
@@ -12,6 +12,10 @@ class Adc(ABC):
     @abstractmethod
     def read_volts(self, n: int = 1) -> float:
         """Mean of n samples, in volts at the ADC pin."""
+
+    def read_samples(self, n: int = 1) -> List[float]:
+        """The n samples themselves, in volts at the ADC pin, so the sweep can reject outliers."""
+        return [self.read_volts(1) for _ in range(n)]
 
 
 class BbbIioAdc(Adc):
@@ -26,12 +30,15 @@ class BbbIioAdc(Adc):
         self._path = f"/sys/bus/iio/devices/{device}/in_voltage{channel}_raw"
         self._scale = vref / 4095.0
 
-    def read_volts(self, n: int = 1) -> float:
-        total = 0
+    def read_samples(self, n: int = 1) -> List[float]:
+        out = []
         for _ in range(n):
             with open(self._path) as fh:
-                total += int(fh.read())
-        return total / n * self._scale
+                out.append(int(fh.read()) * self._scale)
+        return out
+
+    def read_volts(self, n: int = 1) -> float:
+        return sum(self.read_samples(n)) / n
 
 
 class Ads1115(Adc):
@@ -87,8 +94,11 @@ class Ads1115(Adc):
     def to_volts(self, code: int) -> float:
         return code * self.full_scale_v / 32768.0
 
+    def read_samples(self, n: int = 1) -> List[float]:
+        return [self.to_volts(self.convert(self.channel)) for _ in range(n)]
+
     def read_volts(self, n: int = 1) -> float:
-        return sum(self.to_volts(self.convert(self.channel)) for _ in range(n)) / n
+        return sum(self.read_samples(n)) / n
 
     def close(self) -> None:
         self._i2c.close()

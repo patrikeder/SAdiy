@@ -6,6 +6,8 @@ Wants=sadiy-pinmux.service
 [Service]
 # --bench-only until build_hw_engine exists: without it sweepd exits at once on hardware.
 # It touches no pin until a client opens bench mode. Remove the flag when sweeps work on hardware.
+# Messages go to stderr, so the journal has them: journalctl -u sweepd -f. The level comes from [log] level in
+# /etc/sadiy/local.toml (default info); for a one-off debug run use `systemctl edit sweepd` and add -v to ExecStart.
 # No User= on purpose: runs as root, the simple way to reach GPIO, SPI, I2C and config-pin.
 ExecStart=/usr/bin/python3 -m sadiy.server.sweepd --bench-only --rt --config /etc/sadiy/local.toml
 Environment=PYTHONPATH=/opt/sadiy/src

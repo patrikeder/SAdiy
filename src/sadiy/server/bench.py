@@ -18,17 +18,20 @@ Safety rules, enforced here and not in the client, so that any client gets them:
 """
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence
 
-from .. import patterns, pinmap
+from .. import logs, patterns, pinmap
 from ..drivers.adc import Ads1115
 from ..drivers.adf4351 import Adf4351, Output, Outputs, r4_enables_output, r4_with_outputs, register_of
 from ..drivers.pe4302 import PE4302
 from ..hal.base import BenchBackend, GpioLine
 from ..hal.fake import FakeBackend
+
+log = logging.getLogger(__name__)       # sadiy.server.bench: this module is never run as __main__
 
 AIN_MAX_CODE = 4095
 AIN_CHANNELS = 7
@@ -176,8 +179,10 @@ class Bench:
         try:
             return handler(cmd)
         except NeedsConfirm as exc:
+            log.debug("%s needs the operator's confirm: %s", cmd.get("cmd"), exc)
             return {"ok": False, "needs_confirm": True, "error": str(exc)}
         except (Refused, ValueError, TypeError, KeyError) as exc:
+            log.debug("%s refused: %s", cmd.get("cmd"), exc)    # the client gets the reason in the reply
             return {"ok": False, "error": str(exc)}
         except (OSError, RuntimeError) as exc:                 # the board said no: leave it safe
             return {"ok": False, "error": self._fail(exc)}
@@ -187,11 +192,14 @@ class Bench:
         self.last_error = f"hardware error: {exc}. All lines returned to the safe state"
         if errors:
             self.last_error += " except: " + "; ".join(errors)
+        log.error("%s", self.last_error, exc_info=exc)
         return self.last_error
 
     def tick(self) -> None:
         """Called from the daemon loop: closes bench mode when its client has gone quiet."""
         if self.active and self._clock() - self._renewed > self.lease_s:
+            log.warning("bench client silent for %g s: closing bench mode and returning to the safe state",
+                        self.lease_s)
             self.close(f"no command from the client for {self.lease_s:g} s")
 
     # ------------------------------------------------------------ open, close, safe state
@@ -240,6 +248,9 @@ class Bench:
                 self._ads = None
                 bus.close()
                 warnings.append(f"ADS1115 not available: {exc}")
+        log.info("bench mode opened (%s backend)", self.backend.name)
+        for w in warnings:
+            log.warning("bench open: %s", w)
         reply = self._status({})
         reply.update(
             token=self.token, warnings=warnings,
@@ -286,6 +297,9 @@ class Bench:
         self.active = False
         self.token = None
         self.closed_reason = reason
+        log.info("bench mode closed%s", f": {reason}" if reason else "")
+        for e in errors:
+            log.warning("bench close: %s", e)
         return errors
 
     def _close_cmd(self, _cmd: dict) -> dict:
@@ -519,6 +533,7 @@ class Bench:
                 self._require_rf_off(f"raw word 0x{w:08X}")
 
     def _send_word(self, word: int) -> None:
+        log.log(logs.TRACE, "SPI word 0x%08X (R%d)", word, register_of(word))
         self._adf.write_word(word)
         reg = register_of(word)
         if reg == 4:
@@ -556,6 +571,8 @@ class Bench:
         self._adf.outputs = self._outputs
         self._last_r4 = r4_with_outputs(self._last_r4, self._outputs)
         self._adf.write_word(self._last_r4)
+        log.info("RF output main=%s aux=%s%s", "on" if main else "off", "on" if aux else "off",
+                 f" at {power} dBm" if main or aux else "")
         return {"ok": True, "rf": {"main": main, "aux": aux}, "sent": f"0x{self._last_r4:08X}", "ld": self._ld()}
 
     # ------------------------------------------------------------ ADCs
@@ -620,6 +637,8 @@ class Bench:
         run.started = run.next_t = self._clock()
         self._run = run
         self._last_run = None
+        log.info("pattern %s started: %d steps at %g Hz%s", pat.name, run.total, rate,
+                 ", looping" if run.loop else "")
         return {"ok": True, "pattern": self._pattern_status()}
 
     def service(self, budget_s: float = 0.01) -> None:
@@ -674,6 +693,11 @@ class Bench:
             "running": False, "name": run.pattern.name, "end": how, "steps": run.done, "loops": run.loops,
             "rate_hz": run.rate_hz, "measured_hz": run.measured_hz,
         }
+        log.info("pattern %s %s after %d steps, measured %.0f Hz of %g Hz asked", run.pattern.name, how,
+                 run.done, run.measured_hz, run.rate_hz)
+        if run.measured_hz and run.measured_hz < 0.9 * run.rate_hz:
+            log.warning("pattern %s ran at %.0f Hz instead of %g Hz: the backend can not keep up",
+                        run.pattern.name, run.measured_hz, run.rate_hz)
         if any(p in ATT_PINS for p in run.pins):
             self._att_safe()
         for pid in run.pins:
