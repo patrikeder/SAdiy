@@ -137,6 +137,7 @@ class Bench:
         self._att: Optional[PE4302] = None
         self._att_log: List[List] = []
         self._spi_bus = None
+        self._spi_problem = ""
         self._adf: Optional[Adf4351] = None
         self._ads: Optional[Ads1115] = None
         self._outputs = Outputs()
@@ -225,6 +226,7 @@ class Bench:
             self._adf = Adf4351(self._spi_bus, self.pfd_hz, self.mod_max)        # writes outputs-off R4
             self._last_r4 = self._adf.r4_word()
         except (OSError, ImportError) as exc:
+            self._spi_problem = str(exc)
             warnings.append(f"SPI not available, the RF output state is unknown: {exc}")
         try:
             bus = self.backend.i2c()
@@ -502,9 +504,12 @@ class Bench:
                 "pins": self._levels()}
 
     # ------------------------------------------------------------ synthesizer
-    def _check_words(self, words: Sequence[int]) -> None:
+    def _require_spi(self) -> None:
         if self._adf is None:
-            raise Refused("SPI is not available")
+            raise Refused(f"SPI is not available: {self._spi_problem}")
+
+    def _check_words(self, words: Sequence[int]) -> None:
+        self._require_spi()
         for w in words:
             if not isinstance(w, int) or not 0 <= w <= 0xFFFFFFFF:
                 raise Refused(f"{w!r} is not a 32-bit word")
@@ -536,8 +541,7 @@ class Bench:
     def _rf(self, cmd: dict) -> dict:
         """Explicit RF output control. Turning on needs lock; turning off always works."""
         self._require_no_pattern()
-        if self._adf is None:
-            raise Refused("SPI is not available")
+        self._require_spi()
         main, aux = bool(cmd.get("main")), bool(cmd.get("aux"))
         power = int(cmd.get("power_dbm", -4))
         if main or aux:

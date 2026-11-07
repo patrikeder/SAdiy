@@ -21,7 +21,7 @@ NETS = [
     dict(id="SYN_DATA", dev="ADF4351", dpin="DAT", kind="spi", dir="SBC to board", bbb=18, rpi=19, mux="spi",
          note="32-bit words"),
     dict(id="SYN_LE", dev="ADF4351", dpin="LE", kind="spi", dir="SBC to board", bbb=17, rpi=24, mux="spi_cs",
-         note="used as SPI chip select; data latches on the rising edge at the end of a transfer"),
+         note="SPI0 CS0, which is /dev/spidevN.0 (N = bus number, spi_device = 0); used as SPI chip select; data latches on the rising edge at the end of a transfer"),
     dict(id="SYN_LD", dev="ADF4351", dpin="LD", kind="gpio", dir="board to SBC", bbb=23, rpi=35,
          note="digital lock detect output (Lock_Flag LED on the board), GPIO input; the MUX pin stays unused"),
     dict(id="SYN_CE", dev="ADF4351", dpin="CE", kind="reserved", dir="SBC to board", bbb=27, rpi=36,

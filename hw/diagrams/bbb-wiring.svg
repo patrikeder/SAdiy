@@ -74,6 +74,7 @@
 <text x="578.0" y="229.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" font-weight="bold" fill="#212529">P9.18  SPI0_D1 (MOSI) / GPIO0_4</text>
 <rect x="568.0" y="240.0" width="364.0" height="24.0" rx="5" fill="#d0ebff" stroke="#1971c2" stroke-width="1.5"/>
 <text x="578.0" y="257.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" font-weight="bold" fill="#212529">P9.17  SPI0_CS0 / GPIO0_5</text>
+<text x="922.0" y="257.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="end" font-weight="normal" fill="#6c757d">/dev/spidevN.0</text>
 <rect x="568.0" y="268.0" width="364.0" height="24.0" rx="5" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.5"/>
 <text x="578.0" y="285.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" font-weight="bold" fill="#212529">P9.23  GPIO1_17</text>
 <text x="922.0" y="285.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="end" font-weight="normal" fill="#6c757d">input</text>

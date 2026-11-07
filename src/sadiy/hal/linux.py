@@ -119,6 +119,7 @@ class LinuxBackend(BenchBackend):
     """The real board. Bus and device numbers come from the [bench] config section."""
 
     name = "BBB (sysfs GPIO, spidev, i2c-dev, IIO)"
+    DEV = Path("/dev")
 
     def __init__(self, spi_bus: int = 1, spi_device: int = 0, spi_hz: int = 1_000_000, i2c_bus: int = 2,
                  i2c_address: int = 0x48, iio_device: str = "iio:device0") -> None:
@@ -137,7 +138,13 @@ class LinuxBackend(BenchBackend):
         return SysfsGpio(sysfs_number(number, self._bases), output, initial)
 
     def spi(self) -> SpidevBus:
-        return SpidevBus(*self._spi_args)
+        bus, device, _hz = self._spi_args
+        try:
+            return SpidevBus(*self._spi_args)
+        except OSError as exc:
+            found = ", ".join(sorted(p.name for p in self.DEV.glob("spidev*"))) or "none"
+            raise OSError(f"could not open /dev/spidev{bus}.{device} ({exc}). Present: {found}. "
+                          "Set spi_bus and spi_device under [bench] in local.toml, then restart sweepd") from exc
 
     def i2c(self) -> LinuxI2c:
         return LinuxI2c(*self._i2c_args)

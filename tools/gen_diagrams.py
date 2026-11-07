@@ -298,7 +298,7 @@ def sbc_rows_bbb():
 
     return [
         dict(t="group", label="SPI0 to ADF4351 board"),
-        r(22, "clk", "L"), r(18, "data", "L"), r(17, "le", "L"), r(23, "ld", "L", "input"),
+        r(22, "clk", "L"), r(18, "data", "L"), r(17, "le", "L", "/dev/spidevN.0"), r(23, "ld", "L", "input"),
         dict(t="group", label="GPIO to PE4302 board (V1..V6 on P8.7-P8.12)"),
         r("P8.7", "v1", "L"), r("P8.8", "v2", "L"), r("P8.9", "v3", "L"), r("P8.10", "v4", "L"), r("P8.11", "v5", "L"), r("P8.12", "v6", "L"),
         dict(t="group", label="I2C2 to ADS1115 (main ADC)"),
@@ -690,7 +690,8 @@ def main() -> None:
            "Highlighted pins are used by SAdiy. Pins 1 and 2 are at the top (the end nearest the 5 V DC jack; confirm with the board silkscreen).",
            BBB_P9, "bbb",
            ["AIN pins: 0 to 1.8 V absolute maximum. VDD_ADC (P9.32) is a 1.8 V reference output, do not load it.",
-            "P9.17, P9.18 and P9.22 are SPI0 (ADF4351), P9.19 and P9.20 are I2C2 (ADS1115). The PE4302 inputs V1..V6 are on P8.7-P8.12; P9.11-P9.16 stay free.",
+            "P9.17, P9.18 and P9.22 are SPI0 (ADF4351). P9.17 is CS0, which is /dev/spidevN.0 (N = bus number).",
+            "P9.19 and P9.20 are I2C2 (ADS1115). The PE4302 inputs V1..V6 are on P8.7-P8.12; P9.11-P9.16 stay free.",
             "Check config-pin / show-pins. SPI0 is the only hardware SPI used; the PE4302 is plain GPIO.",
             "P9.34 (GNDA_ADC) and P9.39 (AIN0) are optional, for the AIN0 cross-check only. The ADS1115 needs just I2C2 and board GND."],
            "P9 header (odd pins left, even pins right)")

@@ -774,3 +774,31 @@ def test_nothing_on_the_i2c_bus_closes_it_and_only_warns():
     assert r["ok"] and any("ADS1115 not available" in w for w in r["warnings"])
     assert ads.closed and "not available" in rig.cmd("adc")["error"]
     assert rig.cmd("close")["ok"]
+
+
+def test_spi_error_names_the_device_and_what_is_there(tmp_path, monkeypatch):
+    from sadiy.hal import linux
+
+    (tmp_path / "spidev0.0").touch()
+    (tmp_path / "spidev0.1").touch()
+
+    def no_device(self, *args):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(linux.SpidevBus, "__init__", no_device)
+    monkeypatch.setattr(linux.LinuxBackend, "DEV", tmp_path)
+    with pytest.raises(OSError, match=r"/dev/spidev1\.0 .*Present: spidev0\.0, spidev0\.1.*spi_bus"):
+        linux.LinuxBackend(spi_bus=1).spi()
+
+
+def test_refused_spi_command_says_why_not_just_that_it_failed():
+    rig = Rig()
+
+    def no_bus():
+        raise OSError("could not open /dev/spidev1.0")
+
+    rig.backend.spi = no_bus
+    rig.open()
+    for reply in (rig.cmd("spi", word=5, confirm=True), rig.cmd("rf", main=False)):
+        assert not reply["ok"] and "/dev/spidev1.0" in reply["error"]
+    assert "/dev/spidev1.0" in rig.cmd("pattern", action="start", spec={"kind": "adf4351_frame", "words": [5]}, confirm=True)["error"]

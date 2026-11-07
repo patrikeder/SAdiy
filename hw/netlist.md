@@ -10,7 +10,7 @@ BBB = BeagleBone Black headers P8 and P9. RPi = 40-pin header (physical pin numb
 |---|---|---|---|---|---|---|
 | SYN_CLK | ADF4351 | CLK | SBC to board | P9.22 SPI0_SCLK / GPIO0_2 | pin 23 GPIO11 / SPI0 SCLK | SPI mode 0, MSB first |
 | SYN_DATA | ADF4351 | DAT | SBC to board | P9.18 SPI0_D1 (MOSI) / GPIO0_4 | pin 19 GPIO10 / SPI0 MOSI | 32-bit words |
-| SYN_LE | ADF4351 | LE | SBC to board | P9.17 SPI0_CS0 / GPIO0_5 | pin 24 GPIO8 / SPI0 CE0 | used as SPI chip select; data latches on the rising edge at the end of a transfer |
+| SYN_LE | ADF4351 | LE | SBC to board | P9.17 SPI0_CS0 / GPIO0_5 | pin 24 GPIO8 / SPI0 CE0 | SPI0 CS0, which is /dev/spidevN.0 (N = bus number, spi_device = 0); used as SPI chip select; data latches on the rising edge at the end of a transfer |
 | SYN_LD | ADF4351 | LD | board to SBC | P9.23 GPIO1_17 | pin 35 GPIO19 / PCM_FS | digital lock detect output (Lock_Flag LED on the board), GPIO input; the MUX pin stays unused |
 | SYN_CE | ADF4351 | CE | SBC to board | P9.27 GPIO3_19 | pin 36 GPIO16 | optional; tie the CE header pin to 3V3 until needed |
 | ATT_V1 | PE4302 | V1 (0.5 dB) | SBC to board | P8.7 GPIO2_2 / TIMER4 | pin 29 GPIO5 | assumed weight; verify order and polarity with pe4302-walk |

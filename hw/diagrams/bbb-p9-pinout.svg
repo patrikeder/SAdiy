@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="920" height="837" viewBox="0 0 920 837"><defs></defs>
-<rect x="0" y="0" width="920" height="837" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="855" viewBox="0 0 920 855"><defs></defs>
+<rect x="0" y="0" width="920" height="855" fill="#ffffff"/>
 <text x="24.0" y="34.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="22" text-anchor="start" font-weight="bold" fill="#212529">BeagleBone Black header P9: pinout and use</text>
 <text x="24.0" y="58.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="13" text-anchor="start" font-weight="normal" fill="#6c757d">Highlighted pins are used by SAdiy. Pins 1 and 2 are at the top (the end nearest the 5 V DC jack; confirm with the board silkscreen).</text>
 <rect x="24.0" y="76.0" width="16.0" height="16.0" rx="4" fill="#d0ebff" stroke="#1971c2" stroke-width="1.8"/>
@@ -206,7 +206,8 @@
 <rect x="512.0" y="670.0" width="378.0" height="22.0" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="0.8"/>
 <text x="520.0" y="686.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#212529">GND</text>
 <text x="24.0" y="719.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">AIN pins: 0 to 1.8 V absolute maximum. VDD_ADC (P9.32) is a 1.8 V reference output, do not load it.</text>
-<text x="24.0" y="737.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">P9.17, P9.18 and P9.22 are SPI0 (ADF4351), P9.19 and P9.20 are I2C2 (ADS1115). The PE4302 inputs V1..V6 are on P8.7-P8.12; P9.11-P9.16 stay free.</text>
-<text x="24.0" y="755.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">Check config-pin / show-pins. SPI0 is the only hardware SPI used; the PE4302 is plain GPIO.</text>
-<text x="24.0" y="773.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">P9.34 (GNDA_ADC) and P9.39 (AIN0) are optional, for the AIN0 cross-check only. The ADS1115 needs just I2C2 and board GND.</text>
+<text x="24.0" y="737.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">P9.17, P9.18 and P9.22 are SPI0 (ADF4351). P9.17 is CS0, which is /dev/spidevN.0 (N = bus number).</text>
+<text x="24.0" y="755.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">P9.19 and P9.20 are I2C2 (ADS1115). The PE4302 inputs V1..V6 are on P8.7-P8.12; P9.11-P9.16 stay free.</text>
+<text x="24.0" y="773.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">Check config-pin / show-pins. SPI0 is the only hardware SPI used; the PE4302 is plain GPIO.</text>
+<text x="24.0" y="791.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6c757d">P9.34 (GNDA_ADC) and P9.39 (AIN0) are optional, for the AIN0 cross-check only. The ADS1115 needs just I2C2 and board GND.</text>
 </svg>
