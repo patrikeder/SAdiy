@@ -68,6 +68,25 @@ SPI and I2C pins can be driven as GPIO for a wiring check where the image has `c
 
 **Tested only on the fake backend.** Unverified on a real BBB: the pin map, pin multiplexing and `config-pin` mode names, PE4302 weights and polarity, ADS1115 registers and bus number, SPI device number, and the rate estimates. See `bringup.md` stage 0.
 
+## Synth tab
+
+Sets the ADF4351 to a preset LO frequency or to your own, and shows what it was told. It uses bench mode (same switch as the Pins tab, so a running sweep is stopped after asking; leaving returns the board to the safe state). The buttons work only while bench mode is on. The frequency is the **LO** (the ADF4351 output), not the RF input: for the default 10.7 MHz IF with the LO above the signal, LO = RF + 10.7 MHz.
+
+| Preset | LO | Why |
+|---|---|---|
+| 100 MHz CW (first light) | 100 MHz | the bring-up test frequency, integer-N (VCO 3.2 GHz / 32): the easiest lock to see |
+| LO for a 100 MHz / 250 MHz signal | 110.7 / 260.7 MHz | where a sweep puts the LO for the two simulated tones; fractional-N, so it exercises FRAC / MOD |
+| Sweep start / center / stop | 40.7 / 265.7 / 490.7 MHz | the LO over the full-span sweep (30 to 480 MHz RF), the stop is near the AD831's 500 MHz limit |
+| Image check | 89.3 MHz | the LO on the other side of 100 MHz that image rejection uses |
+
+The list follows what `sweepd` reports (RF range, IF, injection, PFD), so another IF in the config changes it; presets the ADF4351 or the mixer can not do are left out. Selecting one fills **Frequency** and **Output power** (-4, -1, +2, +5 dBm), which can be edited. The line below shows how the chip would make it (integer or fractional-N, INT, FRAC / MOD, VCO and divider) before anything is sent.
+
+**Apply** does what the daemon's `bench_synth` does in one step: outputs off, write R5 to R0, wait up to 0.2 s for lock detect. The main output (RFOUTA) turns on only if **Turn the main output on after lock** is ticked (off by default) and the PLL locked; it asks for a confirm every time. An unlocked PLL leaves the output off and says so in the status bar and the device log. Above 500 MHz the output is refused, the PLL can still be programmed to look at it elsewhere. **RF off** always works. The first Apply per bench session also asks the usual SPI confirm.
+
+**Readback.** The ADF4351 can not be read over SPI on this wiring (MUXOUT is not connected), so the readback is the words last written in this session, decoded the way the chip reads them (frequency = (INT + FRAC / MOD) x PFD / divider, prescaler, main and aux output and power), plus the live LD pin. It shows what the chip was told, not what it does: LD is the only measurement. Raw words from the Pins tab show up too. The same line is in the **status bar** on every tab, for example `LO 110.700000 MHz   LD 1   RF main -4 dBm`. Outside bench mode it asks `sweepd` for its status about every 1.5 s (5 s when it does not answer) and shows the LO of the last point tuned while sweeping: `LO 150.700 MHz (sweeping)   LD 1`. Nothing is shown when not connected, or `LO not programmed` right after entering bench mode (only the outputs-off R4 was written).
+
+**Tested only on the fake backend**, like the Pins tab: the register words themselves are unverified against ADI's software (see `CLAUDE.md`, "Not done yet"). First light with this tab replaces sending the six words by hand: compare the words in the readback with ADI's software, then apply "100 MHz CW".
+
 ## Advanced tab
 
 - **Connection**: host and the two ports. On connect the GUI reads sweepd's settings and limits and adopts them (so it shows what a remote BBB is doing). Commands that sweepd rejects show its error in the status bar.
@@ -84,10 +103,12 @@ SPI and I2C pins can be driven as GPIO for a wiring check where the image has `c
 | `ui/sa_core.py` | axis, settings clamping, trace modes, peak search, markers, CSV: no Qt, unit-tested |
 | `ui/log_core.py` | the Device log's state: numbered, duplicate-free records, gap and restart detection, unread counters, levels: no Qt, unit-tested |
 | `ui/bench_tab.py` | the Pins tab: board drawing and controls |
+| `ui/synth_tab.py` | the Synth tab: presets, frequency and power, the readback (uses the Pins tab's bench session) |
+| `ui/synth_core.py` | presets from sweepd's status, plan preview, readback texts: no Qt, unit-tested |
 | `ui/bench_core.py` | bench session, confirm memory, input parsing, pattern preview, board layout and hit test: no Qt, unit-tested |
 | `ui/sweep_client.py` | ZeroMQ SUB (newest frame only, all log records, flags of the last frame) and REQ with short timeouts, `fetch_log` |
 | `ui/sim_runner.py` | starts / stops `sweepd --sim`, writes the temporary TOML override, keeps the log |
-| `tests/test_sa_gui_smoke.py`, `tests/test_bench_gui_smoke.py` | build the window offscreen, feed frames and flags, drive the Pins tab and the Device log, run the simulator end to end; skipped without PyQt5 / pyqtgraph |
+| `tests/test_sa_gui_smoke.py`, `tests/test_bench_gui_smoke.py`, `tests/test_synth_gui_smoke.py` | build the window offscreen, feed frames and flags, drive the Pins tab and the Device log, run the simulator end to end; skipped without PyQt5 / pyqtgraph |
 | `tests/test_log_core.py`, `tests/test_sweep_client_log.py` | log buffer logic; the client against real ZeroMQ sockets on localhost |
 
 ## Known limits

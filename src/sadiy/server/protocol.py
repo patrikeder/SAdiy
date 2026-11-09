@@ -7,6 +7,11 @@ Commands (REQ/REP, JSON):
   {"cmd": "set", "start_hz":..., "stop_hz":..., "points":..., "atten_db":..., "auto_atten":true|false,
            "averages":..., "image_reject": true|false}   (image_reject: two sweeps per trace, see core/sweep.py)
   {"cmd": "run"} | {"cmd": "stop"} | {"cmd": "status"}
+      status also has "lo" (if_hz, injection, pfd_hz, mod_max: what the LO presets are derived from) and "synth",
+      the ADF4351 readback: while bench mode is open the words written in this session decoded (f_out_hz, f_vco_hz,
+      rf_div, int_n, frac, mod, mode, prescaler, main / aux, words per register) plus the live lock detect "ld"
+      (source "bench"); while sweeping the LO of the last point tuned (source "sweep"); else null. The chip can
+      not be read over SPI on this wiring, so this is what it was told. `bench_status` carries the same "synth".
   {"cmd": "log", "since": seq, "level": "debug" | 10, "limit": n}
       -> {"ok": true, "entries": [{seq, t, level, name, msg, repeats, boot}, ...], "last_seq": n, "boot": id}
       Records the daemon kept, newer than `since`. A client calls it on connect and when it sees a gap in
@@ -22,6 +27,11 @@ that drives a line wired to a board input gets {"ok": false, "needs_confirm": tr
   {"cmd": "bench_atten", "db": 10.0 | "levels": [v1..v6], "raw": false, "confirm":...}
   {"cmd": "bench_spi", "word": n | "words": [n, ...], "confirm":...}
   {"cmd": "bench_rf", "main": bool, "aux": bool, "power_dbm": -4, "confirm":...}
+  {"cmd": "bench_synth", "f_hz": 110.7e6, "power_dbm": -4, "main": bool, "aux": bool, "confirm":..., "confirm_rf":...}
+      Program the PLL for one LO frequency: plan, outputs off, R5..R0, wait up to 0.2 s for lock detect, then the
+      output only if asked and locked. `confirm` is for driving the SPI lines, `confirm_rf` for turning an output
+      on; a missing one gives {"needs_confirm": true, "confirm_kind": "pins" | "rf"} before anything is written.
+      Reply: ok, locked (true / false / null without LD), note, ld, f_target_hz, f_actual_hz, sent, rf, synth.
   {"cmd": "bench_adc", "source": "ads1115", "channel": 0, "read": "single" | "regs"}
   {"cmd": "bench_adc", "source": "ain", "channel": 0, "n": 1}
   {"cmd": "bench_pattern", "action": "start", "spec": {...}, "rate_hz": 100, "loop": false, "confirm":..., "expert":...}

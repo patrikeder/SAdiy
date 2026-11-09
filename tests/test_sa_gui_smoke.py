@@ -41,7 +41,7 @@ def _frame(n=101, atten=10.0, start=100e6, step=1e6, seq=0):
 
 def test_window_builds_with_three_tabs(win):
     tabs = win.centralWidget()
-    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Spectrum", "Pins", "Advanced"]
+    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Spectrum", "Pins", "Synth", "Advanced"]
     assert "REF" in win.info.text() and "Start" in win.lbl_start.text()
 
 
@@ -157,7 +157,7 @@ def test_start_simulated_hardware_end_to_end(app):
         assert not w.dev_log.gap
         w.client.request({"cmd": "set", "points": 99999})                   # refused: a warning, live
         _spin(app, 15, lambda: "points must be 2..4001" in w.dev_log_view.toPlainText())
-        assert w.tabs.tabText(2).startswith("Advanced") and "1 warning" in w.status_log.text()
+        assert w.tabs.tabText(3).startswith("Advanced") and "1 warning" in w.status_log.text()
         # the sim tones from the Advanced tab show up in the trace: strongest peak is the 100 MHz tone or its image
         w.span_sb.setValue(20.0)
         w.center_sb.setValue(100.0)
@@ -187,13 +187,13 @@ def test_device_log_shows_entries_and_counts_unread(win):
     text = win.dev_log_view.toPlainText()
     assert "sweepd starting" in text and "PLL unlocked on 3 points" in text
     assert "fine detail" not in text                                        # below the default level (info)
-    assert win.tabs.tabText(2) == "Advanced (1 warning)"
+    assert win.tabs.tabText(3) == "Advanced (1 warning)"
     assert win.status_log.isVisibleTo(win) and win.status_log.text() == "1 warning"
     win._show_log_entries(win.dev_log.add_live([_entry(4, logging.ERROR, "SPI write failed")]))
-    assert win.tabs.tabText(2) == "Advanced (1 error, 1 warning)"
+    assert win.tabs.tabText(3) == "Advanced (1 error, 1 warning)"
     assert "SPI write failed" in win.status_msg.text()                      # errors also reach the status bar
-    win.tabs.setCurrentIndex(2)                                             # looking at it: nothing is unread
-    assert win.tabs.tabText(2) == "Advanced" and not win.status_log.isVisibleTo(win)
+    win.tabs.setCurrentWidget(win._advanced_page)                                             # looking at it: nothing is unread
+    assert win.tabs.tabText(3) == "Advanced" and not win.status_log.isVisibleTo(win)
 
 
 def test_device_log_level_pause_and_clear(win):

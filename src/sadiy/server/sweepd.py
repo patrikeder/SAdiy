@@ -178,8 +178,19 @@ class Sweepd:
                 "last_sweep": dataclasses.asdict(self.engine.last_stats) if self.engine is not None else None,
                 "log_seq": self.ring.last_seq if self.ring is not None else 0,
                 "limits": {"rf_min_hz": rf["rf_min_hz"], "rf_max_hz": rf["rf_max_hz"], "points_max": 4001},
+                "lo": {"if_hz": rf["if_hz"], "injection": rf["injection"], "pfd_hz": self.cfg["synth"]["pfd_hz"],
+                       "mod_max": self.cfg["synth"]["mod_max"]},
+                "synth": self.synth_readback(),
             }
         return {"ok": False, "error": f"unknown command {name!r}"}
+
+    def synth_readback(self) -> Optional[dict]:
+        """The ADF4351 for `status`: the bench's view of it while bench mode is open (words written, lock detect),
+        else the LO of the last sweep point when the engine's synth can say. None when nothing knows."""
+        if self.bench_active:
+            return self.bench.synth_state()
+        reader = getattr(self.engine.synth, "readback", None) if self.engine is not None else None
+        return reader() if reader is not None and self.running else None
 
     @property
     def bench_active(self) -> bool:

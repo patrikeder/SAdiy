@@ -802,3 +802,93 @@ def test_refused_spi_command_says_why_not_just_that_it_failed():
     for reply in (rig.cmd("spi", word=5, confirm=True), rig.cmd("rf", main=False)):
         assert not reply["ok"] and "/dev/spidev1.0" in reply["error"]
     assert "/dev/spidev1.0" in rig.cmd("pattern", action="start", spec={"kind": "adf4351_frame", "words": [5]}, confirm=True)["error"]
+
+
+# ---------------------------------------------------------------- bench_synth: preset in one step, readback
+def synth(rig, f_hz=110.7e6, **kw):
+    return rig.cmd("synth", f_hz=f_hz, **kw)
+
+
+def test_synth_programs_all_six_words_with_the_outputs_off(opened):
+    r = synth(opened, confirm=True)
+    assert r["ok"] and r["locked"] is True and r["note"] == "" and r["rf"] == {"main": False, "aux": False}
+    assert abs(r["f_actual_hz"] - 110.7e6) < 100
+    words = opened.sent()[-6:]
+    assert [w & 7 for w in words] == [5, 4, 3, 2, 1, 0] and not any(r4_enables_output(w) for w in words)
+    assert r["sent"] == [f"0x{w:08X}" for w in words]
+
+
+def test_synth_asks_for_the_spi_confirm_before_writing(opened):
+    before = len(opened.backend.spi_sent)
+    r = synth(opened)
+    assert r["needs_confirm"] and r["confirm_kind"] == "pins" and len(opened.backend.spi_sent) == before
+
+
+def test_synth_output_needs_lock_and_its_own_confirm(opened):
+    r = synth(opened, main=True, confirm=True)
+    assert r["needs_confirm"] and r["confirm_kind"] == "rf"
+    assert not any(r4_enables_output(w) for w in opened.sent())          # nothing was written yet
+    r = synth(opened, main=True, power_dbm=2, confirm=True, confirm_rf=True)
+    assert r["ok"] and r["locked"] and r["rf"] == {"main": True, "aux": False}
+    assert r4_enables_output(opened.sent()[-1])
+    assert opened.cmd("status")["synth"]["main"] == {"enabled": True, "power_dbm": 2}
+
+
+def test_synth_that_does_not_lock_leaves_the_output_off(opened):
+    opened.backend.lock_gpio = None                     # the fake PLL never reports lock
+    r = synth(opened, main=True, confirm=True, confirm_rf=True)
+    assert r["ok"] and r["locked"] is False and "did not lock" in r["note"]
+    assert r["rf"] == {"main": False, "aux": False} and not any(r4_enables_output(w) for w in opened.sent())
+    assert opened.clock.t > 100.0 + 0.19                # it waited for lock detect about 0.2 s
+
+
+def test_synth_turns_a_running_output_off_before_it_moves_the_pll(opened):
+    assert synth(opened, confirm=True, confirm_rf=True, main=True)["rf"]["main"]
+    before = len(opened.sent())
+    assert synth(opened, f_hz=250e6, confirm=True)["ok"]
+    words = opened.sent()[before:]
+    assert [w & 7 for w in words] == [4, 5, 4, 3, 2, 1, 0] and not any(r4_enables_output(w) for w in words)
+
+
+def test_synth_refuses_what_the_pll_or_the_mixer_can_not_take(opened):
+    assert "outside" in synth(opened, f_hz=10e6, confirm=True)["error"]
+    assert "power" in synth(opened, power_dbm=3, confirm=True)["error"]
+    r = synth(opened, f_hz=800e6, main=True, confirm=True, confirm_rf=True)
+    assert not r["ok"] and "AD831" in r["error"]
+    assert not any(r4_enables_output(w) for w in opened.sent())
+    assert synth(opened, f_hz=800e6, confirm=True)["ok"]           # to look at it elsewhere, output off
+
+
+def test_synth_is_refused_while_a_pattern_runs_or_without_bench_mode(rig):
+    assert not synth(rig)["ok"]
+    rig.open()
+    assert start(rig, {"kind": "walking", "signals": ["ATT_V1", "ATT_V2"]}, rate=10.0, loop=True)["ok"]
+    assert "pattern" in synth(rig, confirm=True)["error"]
+
+
+def test_status_has_the_decoded_synth_readback(opened):
+    s0 = opened.cmd("status")["synth"]
+    assert s0["programmed"] is False and s0["f_out_hz"] is None and s0["ld"] == 0
+    assert s0["main"] == {"enabled": False, "power_dbm": -4} and list(s0["words"]) == ["R4"]
+    synth(opened, f_hz=100e6, confirm=True)
+    s1 = opened.cmd("status")["synth"]
+    assert s1["programmed"] and abs(s1["f_out_hz"] - 100e6) < 1 and s1["mode"] == "integer-N" and s1["ld"] == 1
+    assert (s1["int_n"], s1["frac"], s1["rf_div"]) == (128, 0, 32)
+    assert list(s1["words"]) == ["R5", "R4", "R3", "R2", "R1", "R0"]
+    # raw words show up too, and the decoded output follows what was really written last
+    opened.cmd("spi", word=pack_r4(16, Outputs(), 200), confirm=True)
+    assert opened.cmd("status")["synth"]["rf_div"] == 16
+
+
+def test_daemon_status_reports_the_lo_and_the_synth(opened):
+    st = opened.daemon.apply({"cmd": "status"})
+    assert st["lo"] == {"if_hz": 10.7e6, "injection": "high", "pfd_hz": 25e6, "mod_max": 4095}
+    assert st["synth"]["source"] == "bench"
+    opened.cmd("close")
+    assert opened.daemon.apply({"cmd": "status"})["synth"] is None          # idle: nothing knows
+    assert opened.daemon.apply({"cmd": "run"})["ok"]
+    sw = opened.daemon.apply({"cmd": "status"})["synth"]
+    assert sw == {"source": "sweep", "f_out_hz": None, "ld": 1}              # nothing tuned yet
+    opened.daemon.step()
+    sw = opened.daemon.apply({"cmd": "status"})["synth"]
+    assert sw["source"] == "sweep" and sw["f_out_hz"] > 40e6 and sw["ld"] == 1

@@ -26,7 +26,9 @@ from typing import Callable, Dict, List, Optional, Sequence
 
 from .. import logs, patterns, pinmap
 from ..drivers.adc import Ads1115
-from ..drivers.adf4351 import Adf4351, Output, Outputs, r4_enables_output, r4_with_outputs, register_of
+from ..core.freqplan import LO_MAX_HZ
+from ..drivers.adf4351 import (POWER_CODE, Adf4351, Output, Outputs, decode_registers, r4_enables_output,
+                               r4_with_outputs, register_of)
 from ..drivers.pe4302 import PE4302
 from ..hal.base import BenchBackend, GpioLine
 from ..hal.fake import FakeBackend
@@ -52,6 +54,14 @@ class Refused(ValueError):
 
 class NeedsConfirm(Refused):
     """The command would drive a line wired to a board input and did not say `confirm`."""
+
+    kind = "pins"
+
+
+class NeedsRfConfirm(NeedsConfirm):
+    """The command would turn an RF output on and did not say `confirm_rf`."""
+
+    kind = "rf"
 
 
 def fake_backend() -> FakeBackend:
@@ -145,6 +155,7 @@ class Bench:
         self._ads: Optional[Ads1115] = None
         self._outputs = Outputs()
         self._last_r4: Optional[int] = None
+        self._regs: Dict[int, int] = {}   # last word written to each ADF4351 register in this session
         self._r0_sent = False
         self._run: Optional[_Run] = None
         self._last_run: Optional[dict] = None
@@ -169,7 +180,7 @@ class Bench:
         handler = {
             "bench_close": self._close_cmd, "bench_status": self._status, "bench_pin": self._pin,
             "bench_atten": self._atten, "bench_spi": self._spi, "bench_rf": self._rf,
-            "bench_adc": self._adc, "bench_pattern": self._pattern,
+            "bench_adc": self._adc, "bench_pattern": self._pattern, "bench_synth": self._synth,
         }.get(name)
         if handler is None:
             return {"ok": False, "error": f"unknown bench command {name!r}"}
@@ -180,7 +191,7 @@ class Bench:
             return handler(cmd)
         except NeedsConfirm as exc:
             log.debug("%s needs the operator's confirm: %s", cmd.get("cmd"), exc)
-            return {"ok": False, "needs_confirm": True, "error": str(exc)}
+            return {"ok": False, "needs_confirm": True, "confirm_kind": exc.kind, "error": str(exc)}
         except (Refused, ValueError, TypeError, KeyError) as exc:
             log.debug("%s refused: %s", cmd.get("cmd"), exc)    # the client gets the reason in the reply
             return {"ok": False, "error": str(exc)}
@@ -233,6 +244,7 @@ class Bench:
             self._spi_bus = self.backend.spi()
             self._adf = Adf4351(self._spi_bus, self.pfd_hz, self.mod_max)        # writes outputs-off R4
             self._last_r4 = self._adf.r4_word()
+            self._regs[4] = self._last_r4
         except (OSError, ImportError) as exc:
             self._spi_problem = str(exc)
             warnings.append(f"SPI not available, the RF output state is unknown: {exc}")
@@ -345,8 +357,12 @@ class Bench:
             return
         self._outputs = Outputs()
         self._adf.outputs = self._outputs
-        self._last_r4 = r4_with_outputs(self._last_r4, self._outputs)
-        self._adf.write_word(self._last_r4)
+        self._write_r4(r4_with_outputs(self._last_r4, self._outputs))
+
+    def _write_r4(self, word: int) -> None:
+        self._last_r4 = word
+        self._regs[4] = word
+        self._adf.write_word(word)
 
     # ------------------------------------------------------------ what may be driven
     def _check_drive(self, pins: Sequence[pinmap.Pin], cmd: dict, as_gpio: bool = True) -> None:
@@ -417,6 +433,17 @@ class Bench:
         line = self._lines.get(LD_PIN)
         return None if line is None else line.read()
 
+    def synth_state(self) -> Optional[dict]:
+        """The ADF4351 as far as it can be known: the words written in this session, decoded (the chip can not
+        be read back), and the live lock detect level. None without SPI."""
+        if self._adf is None:
+            return None
+        state = decode_registers(self._regs, self.pfd_hz)
+        state["source"] = "bench"
+        state["ld"] = self._ld()
+        state["programmed"] = 0 in self._regs and 1 in self._regs      # R0 and R1 were sent, not only an R4
+        return state
+
     def _pattern_status(self) -> Optional[dict]:
         run = self._run
         if run is None:
@@ -431,6 +458,7 @@ class Bench:
             "ok": True, "active": True, "owner": True, "pins": self._levels(), "ld": self._ld(),
             "attenuation_db": self._att_db(),
             "rf": {"main": self._outputs.main.enabled, "aux": self._outputs.aux.enabled},
+            "synth": self.synth_state(),
             "pattern": self._pattern_status(), "last_error": self.last_error,
             "spi": self._adf is not None, "ads1115": self._ads is not None,
         }
@@ -536,6 +564,7 @@ class Bench:
         log.log(logs.TRACE, "SPI word 0x%08X (R%d)", word, register_of(word))
         self._adf.write_word(word)
         reg = register_of(word)
+        self._regs[reg] = word
         if reg == 4:
             self._last_r4 = word
             self._outputs = Outputs()
@@ -567,13 +596,71 @@ class Bench:
             if not cmd.get("confirm"):
                 raise NeedsConfirm("This turns an ADF4351 RF output on. The other output of the pair must be terminated.")
         self._ensure_bus(SPI_PINS)
+        self._set_outputs(main, aux, power)
+        return {"ok": True, "rf": {"main": main, "aux": aux}, "sent": f"0x{self._last_r4:08X}", "ld": self._ld()}
+
+    def _set_outputs(self, main: bool, aux: bool, power: int) -> None:
+        """Write the R4 that switches the outputs (the caller has checked lock and confirm)."""
         self._outputs = Outputs(main=Output(main, power) if main else Output(), aux=Output(aux, power) if aux else Output())
         self._adf.outputs = self._outputs
-        self._last_r4 = r4_with_outputs(self._last_r4, self._outputs)
-        self._adf.write_word(self._last_r4)
+        self._write_r4(r4_with_outputs(self._last_r4, self._outputs))
         log.info("RF output main=%s aux=%s%s", "on" if main else "off", "on" if aux else "off",
                  f" at {power} dBm" if main or aux else "")
-        return {"ok": True, "rf": {"main": main, "aux": aux}, "sent": f"0x{self._last_r4:08X}", "ld": self._ld()}
+
+    LOCK_POLLS = 40         # lock detect is read this often, LOCK_POLL_S apart: 0.2 s in all
+    LOCK_POLL_S = 0.005
+
+    def _synth(self, cmd: dict) -> dict:
+        """Program the PLL for one frequency in a single step: plan, outputs off, R5..R0, wait for lock, and only if
+        asked and locked, the outputs on. `f_hz` is the ADF4351 output (the LO), not the RF input frequency.
+        {"f_hz", "power_dbm", "main", "aux"}; `confirm` for the SPI lines, `confirm_rf` for turning an output on
+        (both asked before anything is written). A PLL that does not lock leaves the outputs off and says so."""
+        self._require_no_pattern()
+        self._require_spi()
+        f_hz = float(cmd["f_hz"])
+        power = int(cmd.get("power_dbm", -4))
+        main, aux = bool(cmd.get("main")), bool(cmd.get("aux"))
+        if power not in POWER_CODE:
+            raise Refused(f"output power must be one of {sorted(POWER_CODE)} dBm")
+        pll = self._adf.plan(f_hz)                      # ValueError: outside the ADF4351 range -> refused
+        if main or aux:
+            if f_hz > LO_MAX_HZ:
+                raise Refused(f"{f_hz / 1e6:.3f} MHz is above the {LO_MAX_HZ / 1e6:g} MHz the AD831 LO input takes: "
+                              "the output stays off (program it without the output to look at it elsewhere)")
+        self._adf.outputs = Outputs()
+        words = self._adf.registers(pll)                # ValueError: INT outside the prescaler's range -> refused
+        self._check_drive([pinmap.PINS[p] for p in SPI_PINS], cmd, as_gpio=False)
+        if (main or aux) and not cmd.get("confirm_rf"):
+            raise NeedsRfConfirm("This turns an ADF4351 RF output on once the PLL is locked. "
+                                 "The other output of the pair must be terminated.")
+        self._ensure_bus(SPI_PINS)
+        self._rf_off()                                  # nothing unlocked reaches the mixer while the PLL moves
+        for w in words:
+            self._send_word(w)
+        ld = self._ld()
+        for _ in range(self.LOCK_POLLS):
+            if ld != 0:                                 # locked, or no lock detect line to wait for
+                break
+            self._sleep(self.LOCK_POLL_S)
+            ld = self._ld()
+        note = ""
+        if main or aux:
+            if ld == 1:
+                self._set_outputs(main, aux, power)
+            else:
+                note = ("the PLL did not lock (LD is low): RF outputs stay off" if ld == 0 else
+                        "no lock detect line: RF outputs stay off")
+        log.info("synth: LO %.6f MHz (%s, INT %d FRAC %d MOD %d, /%d, VCO %.3f MHz), LD %s%s", pll.f_actual_hz / 1e6,
+                 "integer-N" if pll.frac == 0 else "fractional-N", pll.int_n, pll.frac, pll.mod, pll.rf_div,
+                 pll.f_vco_hz / 1e6, ld, f", {note}" if note else "")
+        if note:
+            log.warning("synth: %s", note)
+        return {
+            "ok": True, "locked": None if ld is None else bool(ld), "note": note, "ld": ld,
+            "f_target_hz": f_hz, "f_actual_hz": pll.f_actual_hz, "sent": [f"0x{w:08X}" for w in words],
+            "rf": {"main": self._outputs.main.enabled, "aux": self._outputs.aux.enabled},
+            "synth": self.synth_state(),
+        }
 
     # ------------------------------------------------------------ ADCs
     def _adc(self, cmd: dict) -> dict:

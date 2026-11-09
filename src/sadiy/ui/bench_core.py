@@ -230,6 +230,25 @@ class BenchSession:
             return {"ok": False, "error": "Cancelled", "cancelled": True}
         return reply
 
+    def set_synth(self, f_hz: float, power_dbm: int, rf_on: bool) -> dict:
+        """Program the PLL for `f_hz` (the LO). Two different confirms can come back: the one for driving the
+        SPI lines is remembered like for raw words; the one for turning an RF output on never is."""
+        cmd = {"cmd": "bench_synth", "f_hz": f_hz, "power_dbm": power_dbm, "main": rf_on, "aux": False}
+        if "ADF4351" in self._confirmed:
+            cmd["confirm"] = True
+        for _ in range(2):
+            reply = self._call(cmd)
+            if not reply.get("needs_confirm"):
+                return reply
+            if not self.ask(reply["error"]):
+                return {"ok": False, "error": "Cancelled", "cancelled": True}
+            if reply.get("confirm_kind") == "rf":
+                cmd = dict(cmd, confirm_rf=True)
+            else:
+                self._confirmed.add("ADF4351")
+                cmd = dict(cmd, confirm=True)
+        return self._call(cmd)
+
     def read_ads1115(self, channel: int, single: bool = True) -> dict:
         return self._call({"cmd": "bench_adc", "source": "ads1115", "channel": channel,
                            "read": "single" if single else "regs"})

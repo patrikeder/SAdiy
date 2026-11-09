@@ -194,6 +194,61 @@ def pack_r5() -> int:
     return (0b01 << 22) | (0b11 << 19) | 0b101
 
 
+# --- Reading the words back -----------------------------------------------------------------------
+# The ADF4351 is write-only on this wiring (MUXOUT is not connected, R2 sets it to three-state), so a
+# "readback" is what the last words written say, decoded with the inverse of the pack_* functions
+# above, plus the live LD pin. It shows what the chip was told, not what it does.
+_POWER_OF_CODE = {code: dbm for dbm, code in POWER_CODE.items()}
+
+
+def unpack_r0(word: int) -> tuple:
+    """(INT, FRAC) of an R0 word."""
+    return (word >> 15) & 0xFFFF, (word >> 3) & 0xFFF
+
+
+def unpack_r1(word: int) -> tuple:
+    """(MOD, phase, prescaler 8/9) of an R1 word."""
+    return (word >> 3) & 0xFFF, (word >> 15) & 0xFFF, bool((word >> 27) & 1)
+
+
+def unpack_r4(word: int) -> tuple:
+    """(RF divider, Outputs) of an R4 word."""
+    outputs = Outputs(
+        main=Output(bool(word & _R4_MAIN_ENABLE), _POWER_OF_CODE[(word >> _R4_MAIN_POWER_SHIFT) & 3]),
+        aux=Output(bool(word & _R4_AUX_ENABLE), _POWER_OF_CODE[(word >> _R4_AUX_POWER_SHIFT) & 3]),
+    )
+    return 1 << ((word >> _R4_RF_DIV_SHIFT) & 7), outputs
+
+
+def decode_registers(words: dict, pfd_hz: float) -> dict:
+    """What the last words written to each register (`words`: register number -> word) set up.
+
+    Always has the keys "words" (hex per register, R5 down to R0, only those written), "main" and "aux"
+    (enabled, power_dbm; from R4, None while no R4 is known). The PLL fields (rf_div, int_n, frac, mod, mode,
+    f_vco_hz, f_out_hz) are None until R0, R1 and R4 are all known. The frequency is
+    (INT + FRAC / MOD) * PFD / divider, as the chip computes it.
+    """
+    out: dict = {
+        "words": {f"R{r}": f"0x{words[r]:08X}" for r in sorted(words, reverse=True)},
+        "main": None, "aux": None, "rf_div": None, "int_n": None, "frac": None, "mod": None, "mode": None,
+        "prescaler": None, "f_vco_hz": None, "f_out_hz": None,
+    }
+    if 4 in words:
+        out["rf_div"], outputs = unpack_r4(words[4])
+        out["main"] = {"enabled": outputs.main.enabled, "power_dbm": outputs.main.power_dbm}
+        out["aux"] = {"enabled": outputs.aux.enabled, "power_dbm": outputs.aux.power_dbm}
+    if 0 in words:
+        out["int_n"], out["frac"] = unpack_r0(words[0])
+    if 1 in words:
+        out["mod"], _phase, p89 = unpack_r1(words[1])
+        out["prescaler"] = "8/9" if p89 else "4/5"
+    if None not in (out["int_n"], out["frac"], out["mod"], out["rf_div"]) and out["mod"] >= 2:
+        out["mode"] = "integer-N" if out["frac"] == 0 else "fractional-N"
+        out["f_vco_hz"] = (out["int_n"] + out["frac"] / out["mod"]) * pfd_hz
+        out["f_out_hz"] = out["f_vco_hz"] / out["rf_div"]
+    return out
+
+
 class Adf4351:
     def __init__(self, spi: SpiBus, pfd_hz: float, mod_max: int = 4095, cp_index: int = DEFAULT_CP_INDEX,
                  low_spur: bool = False) -> None:

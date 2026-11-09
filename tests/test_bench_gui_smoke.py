@@ -58,7 +58,7 @@ def click_canvas(tab, x, y):
 def test_tabs(rig):
     win, *_ = rig
     tabs = win.centralWidget()
-    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Spectrum", "Pins", "Advanced"]
+    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Spectrum", "Pins", "Synth", "Advanced"]
 
 
 def test_board_paints(rig):

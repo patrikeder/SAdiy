@@ -68,6 +68,10 @@ class SimSynth:
         self._unlocked = any(a <= point.f_rf_hz <= b for a, b in self.unlocked_rf_ranges)
         self.chain.pll_unlocked = self._unlocked
 
+    def readback(self) -> dict:
+        """What a status request shows while sweeping: the LO of the last point tuned, and lock detect."""
+        return {"source": "sweep", "f_out_hz": self.chain.lo_hz or None, "ld": int(self.locked())}
+
     def locked(self) -> bool:
         """Lock detect. Fails inside the ranges given for testing the lock gating (`[sim] unlock_ranges_hz`)."""
         return not self._unlocked

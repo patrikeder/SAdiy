@@ -25,9 +25,11 @@ from ..core.sweep import FLAGS_UNRELIABLE, flag_names
 from ..logs import format_entry
 from . import log_core
 from . import sa_core as core
+from . import synth_core
 from .bench_tab import PinsTab
 from .sim_runner import SimRunner
 from .sweep_client import SweepClient
+from .synth_tab import SynthTab
 
 C_BG = "#000000"
 C_GRID = "#1f6f1f"
@@ -225,6 +227,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log_fetch_tries = 0
         self._bad_seen = 0
         self._last_note = None
+        self._synth_info = synth_core.LoInfo()
+        self._synth = None                  # the ADF4351 readback shown in the status bar (see _update_synth)
+        self._synth_t = 0.0
+        self._synth_every_s = 1.5
 
         tabs = QtWidgets.QTabWidget()
         self.tabs = tabs
@@ -232,6 +238,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pins = PinsTab(self.client.request, self._stop, self._msg, attenuator["weights_db"], attenuator["active_high"])
         tabs.addTab(self._build_spectrum_tab(host), "Spectrum")
         tabs.addTab(self.pins, "Pins")
+        self.synth_tab = SynthTab(self.pins, self._msg)
+        tabs.addTab(self.synth_tab, "Synth")
         self._advanced_page = self._build_advanced_tab(host, pub_port, rep_port)
         tabs.addTab(self._advanced_page, "Advanced")
         tabs.currentChanged.connect(lambda _i: self._update_log_badge())
@@ -248,6 +256,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status_log.hide()
         self.statusBar().addWidget(self.status_conn)
         self.statusBar().addWidget(self.status_msg, 1)
+        self.status_synth = QtWidgets.QLabel("")
+        self.status_synth.setFont(_mono())
+        self.status_synth.setToolTip("ADF4351 readback: the LO the last words set, lock detect and RF outputs. "
+                                     "The chip can not be read; this is what was written (Synth tab).")
+        self.statusBar().addPermanentWidget(self.status_synth)
         self.statusBar().addPermanentWidget(self.status_log)
         self.statusBar().addPermanentWidget(self.status_warn)
 
@@ -671,6 +684,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if not r or not r.get("ok"):
             return False
         self.limits.apply_server(r.get("limits", {}))
+        info = synth_core.LoInfo.from_status(r)
+        if info != self._synth_info:
+            self._synth_info = info
+            self.synth_tab.set_info(info)
+        self._synth = r.get("synth")
         self.settings.apply_server(r.get("settings", {}))
         self._remote_running = bool(r.get("running", True))
         self.synced = True
@@ -847,8 +865,26 @@ class MainWindow(QtWidgets.QMainWindow):
             self._update_sim_status()
         frame = self.client.poll_latest()
         self._poll_dev_log()
+        self._update_synth()
         if frame is not None:
             self.handle_frame(*frame, flags=self.client.last_flags)
+
+    def _update_synth(self) -> None:
+        """The ADF4351 readback in the status bar and the Synth tab. In bench mode it comes with the Pins tab's
+        own polling; otherwise sweepd's status is asked every `_synth_every_s` (longer when it does not answer)."""
+        self.synth_tab.refresh()
+        if not self.client.connected:
+            self._synth = None
+        elif self.pins.session.active:
+            self._synth = self.pins.session.status.get("synth")
+        elif self.synced and time.monotonic() - self._synth_t >= self._synth_every_s:
+            r = self.client.request({"cmd": "status"}, 150)
+            ok = bool(r and r.get("ok"))
+            self._synth = r.get("synth") if ok else None
+            self._synth_every_s = 1.5 if ok else 5.0
+            self._synth_t = time.monotonic()
+        self.status_synth.setText(synth_core.status_text(self._synth))
+        self.synth_tab.show_readback(self._synth)
 
     def handle_frame(self, header: dict, p, flags=None) -> None:
         axis = core.Axis.from_header(header)

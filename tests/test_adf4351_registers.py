@@ -199,3 +199,32 @@ def test_tune_writes_the_six_words_and_remembers_the_divider():
     assert [register_of(w) for w in sent(spi)] == [5, 4, 3, 2, 1, 0]
     assert sent(spi) == dev.registers(pt.pll)
     assert dev.r4_word() == sent(spi)[1]                        # divider carried over to later R4 writes
+
+
+# --- readback: decoding the words that were written ---------------------------------------------
+
+def test_decode_registers_inverts_the_packing_for_every_sweep_point():
+    from sadiy.drivers.adf4351 import decode_registers
+
+    dev, _ = make()
+    dev.set_outputs(Outputs(main=Output(True, 2), aux=Output(False, -1)))
+    for pt in build_sweep(30e6, 480e6, 101, 10.7e6, "high", 25e6):
+        words = dev.registers(pt.pll)
+        d = decode_registers({register_of(w): w for w in words}, 25e6)
+        assert (d["int_n"], d["frac"], d["mod"], d["rf_div"]) == (pt.pll.int_n, pt.pll.frac, pt.pll.mod, pt.pll.rf_div)
+        assert abs(d["f_out_hz"] - pt.pll.f_actual_hz) < 1e-3
+        assert d["mode"] == ("integer-N" if pt.pll.frac == 0 else "fractional-N")
+        assert d["main"] == {"enabled": True, "power_dbm": 2} and d["aux"]["enabled"] is False   # a disabled output keeps no power
+        assert list(d["words"]) == ["R5", "R4", "R3", "R2", "R1", "R0"]
+
+
+def test_decode_registers_knows_only_what_was_written():
+    from sadiy.drivers.adf4351 import decode_registers, pack_r4
+
+    d = decode_registers({4: pack_r4(8, Outputs(), 200)}, 25e6)
+    assert d["rf_div"] == 8 and d["f_out_hz"] is None and d["mode"] is None and d["main"]["enabled"] is False
+    assert decode_registers({}, 25e6)["words"] == {} and decode_registers({}, 25e6)["main"] is None
+    # 8/9 prescaler is reported from R1
+    dev, _ = make()
+    d = decode_registers({register_of(w): w for w in dev.registers(plan_pll(4.0e9, 25e6))}, 25e6)
+    assert d["prescaler"] == "8/9" and abs(d["f_out_hz"] - 4.0e9) < 10
