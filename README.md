@@ -109,7 +109,7 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 | `src/sadiy/patterns.py` | pin patterns and SPI frames, for logic analyzer comparison |
 | `config/` | TOML configuration; values marked VERIFY need checking on the real boards |
 | `hw/` | wiring, diagrams, netlist, per-board notes, test points, missing parts, adapter board (KiCad) |
-| `docs/` | architecture, bring-up plan, GUI manual |
+| `docs/` | architecture, bring-up plans, GUI manual, `handoff.md` (starting on another PC) |
 | `deploy/` | BBB setup notes, systemd units, install, update and pin mode scripts, example local config |
 | `sna/` | second project: a scalar network analyzer reusing the same chain |
 | `tools/` | bring-up and calibration helpers, `gen_diagrams.py`, `make_bbb_package.py` |

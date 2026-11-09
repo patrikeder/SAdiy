@@ -11,3 +11,5 @@ cal/*.json
 captures/
 *.sr
 *.csv
+# personal Claude Code overrides (a shared .claude/settings.json, if any, is committed)
+.claude/settings.local.json
