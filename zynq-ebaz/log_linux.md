@@ -44,3 +44,6 @@ Current state in one line (update at each entry): **S8 runtime-load parts prepar
 - Risk: runtime reconfiguration interrupts the Ethernet PHY clock and MII (they run through the PL). The script bounces eth0; fallback is a BOOT.BIN with the engine bitstream baked in.
 - Still needs the SD card, the board IP and the user. R's checks 1 to 7 in handover-F2 are the S9 list; S9 needs the board and DSLogic.
 - Fallback boot file built: `images/linux/BOOT_engine.BIN` (engine bitstream baked in; copy to the SD FAT partition as BOOT.BIN). Image rebuilt without UIO: wic/BOOT.BIN/image.ub current.
+
+## 2026-11-14 merged to main
+- `linux` merged into `main` (8a21902) at the user's request: Phase 1 flow, pins.toml, deploy scripts, devmem.py, logs. Session R: `git merge main` to get `pins.toml`/`gen_xdc.py` (your `check_pins.sh` then uses the master file). Session L continues on `linux`.
