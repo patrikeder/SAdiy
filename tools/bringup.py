@@ -11,12 +11,13 @@
   adf4351-pattern --word 0x00580005 [--word ...]
                            SPI frame for ADF4351 register words (MSB first, 32 clocks each)
   gpio-map                 run ON THE SBC, read-only: pin map number and sysfs number of every pin we use
+                           (--platform ebaz before the command: EMIO offsets 54 + n of the EBAZ4205)
   pll --mhz 110.7          divider / INT / FRAC / MOD, the real output frequency and the six register words
   sim-sweep                one simulated sweep, prints the strongest points
 """
 import argparse
 
-from sadiy import config, patterns, pinmap
+from sadiy import config, patterns, pinmap, platforms
 from sadiy.bringup import walk_lines
 from sadiy.core.freqplan import build_sweep, plan_pll
 from sadiy.drivers.adf4351 import Adf4351
@@ -52,7 +53,29 @@ def cmd_walk(args):
     walk_lines(lines, active_high)
 
 
-def cmd_gpio_map(_args):
+def _ebaz_gpio_map(pm):
+    """EBAZ4205: the EMIO GPIOs sit behind the PS GPIO chip; Linux offset = 54 + n (gpioget/gpioset use it)."""
+    from pathlib import Path
+
+    bases = []
+    for chip in sorted(Path("/sys/class/gpio").glob("gpiochip*")):
+        try:
+            bases.append((chip.name, int((chip / "base").read_text()), int((chip / "ngpio").read_text())))
+        except (OSError, ValueError):
+            pass
+    base = next((b for _n, b, n in bases if n >= 118), None)        # the 118-line PS GPIO chip
+    print("PS GPIO chip base:", base if base is not None else "not found (not on the board? offsets shown only)")
+    print("pin       net       offset  sysfs")
+    for name in sorted(pm.by_net):
+        pin = pm.by_net[name]
+        if pin.gpio is not None:
+            print(f"{pin.id:<9} {name:<9} {pin.gpio:>6}  {'-' if base is None else base + pin.gpio}")
+
+
+def cmd_gpio_map(args):
+    pm = platforms.get(args.platform)
+    if pm.name != "bbb":
+        return _ebaz_gpio_map(pm)
     from sadiy.hal.linux import SysfsGpio, gpio_bank_bases, sysfs_number
 
     for chip in sorted(SysfsGpio.ROOT.glob("gpiochip*")):
@@ -96,6 +119,8 @@ def cmd_sim(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--platform", choices=platforms.NAMES, default=platforms.DEFAULT,
+                    help="board: bbb (default) or ebaz. Only that board's pins are printed (gpio-map)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("pe4302-pattern")
     a.add_argument("--db", type=float, default=10.0)

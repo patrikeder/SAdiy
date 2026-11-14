@@ -3,7 +3,7 @@
 Read by session R to check Linux status. Session R logs in `log_rtl.md`.
 Format: `## <date time> <topic>`, then facts. Keep entries short. Details live in `docs/STATUS-linux.md`.
 
-Current state in one line (update at each entry): **Board boots the Phase 1 image, baseline captured. S8 runtime-load parts prepared (via /dev/mem, no UIO), untested. Phase 1 XSA built, PetaLinux image built (BOOT.BIN, image.ub, wic); nothing tested on the board yet. Waiting for the user to write the SD card and give the board IP.**
+Current state in one line (update at each entry): **Image rebuilt 2026-11-14 18:32 from R's engine XSA with LCD/LED/key support, not booted yet. GUI/CLI platform choice (bbb|ebaz) done and dry-tested on the sim, uncommitted. Board boots the Phase 1 image, baseline captured. S8 runtime-load parts prepared (via /dev/mem, no UIO), untested. Phase 1 XSA built, PetaLinux image built (BOOT.BIN, image.ub, wic); nothing tested on the board yet. Waiting for the user to write the SD card and give the board IP.**
 
 ---
 
@@ -64,3 +64,21 @@ Current state in one line (update at each entry): **Board boots the Phase 1 imag
 ## 2026-11-14 S4 part 1 results
 - EMIO readback test ALL PASS (n = 0..6, offsets 54 + n, sysfs 512 + 54 + n); all EMIO lines are inputs after boot; LD reads 0. I2C scan inconclusive (nothing wired, Quick Write unsupported). Details in `docs/ebaz-bringup.md`.
 - Pin location on the DATA2 header, SPI frames on the DSLogic and everything with the adapter still need the user at the bench.
+
+## 2026-11-14 platform choice in GUI and CLI (uncommitted on `linux`)
+- Requested by the user: BBB or EBAZ selectable in the GUI or on the command line; a command line choice hides the other platform; figures updated.
+- New: `src/sadiy/pinmap_ebaz.py` (EBAZ4205 `PinMap`), `platforms.py`, `Layout`/`PinMap`/`BBB` in `pinmap.py`, `ebaz` column and `note_bbb`/`note_ebaz` in `NETS`. `[platform] name` in `config/default.toml`.
+- `sweepd --platform bbb|ebaz`: status and bench_open carry `platform`; `Bench(platform=...)`; `fake_backend("ebaz")` has no pin mux. Real hardware on ebaz exits with a message (S5/S7 not done).
+- GUI: `sa_gui --platform` fixes the board (selector hidden, other board not drawn); otherwise a selector in the Pins tab that follows sweepd; bench mode is refused when GUI and sweepd disagree. `tools/bringup.py --platform ebaz gpio-map` prints EMIO offsets.
+- Figures: `ebaz-wiring` and `ebaz-data1/2/3-pinout` (svg + png) and an EBAZ column in `hw/netlist.md`; `gen_diagrams.py --platform` writes one platform only. Existing BBB/RPi SVGs are byte-identical to before (checked).
+- Dry tested: 695 tests pass (new: `test_platforms.py`, `test_platform_gui_smoke.py`, `test_gen_diagrams.py`); real `sweepd --sim --platform ebaz|bbb` over ZeroMQ: status, bench_open, pin reads, attenuator, cross-platform pin ids refused. Nothing run on the board.
+- For R: nothing changes in the contract. `pinmap_ebaz.py` copies balls from `pins.toml`; a test fails if they diverge.
+
+## 2026-11-14 image rebuilt for R's new hardware (LCD, LEDs, keys), not booted yet
+- R's XSA of 17:09 (`build/fpga/ebaz_sadiy.xsa`, PS7 with SPI1 on EMIO and 18 EMIO GPIO) is now the hardware description of the PetaLinux project (snapshot `xsa/ebaz_sadiy_20261114_1709.xsa`). So **BOOT.BIN contains R's full bitstream** (verified: the whole `.bit.bin` is inside), FSBL/ps7_init match the PS7, and the engine registers at 0x43C00000 exist from boot (the runtime load is only needed to swap bitstreams). Phase 1 files are in `images/phase1-backup/`.
+- Device tree (`sw/deploy/petalinux/system-user.dtsi`): `&spi1` with `sitronix,st7789v` (DC line 62, RES line 63, 240x240 guessed, rotate 0), `gpio-leds` (lines 64..66), `gpio-keys` (67..71). Checked in the compiled `system.dtb`. dt-bindings macros are not available in this recipe: numeric values with comments.
+- Kernel: new fragment `sw/deploy/petalinux/kernel/user_lcd.cfg` (`FRAMEBUFFER_CONSOLE`, fonts). fbtft ST7789V, `LEDS_GPIO`, `KEYBOARD_GPIO` were already on; checked in the build's `.config`. Console on the LCD is tty1, serial stays ttyPS0.
+- `sw/tools/ebaz_lcd_test.py` (info, bars, clear, leds, keys) with 6 tests on a file backing; `docs/ebaz-bringup.md` has the checks to do after booting.
+- Phase 1 flow brought in line (`phase1.tcl`: SPI1 EMIO, 18 GPIO, tie-offs; `phase1_top.v`): LCD pads are not wired in Phase 1, so only the engine image shows anything on the panel.
+- SD card: copy `BOOT.BIN` and `image.ub` to the FAT partition (boot.scr unchanged); the rootfs (and `~/sadiy`) stays. The new wic is built too.
+- Open (needs the board): panel size, colour order (`bgr`), RAM offset, LED polarity. Nothing is tested on hardware.

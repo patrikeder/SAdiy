@@ -1,5 +1,10 @@
 # SAdiy default configuration. Values marked VERIFY must be checked on the real boards.
 
+[platform]
+# bbb (BeagleBone Black) or ebaz (EBAZ4205); `--platform` on the command line overrides it. ebaz-ps / ebaz-pl pick the
+# EBAZ sweep backend (PS only / with the PL engine) and show the same pins.
+name = "bbb"
+
 [rf]
 if_hz = 10.7e6
 injection = "high"        # LO = RF + IF

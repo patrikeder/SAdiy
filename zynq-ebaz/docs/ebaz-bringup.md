@@ -45,3 +45,29 @@ What this proves: line numbering 54 + n and the PL IOBUF path. What it does not 
 - Pin location: drive each line and probe the DATA2 pins (G20 CLK, G19 DAT, H20 LE, J19 LD in, K19 CE, J20 L16 L19 M18 L20 M20 V1..V6, K18 L17 I2C).
 - SPI frames from `/dev/spidev0.0` on the DSLogic (needs `adf4351-pattern`-style words; mode 0, 10 MHz, LE low for the whole word).
 - With the adapter connected: pad levels with pull-ups (expect V1..V6 = 1, CE = 1), PE4302 walk, ADF4351 at 100 MHz, ADS1115.
+
+
+## Adapter LCD, LEDs and keys (image rebuilt 2026-11-14, NOT yet booted)
+
+Session R's engine design changed the PS7 (SPI1 on EMIO, 18 EMIO GPIO lines) and wires the adapter's ST7789 LCD,
+three LEDs and five keys to Linux: see `docs/lcd-st7789.md`. The boot image is now built from R's XSA
+(`xsa/ebaz_sadiy_20261114_1709.xsa` in the PetaLinux project, a snapshot of `build/fpga/ebaz_sadiy.xsa`), so BOOT.BIN
+contains the engine bitstream (it was `BOOT_engine.BIN` before) and the PS7 and FSBL match. Phase 1 files: `BOOT.BIN`,
+`image.ub`, `boot.scr`, `system.dtb` are saved in `images/phase1-backup/` of the project.
+
+| What | Where |
+|---|---|
+| Device tree | `sw/deploy/petalinux/system-user.dtsi`: `&spi1` with `sitronix,st7789v` (DC = line 62, RES = 63), `gpio-leds` (64..66), `gpio-keys` (67..71) |
+| Kernel | fragment `sw/deploy/petalinux/kernel/user_lcd.cfg`: `FRAMEBUFFER_CONSOLE` and fonts. fbtft ST7789V, `LEDS_GPIO`, `KEYBOARD_GPIO`, `SPI_CADENCE` were in already |
+| Test on the board | `sw/tools/ebaz_lcd_test.py` (`info`, `bars`, `clear`, `leds`, `keys`) |
+
+With the framebuffer console the kernel messages and the login prompt also appear on the LCD (`tty1`); the serial
+console stays `ttyPS0`. Panel size (240x240 is a guess), colour order and RAM offset are the open points: `bars` shows them.
+Phase 1 (`rtl/vivado/phase1.tcl`) now has the same PS7 (SPI1 EMIO, 18 GPIO) but does not wire the LCD pads: a Phase 1 image
+shows nothing on the LCD.
+
+Checks after booting (user at the board, sudo needed for /dev and sysfs):
+1. `dmesg | grep -i -E "st7789|fbtft|spi1|fb0|Console: switching"`: the display driver binds, a framebuffer appears.
+2. `python3 ebaz_lcd_test.py info` then `sudo python3 ebaz_lcd_test.py bars`: border on all four sides, corners red / green / blue / yellow.
+3. `sudo python3 ebaz_lcd_test.py leds` and `keys`.
+4. The old checks still hold: eth0 up, `gpioinfo` now shows 118 lines with EMIO 0..17 (lines 54..71) in use by the leds / keys / display.

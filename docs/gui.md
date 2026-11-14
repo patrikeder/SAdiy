@@ -5,6 +5,7 @@ pip install -e .[ui]                      # PyQtGraph + PyQt5 (pyzmq is a core d
 python -m sadiy.ui.sa_gui --sim           # start simulated hardware here and connect to it
 python -m sadiy.ui.sa_gui --host <bbb-ip> --connect    # view a sweepd running on the BBB
 sadiy-gui --sim                           # same, after `pip install -e .`
+python -m sadiy.ui.sa_gui --platform ebaz --host <ebaz-ip> --connect   # fix the board: only the EBAZ4205 is shown
 ```
 
 On aarch64 (Raspberry Pi) PyPI has no PyQt5 wheel and pip would try to build it from source. Install `python3-pyqt5` (or `python3-pyqt6`, the GUI runs on Qt5 and Qt6) plus `python3-pyqtgraph python3-zmq python3-numpy` with apt, create the venv with `--system-site-packages` and run `pip install -e . --no-deps` (see the README quick start).
@@ -31,7 +32,14 @@ The status bar warns when the step is larger than RBW/2 (narrow signals read low
 
 ## Pins tab
 
-For wiring tests on the BBB. Everything goes through `sweepd`, so it works from a PC against a remote BBB. With `--sim` it drives a fake board; the top of the tab says SIMULATED.
+**Platform.** The tab draws the board `sweepd` runs on: the BeagleBone Black (headers P8 and P9) or the EBAZ4205 (connectors DATA2, DATA1, DATA3; pin ids like `DATA2.14`). Two ways to choose:
+
+- Without `--platform` the tab has a **Platform** selector. It follows `sweepd` as soon as the GUI connects (`status` and `bench_open` name the platform, `sweepd --platform bbb|ebaz` or `[platform] name` in its config) and can be changed by hand while bench mode is off. A simulator started from the Advanced tab runs the platform that is shown.
+- With `--platform bbb` or `--platform ebaz` the selector is hidden and the other board does not appear anywhere (drawing, pin list, text). If that `sweepd` runs on the other platform, bench mode is refused with a message that says so.
+
+The EBAZ4205 has no pin mux: the SPI and I2C pins are wired to the PS in the bitstream and can not be switched to GPIO, and there is no on-chip ADC input, so the AIN0 row of the ADC box is not shown. `sweepd --platform ebaz` runs only with `--sim` until the EBAZ backends exist (plan S5, S7).
+
+For wiring tests on the BBB or the EBAZ4205. Everything goes through `sweepd`, so it works from a PC against a remote BBB. With `--sim` it drives a fake board; the top of the tab says SIMULATED.
 
 ```
 cd /opt/sadiy && sudo PYTHONPATH=src python3 -m sadiy.server.sweepd --bench-only --config /etc/sadiy/local.toml   # on the BBB, or the service, see deploy/bbb-setup.md
@@ -102,13 +110,14 @@ The list follows what `sweepd` reports (RF range, IF, injection, PFD), so anothe
 | `ui/sa_gui.py` | Qt window (PyQtGraph display, controls, tabs) |
 | `ui/sa_core.py` | axis, settings clamping, trace modes, peak search, markers, CSV: no Qt, unit-tested |
 | `ui/log_core.py` | the Device log's state: numbered, duplicate-free records, gap and restart detection, unread counters, levels: no Qt, unit-tested |
-| `ui/bench_tab.py` | the Pins tab: board drawing and controls |
+| `ui/bench_tab.py` | the Pins tab: board drawing and controls, platform selector |
 | `ui/synth_tab.py` | the Synth tab: presets, frequency and power, the readback (uses the Pins tab's bench session) |
 | `ui/synth_core.py` | presets from sweepd's status, plan preview, readback texts: no Qt, unit-tested |
-| `ui/bench_core.py` | bench session, confirm memory, input parsing, pattern preview, board layout and hit test: no Qt, unit-tested |
+| `ui/bench_core.py` | bench session, confirm memory, input parsing, pattern preview, board layout and hit test (all take a `pinmap.PinMap`, default BBB): no Qt, unit-tested |
+| `pinmap.py`, `pinmap_ebaz.py`, `platforms.py` | the pin maps (`pinmap.BBB`, `pinmap_ebaz.EBAZ`) and `platforms.get(name)`; the layout of the drawn board is part of the map |
 | `ui/sweep_client.py` | ZeroMQ SUB (newest frame only, all log records, flags of the last frame) and REQ with short timeouts, `fetch_log` |
 | `ui/sim_runner.py` | starts / stops `sweepd --sim`, writes the temporary TOML override, keeps the log |
-| `tests/test_sa_gui_smoke.py`, `tests/test_bench_gui_smoke.py`, `tests/test_synth_gui_smoke.py` | build the window offscreen, feed frames and flags, drive the Pins tab and the Device log, run the simulator end to end; skipped without PyQt5 / pyqtgraph |
+| `tests/test_sa_gui_smoke.py`, `tests/test_bench_gui_smoke.py`, `tests/test_synth_gui_smoke.py`, `tests/test_platform_gui_smoke.py` | build the window offscreen, feed frames and flags, drive the Pins tab and the Device log, run the simulator end to end; skipped without PyQt5 / pyqtgraph |
 | `tests/test_log_core.py`, `tests/test_sweep_client_log.py` | log buffer logic; the client against real ZeroMQ sockets on localhost |
 
 ## Known limits

@@ -1,4 +1,4 @@
-"""The Pins tab: clickable BBB board, pin control, raw board access, check patterns.
+"""The Pins tab: clickable board (BBB or EBAZ4205, by pin map), pin control, raw board access, check patterns.
 
 Thin Qt layer over `bench_core.py`. It talks to `sweepd` through the same REQ socket as the rest of the
 GUI, so it works against a remote BBB and against the fake backend of `sweepd --sim`.
@@ -12,6 +12,7 @@ from typing import Callable, List, Optional
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from .. import patterns, pinmap
+from .. import platforms as platforms_mod
 from . import bench_core as core
 
 C_BOARD = "#17331f"
@@ -42,22 +43,24 @@ def _group(title: str, layout: QtWidgets.QLayout) -> QtWidgets.QGroupBox:
 
 
 class BoardCanvas(QtWidgets.QWidget):
-    """Draws the BBB headers and the three boards in canvas units, scaled to the widget."""
+    """Draws the SBC's headers and the boards in canvas units, scaled to the widget."""
 
-    def __init__(self, on_select: Callable[[str], None]) -> None:
+    def __init__(self, on_select: Callable[[str], None], pm: pinmap.PinMap = pinmap.BBB) -> None:
         super().__init__()
+        self.pm = pm
+        self.canvas_w, self.canvas_h = core.canvas_size(pm)
         self.on_select = on_select
         self.level_of: Callable[[str], tuple] = lambda _pid: (None, None)
         self.selected: Optional[str] = None
         self.expert = False
-        self._blocks = core.blocks()
-        self._wires = core.wires()
+        self._blocks = core.blocks(pm)
+        self._wires = core.wires(pm)
         self.setMinimumSize(620, 430)
         self.setMouseTracking(True)
 
     def _scale(self):
-        s = min(self.width() / core.CANVAS_W, self.height() / core.CANVAS_H)
-        return s, (self.width() - core.CANVAS_W * s) / 2, (self.height() - core.CANVAS_H * s) / 2
+        s = min(self.width() / self.canvas_w, self.height() / self.canvas_h)
+        return s, (self.width() - self.canvas_w * s) / 2, (self.height() - self.canvas_h * s) / 2
 
     def to_canvas(self, pos: QtCore.QPoint):
         s, ox, oy = self._scale()
@@ -68,16 +71,16 @@ class BoardCanvas(QtWidgets.QWidget):
         return QtCore.QPoint(int(x * s + ox), int(y * s + oy))
 
     def mousePressEvent(self, event) -> None:
-        pid = core.hit_test(*self.to_canvas(event.pos()))
+        pid = core.hit_test(*self.to_canvas(event.pos()), self.pm)
         if pid is not None:
             self.on_select(pid)
 
     def mouseMoveEvent(self, event) -> None:
-        pid = core.hit_test(*self.to_canvas(event.pos()))
+        pid = core.hit_test(*self.to_canvas(event.pos()), self.pm)
         if pid is None:
             self.setToolTip("")
         else:
-            pin = pinmap.PINS[pid]
+            pin = self.pm.pins[pid]
             self.setToolTip(f"{pid} {pin.name}" + (f" = {pin.net}" if pin.net else ""))
 
     def paintEvent(self, _event) -> None:
@@ -91,28 +94,29 @@ class BoardCanvas(QtWidgets.QWidget):
         bold = QtGui.QFont(small)
         bold.setBold(True)
         p.setFont(small)
-        self._draw_bbb(p, small, bold)
+        self._draw_board(p, small, bold)
         self._draw_wires(p)
         self._draw_pins(p, small, bold)
         self._draw_blocks(p, small, bold)
         self._draw_legend(p, small)
         p.end()
 
-    def _draw_bbb(self, p, small, bold) -> None:
-        top, height = 8.0, core.HEADER_TOP + core.ROWS * core.ROW_H - 2
+    def _draw_board(self, p, small, bold) -> None:
+        lay = self.pm.layout
+        bx, top, bw, height = lay.board_rect
         p.setPen(QtGui.QPen(QtGui.QColor("#0b1f12"), 2))
         p.setBrush(QtGui.QColor(C_BOARD))
-        p.drawRoundedRect(QtCore.QRectF(212, top, 410, height), 8, 8)
+        p.drawRoundedRect(QtCore.QRectF(bx, top, bw, height), 8, 8)
         p.setPen(QtGui.QColor("#ffffff"))
         p.setFont(bold)
-        p.drawText(QtCore.QRectF(212, top + 2, 410, 16), QtCore.Qt.AlignmentFlag.AlignHCenter, "BeagleBone Black")
-        for title, x in (("P8", 280.0), ("P9", 470.0)):
+        p.drawText(QtCore.QRectF(bx, top + 2, bw, 16), QtCore.Qt.AlignmentFlag.AlignHCenter, lay.board_title)
+        for title, x, _y in lay.headers:
             p.drawText(QtCore.QRectF(x, top + 22, 2 * core.PIN_W + 3, 16), QtCore.Qt.AlignmentFlag.AlignHCenter, title)
         p.setFont(small)
 
     def _draw_wires(self, p) -> None:
         for wire in self._wires:
-            pin = pinmap.PINS[wire.pin_id]
+            pin = self.pm.pins[wire.pin_id]
             level, _direction = self.level_of(wire.pin_id)
             width = 2.6 if wire.pin_id == self.selected else 1.5
             colour = QtGui.QColor(core.CATEGORY_COLOURS[pin.category])
@@ -131,8 +135,8 @@ class BoardCanvas(QtWidgets.QWidget):
             p.drawPath(path)
 
     def _draw_pins(self, p, small, bold) -> None:
-        for pin in pinmap.PINS.values():
-            x, y, w, h = core.pin_rect(pin)
+        for pin in self.pm.pins.values():
+            x, y, w, h = core.pin_rect(pin, self.pm)
             rect = QtCore.QRectF(x, y, w, h)
             fill = QtGui.QColor(core.CATEGORY_COLOURS[pin.category])
             locked = pin.access == pinmap.DISPLAY or (pin.access == pinmap.EXPERT and not self.expert)
@@ -182,7 +186,7 @@ class BoardCanvas(QtWidgets.QWidget):
 
     def _draw_row(self, p, row: core.BlockRow, small, bold) -> None:
         x, y, w, h = row.rect
-        pin = pinmap.PINS[row.pin_id]
+        pin = self.pm.pins[row.pin_id]
         if row.pin_id == self.selected:
             p.setPen(QtCore.Qt.PenStyle.NoPen)
             p.setBrush(QtGui.QColor("#ffe3e3"))
@@ -202,10 +206,10 @@ class BoardCanvas(QtWidgets.QWidget):
 
     def _draw_legend(self, p, small) -> None:
         p.setFont(small)
-        x, y = 8.0, core.CANVAS_H - 34
-        for key, label in core.CATEGORY_LABELS:
+        x, y = 8.0, self.canvas_h - 34
+        for key, label in self.pm.layout.legend:
             width = 16 + QtGui.QFontMetricsF(small).horizontalAdvance(label) + 12
-            if x + width > core.CANVAS_W - 4:
+            if x + width > self.canvas_w - 4:
                 x, y = 8.0, y + 16
             p.setPen(QtGui.QPen(QtGui.QColor("#343a40"), 0.6))
             p.setBrush(QtGui.QColor(core.CATEGORY_COLOURS[key]))
@@ -216,18 +220,23 @@ class BoardCanvas(QtWidgets.QWidget):
 
 
 class PinsTab(QtWidgets.QWidget):
+    """`platforms` are the names offered in the selector; one name (or `fixed`) hides the selector, which is
+    what a command line choice (`--platform`) does: the other platform is then not shown at all."""
+
     def __init__(self, request, stop_sweep: Callable[[], None], message: Callable[..., None],
-                 weights_db=patterns.DEFAULT_WEIGHTS_DB, active_high: bool = True) -> None:
+                 weights_db=patterns.DEFAULT_WEIGHTS_DB, active_high: bool = True,
+                 platform: str = platforms_mod.DEFAULT, fixed: bool = False) -> None:
         super().__init__()
+        self._request = request
+        self._weights_db = weights_db
+        self._active_high = active_high
         self._stop_sweep = stop_sweep
         self._message = message
         self.ask_user: Callable[[str], bool] = self._ask_dialog
-        self.session = core.BenchSession(request, lambda text: self.ask_user(text), weights_db, active_high)
+        self.fixed = fixed
         self.selected: Optional[str] = None
         self.pattern: Optional[patterns.Pattern] = None
-
-        self.canvas = BoardCanvas(self.select_pin)
-        self.canvas.level_of = self.session.level
+        self.pm = platforms_mod.get(platform)
 
         self.mode_btn = _button("Enter bench mode", self.toggle_mode, "Stops sweeping and takes over the pins")
         self.mode_label = QtWidgets.QLabel("Bench mode off. Connect to sweepd, then enter bench mode.")
@@ -235,28 +244,91 @@ class PinsTab(QtWidgets.QWidget):
         self.expert_chk = QtWidgets.QCheckBox("Expert: unlock free GPIO")
         self.expert_chk.setToolTip("Allows pins that are not in the pin map. Check first that nothing else uses them.")
         self.expert_chk.toggled.connect(self._on_expert)
+        self.platform_cb = QtWidgets.QComboBox()
+        for name in platforms_mod.NAMES:
+            self.platform_cb.addItem(platforms_mod.get(name).label, name)
+        self.platform_cb.setToolTip("The board sweepd runs on. It follows sweepd when connected; "
+                                    "fix it with --platform on the command line.")
+        self.platform_cb.currentIndexChanged.connect(self._on_platform_cb)
+        self.platform_lbl = QtWidgets.QLabel("Platform:")
         top = QtWidgets.QHBoxLayout()
+        top.addWidget(self.platform_lbl)
+        top.addWidget(self.platform_cb)
         top.addWidget(self.mode_btn)
         top.addWidget(self.expert_chk)
         top.addWidget(self.mode_label, 1)
+        self.platform_lbl.setVisible(not fixed)
+        self.platform_cb.setVisible(not fixed)
 
+        self._body_host = QtWidgets.QWidget()
+        self._body = QtWidgets.QHBoxLayout(self._body_host)
+        self._body.setContentsMargins(0, 0, 0, 0)
+        col = QtWidgets.QVBoxLayout(self)
+        col.addLayout(top)
+        col.addWidget(self._body_host, 1)
+
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.poll)
+        self._build_body()
+
+    # ------------------------------------------------------------ platform
+    def _build_body(self) -> None:
+        """Everything that depends on the pin map: session, drawn board, pages. Called again on a platform change."""
+        while self._body.count():
+            item = self._body.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        pm = self.pm
+        self.selected = None
+        self.session = core.BenchSession(self._request, lambda text: self.ask_user(text), self._weights_db,
+                                         self._active_high, pm)
+        self.canvas = BoardCanvas(self.select_pin, pm)
+        self.canvas.level_of = self.session.level
+        self.canvas.expert = self.expert_chk.isChecked()
         self.side = QtWidgets.QTabWidget()
         self.side.addTab(self._build_pin_page(), "Pin")
         self.side.addTab(self._scrolled(self._build_raw_page()), "Raw access")
         self.side.addTab(self._scrolled(self._build_pattern_page()), "Patterns")
         self.side.setFixedWidth(475)
-
-        body = QtWidgets.QHBoxLayout()
-        body.addWidget(self.canvas, 1)
-        body.addWidget(self.side)
-        col = QtWidgets.QVBoxLayout(self)
-        col.addLayout(top)
-        col.addLayout(body, 1)
-
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.poll)
+        self._body.addWidget(self.canvas, 1)
+        self._body.addWidget(self.side)
+        self.platform_cb.blockSignals(True)
+        self.platform_cb.setCurrentIndex(max(0, self.platform_cb.findData(pm.name)))
+        self.platform_cb.blockSignals(False)
         self._set_active_ui()
-        self.select_pin(pinmap.BY_NET["ATT_V1"].id)
+        self.select_pin(pm.by_net["ATT_V1"].id)
+
+    def platform(self) -> str:
+        return self.pm.name
+
+    def set_platform(self, name: str) -> bool:
+        """Switch the drawn board and pin map. Refused while bench mode is open or when fixed on the command line."""
+        name = platforms_mod.normalize(name)
+        if name == self.pm.name:
+            return True
+        if self.fixed or self.session.active:
+            return False
+        self.pm = platforms_mod.get(name)
+        self._build_body()
+        return True
+
+    def _on_platform_cb(self, _index: int) -> None:
+        name = self.platform_cb.currentData()
+        if name and not self.set_platform(name):
+            self.platform_cb.blockSignals(True)
+            self.platform_cb.setCurrentIndex(max(0, self.platform_cb.findData(self.pm.name)))
+            self.platform_cb.blockSignals(False)
+            self._message("Close bench mode before changing the platform")
+
+    def follow_server(self, name: Optional[str]) -> None:
+        """sweepd tells which board it runs on. A selector follows it; a fixed platform keeps to its choice
+        (and bench mode will then be refused by `BenchSession.open`)."""
+        if not name or self.fixed or self.session.active:
+            return
+        try:
+            self.set_platform(name)
+        except ValueError:
+            pass
 
     @staticmethod
     def _scrolled(page: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
@@ -386,6 +458,12 @@ class PinsTab(QtWidgets.QWidget):
         self.ain_label.setFont(_mono())
         self.ain_label.setWordWrap(True)
         g.addWidget(self.ain_label, 3, 0, 1, 4)
+        if not any(pin.ain is not None for pin in self.pm.pins.values()):    # EBAZ4205: no on-chip ADC input wired
+            for i in range(g.count()):
+                item = g.itemAt(i)
+                row = g.getItemPosition(i)[0]
+                if item.widget() is not None and row in (2, 3):
+                    item.widget().hide()
         col.addWidget(_group("ADC", g))
         col.addStretch(1)
         return page
@@ -452,13 +530,13 @@ class PinsTab(QtWidgets.QWidget):
         checked = set(self.checked_pins())
         self.pin_list.blockSignals(True)
         self.pin_list.clear()
-        for pin in pinmap.PINS.values():
+        for pin in self.pm.pins.values():
             if pin.access == pinmap.WIRED or (pin.access == pinmap.EXPERT and self.expert_chk.isChecked()):
                 label = f"{pin.id}  {pin.net}" if pin.net else f"{pin.id}  {pin.name}  (expert)"
                 item = QtWidgets.QListWidgetItem(label)
                 item.setData(QtCore.Qt.ItemDataRole.UserRole, pin.signal)
                 item.setFlags(QtCore.Qt.ItemFlag.ItemIsUserCheckable | QtCore.Qt.ItemFlag.ItemIsEnabled)
-                on = pin.signal in checked or (not checked and pin.net in pinmap.ATT_NETS)
+                on = pin.signal in checked or (not checked and pin.net in self.pm.att_nets)
                 item.setCheckState(QtCore.Qt.CheckState.Checked if on else QtCore.Qt.CheckState.Unchecked)
                 self.pin_list.addItem(item)
         self.pin_list.blockSignals(False)
@@ -534,7 +612,7 @@ class PinsTab(QtWidgets.QWidget):
         att = status.get("attenuation_db")
         if att is not None:
             self.att_label.setText(f"Attenuation: {att:g} dB")
-        for chk, pid in zip(self.v_checks, (pinmap.BY_NET[n].id for n in pinmap.ATT_NETS)):
+        for chk, pid in zip(self.v_checks, (self.pm.by_net[n].id for n in self.pm.att_nets)):
             level = self.session.level(pid)[0]
             if level is not None and not chk.underMouse():
                 chk.blockSignals(True)
@@ -583,7 +661,7 @@ class PinsTab(QtWidgets.QWidget):
     def select_pin(self, pid: str) -> None:
         self.selected = pid
         self.canvas.selected = pid
-        self.pin_info.setText(core.describe_pin(pinmap.PINS[pid]))
+        self.pin_info.setText(core.describe_pin(self.pm.pins[pid]))
         self.side.setCurrentIndex(0)
         self._update_pin_controls()
         self._update_pin_level()
@@ -592,7 +670,7 @@ class PinsTab(QtWidgets.QWidget):
     def _update_pin_controls(self) -> None:
         if self.selected is None:
             return
-        pin = pinmap.PINS[self.selected]
+        pin = self.pm.pins[self.selected]
         on = self.session.active
         may_use = pin.access == pinmap.WIRED or (pin.access == pinmap.EXPERT and self.expert_chk.isChecked())
         self.drive0_btn.setEnabled(on and may_use)

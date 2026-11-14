@@ -122,7 +122,8 @@ class BenchSession:
     """One client's bench mode. Replies are the daemon's dicts; `ok` is False when it refused."""
 
     def __init__(self, request: Request, ask: Ask, weights_db: Sequence[float] = patterns.DEFAULT_WEIGHTS_DB,
-                 active_high: bool = True) -> None:
+                 active_high: bool = True, pm: pinmap.PinMap = pinmap.BBB) -> None:
+        self.pm = pm
         self.request = request
         self.ask = ask
         self.weights_db = tuple(weights_db)
@@ -166,6 +167,11 @@ class BenchSession:
             if not stop_sweep():
                 return {"ok": False, "error": "Cancelled: the sweep keeps running", "cancelled": True}
             reply = self._call({"cmd": "bench_open"})
+        served = reply.get("platform")
+        if reply.get("ok") and served and served != self.pm.name:
+            self._call({"cmd": "bench_close", "token": reply.get("token")})
+            return {"ok": False, "error": f"sweepd runs on {served!r} but the GUI shows {self.pm.name!r}: "
+                                          f"pick {served!r} (or restart sweepd with --platform {self.pm.name})"}
         if reply.get("ok"):
             self.active = True
             self.token = reply["token"]
@@ -258,7 +264,7 @@ class BenchSession:
 
     # ---- patterns
     def build_pattern(self, spec: dict) -> patterns.Pattern:
-        return patterns.from_spec(spec, pinmap.ATT_NETS, self.weights_db, self.active_high)
+        return patterns.from_spec(spec, self.pm.att_nets, self.weights_db, self.active_high)
 
     def start_pattern(self, spec: dict, rate_hz: float, loop: bool) -> dict:
         scope = "pattern:" + str(sorted(self.build_pattern(spec).idle))
@@ -280,17 +286,17 @@ CATEGORY_LABELS: Tuple[Tuple[str, str], ...] = (
     ("adc", "ADC input"), ("power", "Power"), ("gnd", "Ground"), ("reserved", "eMMC / HDMI / reserved"), ("free", "Free"),
 )
 
-ROWS = 23
+ROWS = 23                                   # BBB values; other platforms: pm.layout
 PIN_W, PIN_H, ROW_H = 27.0, 19.0, 23.0
 HEADER_TOP = 58.0
 Rect = Tuple[float, float, float, float]   # x, y, width, height
 
 
-def pin_rect(pin: pinmap.Pin) -> Rect:
-    """P8 left, P9 right, pin 1 at the top, odd pins in the left column: as in hw/diagrams/bbb-p*-pinout."""
-    x0 = 280.0 if pin.header == "P8" else 470.0
+def pin_rect(pin: pinmap.Pin, pm: pinmap.PinMap = pinmap.BBB) -> Rect:
+    """Pin 1 at the top, odd pins in the left column (as in hw/diagrams/*-pinout); the header's x and y come from the layout."""
+    x0, y0 = {h: (x, y) for h, x, y in pm.layout.headers}[pin.header]
     x = x0 + (0 if pin.number % 2 else PIN_W + 3)
-    return (x, HEADER_TOP + (pin.number - 1) // 2 * ROW_H, PIN_W, PIN_H)
+    return (x, y0 + (pin.number - 1) // 2 * ROW_H, PIN_W, PIN_H)
 
 
 @dataclass(frozen=True)
@@ -315,37 +321,38 @@ class Wire:
     points: Tuple[Tuple[float, float], ...]     # polyline from the pin, the last two segments are a curve
 
 
-CANVAS_W, CANVAS_H = 930.0, 640.0
+CANVAS_W, CANVAS_H = 930.0, 640.0           # BBB; other platforms: pm.layout.canvas
 _BLOCK_ROW_H = 22.0
 _BLOCK_HEAD = 40.0
 _STRAP_H = 14.0
 
 
-def _block(board: pinmap.BoardBlock, x: float, y: float, w: float, anchor_right: bool) -> Block:
+def canvas_size(pm: pinmap.PinMap = pinmap.BBB) -> Tuple[float, float]:
+    return pm.layout.canvas
+
+
+def _block(board: pinmap.BoardBlock, x: float, y: float, w: float, anchor_right: bool,
+           pm: pinmap.PinMap = pinmap.BBB) -> Block:
     rows = []
     for i, net in enumerate(board.nets):
         ry = y + _BLOCK_HEAD + i * _BLOCK_ROW_H
         anchor = (x + w, ry + _BLOCK_ROW_H / 2) if anchor_right else (x, ry + _BLOCK_ROW_H / 2)
-        rows.append(BlockRow(net, pinmap.BY_NET[net].id, (x + 2, ry, w - 4, _BLOCK_ROW_H), anchor))
+        rows.append(BlockRow(net, pm.by_net[net].id, (x + 2, ry, w - 4, _BLOCK_ROW_H), anchor))
     h = _BLOCK_HEAD + len(board.nets) * _BLOCK_ROW_H + 6 + len(board.straps) * _STRAP_H + 4
     return Block(board, (x, y, w, h), tuple(rows))
 
 
-def blocks() -> Tuple[Block, ...]:
-    """PE4302 left of P8 (its lines are on P8), ADF4351, ADS1115 and AIN0 right of P9."""
-    by = {b.title: b for b in pinmap.BOARDS}
-    return (
-        _block(by["PE4302"], 8, 60, 186, True),
-        _block(by["ADF4351"], 680, 60, 242, False),
-        _block(by["ADS1115"], 680, 285, 242, False),
-        _block(by["AIN0"], 680, 410, 242, False),
-    )
+def blocks(pm: pinmap.PinMap = pinmap.BBB) -> Tuple[Block, ...]:
+    """The boards beside the headers, placed as `pm.layout.blocks` says (BBB: PE4302 left of P8,
+    ADF4351, ADS1115 and AIN0 right of P9; EBAZ: all three left of DATA2)."""
+    by = {b.title: b for b in pm.boards}
+    return tuple(_block(by[title], x, y, w, right, pm) for title, x, y, w, right in pm.layout.blocks)
 
 
-def wire_for(pin: pinmap.Pin, anchor: Tuple[float, float]) -> Wire:
+def wire_for(pin: pinmap.Pin, anchor: Tuple[float, float], pm: pinmap.PinMap = pinmap.BBB) -> Wire:
     """A pin leaves toward its board. A pin in the inner column runs in the gap under its neighbour, so
     the wire can not be mistaken for the neighbour's."""
-    x, y, w, h = pin_rect(pin)
+    x, y, w, h = pin_rect(pin, pm)
     mid = y + h / 2
     gap = y + h + (ROW_H - h) / 2
     going_right = anchor[0] > x
@@ -360,11 +367,11 @@ def wire_for(pin: pinmap.Pin, anchor: Tuple[float, float]) -> Wire:
     return Wire(pin.net, pin.id, tuple(pts) + (anchor,))
 
 
-def wires() -> Tuple[Wire, ...]:
+def wires(pm: pinmap.PinMap = pinmap.BBB) -> Tuple[Wire, ...]:
     out = []
-    for block in blocks():
+    for block in blocks(pm):
         for row in block.rows:
-            out.append(wire_for(pinmap.PINS[row.pin_id], row.anchor))
+            out.append(wire_for(pm.pins[row.pin_id], row.anchor, pm))
     return tuple(out)
 
 
@@ -372,12 +379,12 @@ def _inside(rect: Rect, x: float, y: float) -> bool:
     return rect[0] <= x <= rect[0] + rect[2] and rect[1] <= y <= rect[1] + rect[3]
 
 
-def hit_test(x: float, y: float) -> Optional[str]:
+def hit_test(x: float, y: float, pm: pinmap.PinMap = pinmap.BBB) -> Optional[str]:
     """The pin id under a canvas position: a header pin, or a net row on a board block."""
-    for pin in pinmap.PINS.values():
-        if _inside(pin_rect(pin), x, y):
+    for pin in pm.pins.values():
+        if pin.header in {h for h, _x, _y in pm.layout.headers} and _inside(pin_rect(pin, pm), x, y):
             return pin.id
-    for block in blocks():
+    for block in blocks(pm):
         for row in block.rows:
             if _inside(row.rect, x, y):
                 return row.pin_id

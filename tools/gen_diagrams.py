@@ -3,6 +3,11 @@
 
     python tools/gen_diagrams.py            # SVG + PNG (PNG needs rsvg-convert or cairosvg)
     python tools/gen_diagrams.py --no-png   # SVG and netlist only
+    python tools/gen_diagrams.py --platform ebaz   # only the EBAZ4205 figures and hw/netlist-ebaz.md
+    python tools/gen_diagrams.py --platform bbb    # only the BeagleBone Black ones and hw/netlist-bbb.md
+
+Without --platform everything is written: the BBB / RPi set as before, the EBAZ4205 set, and hw/netlist.md with
+all columns. With --platform the other platform appears nowhere in the output.
 
 Edit src/sadiy/pinmap.py (NETS, BBB_P8, BBB_P9) or STRAPS below when the wiring changes, then regenerate.
 Do not edit the output files.
@@ -19,6 +24,7 @@ from xml.sax.saxutils import escape
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from sadiy import pinmap_ebaz  # noqa: E402
 from sadiy.pinmap import BBB_P8, BBB_P9, NETS  # noqa: E402
 
 HW = ROOT / "hw"
@@ -230,6 +236,16 @@ def bbb_table(header: str) -> dict:
     return BBB_P8 if header == "P8" else BBB_P9
 
 
+def ebaz_pins(header: str) -> dict:
+    """{pin number: (name, kind)} of one EBAZ4205 DATA connector, from the shared pin map."""
+    return {p.number: (p.name, p.kind) for p in pinmap_ebaz.PINS.values() if p.header == header}
+
+
+def ebaz_label(v) -> str:
+    h, p = bbb_split(v)
+    return f"{h}.{p} {ebaz_pins(h)[p][0]}"
+
+
 def bbb_label(v) -> str:
     h, p = bbb_split(v)
     return f"{h}.{p} {bbb_table(h)[p][0]}"
@@ -241,7 +257,7 @@ def usage(sbc: str, header: str = "P9") -> dict:
         pin = n[sbc]
         if not pin:
             continue
-        if sbc == "bbb":
+        if sbc in ("bbb", "ebaz"):
             h, p = bbb_split(pin)
             if h != header:
                 continue
@@ -308,6 +324,28 @@ def sbc_rows_bbb():
         r(39, "ain", "R", "max 1.8 V"), r(34, "agnd", "R"),
         dict(t="group", label="Ground"),
         dict(t="sig", label="P9.1 / P9.2 / P9.43-46 / P8.1 / P8.2  GND", note="star point", kind="gnd", side=None, key=None),
+    ]
+
+
+def sbc_rows_ebaz():
+    def r(pin, key, side, note=""):
+        h, p = bbb_split(pin)
+        name = ebaz_pins(h)[p][0]
+        return dict(t="sig", label=f"{h}.{p}  {name}", note=note, kind=usage("ebaz", h)[p]["kind"], side=side, key=key)
+
+    return [
+        dict(t="group", label="EMIO SPI0 to ADF4351 board"),
+        r("DATA2.5", "clk", "L"), r("DATA2.7", "data", "L"), r("DATA2.8", "le", "L", "spidev0.0"), r("DATA2.9", "ld", "L", "input"),
+        dict(t="group", label="EMIO GPIO to PE4302 board (V1..V6 on DATA2.14-19)"),
+        r("DATA2.14", "v1", "L"), r("DATA2.15", "v2", "L"), r("DATA2.16", "v3", "L"), r("DATA2.17", "v4", "L"),
+        r("DATA2.18", "v5", "L"), r("DATA2.19", "v6", "L"),
+        dict(t="group", label="EMIO GPIO, optional CE"),
+        r("DATA2.13", "ce", None, "adapter jumper holds CE high"),
+        dict(t="group", label="EMIO I2C0 to ADS1115 (main ADC)"),
+        r("DATA2.11", "sda", "R"), r("DATA2.20", "scl", "R"),
+        dict(t="group", label="Ground and supply"),
+        dict(t="sig", label="DATA2.3 / .4 / .12  GND", note="star point", kind="gnd", side=None, key=None),
+        dict(t="sig", label="DATA2.1 / .2  VCC in", note="5 to 12 V, not used", kind="power", side=None, key=None),
     ]
 
 
@@ -427,6 +465,43 @@ def wiring_bbb(path: Path) -> None:
     stubs_left = [p1["gnd"], p2["gnd"]]
     ground_bus(svg, 20, 20, y_bar, stubs_left, [], sbc_x + sbc_w / 2, sb)
     svg.text(24, y_bar + 40, "Supplies are not wired from the SBC: see power-tree.svg. Boards share ground through the star point and the RF coax shields.",
+             size=11.5, fill=MUTED)
+    svg.h = int(y_bar + 70)
+    svg.save(path)
+
+
+def wiring_ebaz(path: Path) -> None:
+    W = 1560
+    svg = Svg(W, 900, "EBAZ4205 wiring (proposed)",
+              "3.3 V logic on the DATA2 connector. SPI0, I2C0 and the GPIO are Zynq EMIO signals routed to the pins in the bitstream. No on-chip ADC input.")
+    legend(svg, 24, 76, ["spi", "gpio", "i2c", "analog", "gnd", "v33"])
+    top = 110
+    p1, p2, bl = left_devices(svg, 40, top, adapter=True)
+    sbc_x, sbc_w = 560, 380
+    sp, sb = card(svg, sbc_x, top, sbc_w, "EBAZ4205 (Zynq-7010)", "connector DATA2, sweepd runs here", sbc_rows_ebaz(),
+                  fill="#e7f5ff", stroke="#1864ab")
+    draw_left_wires(svg, sp, p1, p2)
+    ads_x = 1300
+    ads, ab = card(svg, ads_x, sp["sda"][1] - 90, 250, "ADS1115 breakout (main ADC)", "address 0x48, A0 via 1k + 100 nF + clamp", [
+        dict(t="sig", label="A0", note="VOUT via RC + clamp", kind="analog", side="L", key="a0"),
+        dict(t="sig", label="SDA", kind="i2c", side="L", key="sda"),
+        dict(t="sig", label="SCL", kind="i2c", side="L", key="scl"),
+        dict(t="pwr", label="VDD", note="3V3", kind="v33"),
+        dict(t="sig", label="GND", note="board GND", kind="gnd", side=None, key=None),
+    ])
+    det_x = 1000
+    dp, db = card(svg, det_x, ab + 40, 250, "Detector board", "AD8318 class, -24.5 mV/dB", [
+        dict(t="sig", label="VOUT", kind="analog", side="R", key="vout"),
+        dict(t="sig", label="GND", kind="gnd", side=None, key=None),
+        dict(t="pwr", label="VCC", note="5 V", kind="v5"),
+        dict(t="strap", label="RF in", note="from IF amp"),
+    ])
+    wire(svg, sp["sda"], ads["sda"], PAL["i2c"][0], "I2C_SDA", arrow_end=True, arrow_start=True)
+    wire(svg, sp["scl"], ads["scl"], PAL["i2c"][0], "I2C_SCL", arrow_end=True)
+    wire(svg, dp["vout"], ads["a0"], PAL["analog"][0], "VOUT", arrow_end=True)
+    y_bar = max(bl, sb, db) + 50
+    ground_bus(svg, 20, 20, y_bar, [p1["gnd"], p2["gnd"]], [], sbc_x + sbc_w / 2, sb)
+    svg.text(24, y_bar + 40, "Supplies are not wired from the SBC. The pins of DATA1 (AD9226, later) and DATA3 are not used by the sweep: see ebaz-data1-pinout.svg and ebaz-data3-pinout.svg.",
              size=11.5, fill=MUTED)
     svg.h = int(y_bar + 70)
     svg.save(path)
@@ -629,25 +704,42 @@ def power_tree(path: Path) -> None:
 
 
 # ----------------------------------------------------------------------------- netlist markdown
-def netlist_md() -> str:
-    L = ["# Netlist", "", "Generated by `tools/gen_diagrams.py` from the pin map in `src/sadiy/pinmap.py`. Do not edit by hand.", "",
-         "BBB = BeagleBone Black headers P8 and P9. RPi = 40-pin header (physical pin numbers). Verify every pin on your image.", "",
+def netlist_md(sel: str = "all") -> str:
+    """`sel`: "all" (BBB, RPi and EBAZ columns) or one platform; the others then do not appear."""
+    cols = {"all": ("bbb", "rpi", "ebaz"), "bbb": ("bbb",), "ebaz": ("ebaz",)}[sel]
+    names = {"bbb": "BBB", "rpi": "RPi", "ebaz": "EBAZ"}
+    expl = {"bbb": "BBB = BeagleBone Black headers P8 and P9.", "rpi": "RPi = 40-pin header (physical pin numbers).",
+            "ebaz": "EBAZ = EBAZ4205 connectors DATA1, DATA2, DATA3 (pin 1 to 20, FPGA ball in the pin names)."}
+    L = ["# Netlist" + ("" if sel == "all" else f" ({names[sel]} only)"), "",
+         "Generated by `tools/gen_diagrams.py` from the pin map in `src/sadiy/pinmap.py`"
+         + (" and `src/sadiy/pinmap_ebaz.py`" if "ebaz" in cols else "") + ". Do not edit by hand.", "",
+         " ".join(expl[c] for c in cols) + " Verify every pin on your image.", "",
          "## SBC to board signals", "",
-         "| Net | Board | Board pin | Direction | BBB | RPi | Notes |", "|---|---|---|---|---|---|---|"]
+         "| Net | Board | Board pin | Direction | " + " | ".join(names[c] for c in cols) + " | Notes |",
+         "|---|---|---|---|" + "---|" * len(cols) + "---|"]
     for n in NETS:
-        bbb = bbb_label(n["bbb"]) if n["bbb"] else "n/a"
-        rpi = f"pin {n['rpi']} {RPI_40[n['rpi']][0]}" if n["rpi"] else "n/a"
-        L.append(f"| {n['id']} | {n['dev']} | {n['dpin']} | {n['dir']} | {bbb} | {rpi} | {n['note']} |")
+        cells = []
+        for c in cols:
+            if c == "bbb":
+                cells.append(bbb_label(n["bbb"]) if n["bbb"] else "n/a")
+            elif c == "rpi":
+                cells.append(f"pin {n['rpi']} {RPI_40[n['rpi']][0]}" if n["rpi"] else "n/a")
+            else:
+                cells.append(ebaz_label(n["ebaz"]) if n.get("ebaz") else "n/a")
+        if sel != "all" and all(x == "n/a" for x in cells):
+            continue                     # a net the selected platform does not have
+        L.append(f"| {n['id']} | {n['dev']} | {n['dpin']} | {n['dir']} | " + " | ".join(cells) + f" | {n.get('note_' + sel, n['note']) if sel != 'all' else n['note']} |")
     L += ["", "## Static straps on the boards (no SBC pin)", "", "| Board | Pin | Tie to | Why |", "|---|---|---|---|"]
     for dev, pin, tie, why in STRAPS:
         L.append(f"| {dev} | {pin} | {tie} | {why} |")
-    L += ["", "## Pins left free for later", "",
-          "- BBB: P9.11-P9.16, P8.13 to P8.19 and P8.26 (GPIO), SPI1 (P9.28-31), AIN1-AIN6, UART1 (P9.24/26).",
-          "- RPi: SPI0 CE1 (pin 26), GPIO 17/27/22/23/24/25, UART (pins 8/10).", "",
-          "## Ground and supply pins", "",
-          "- BBB: GND P9.1, P9.2, P9.43-46 and P8.1, P8.2; GNDA_ADC P9.34 (optional, AIN0 cross-check only); ADC reference VDD_ADC P9.32 (1.8 V, do not load).",
-          "- RPi: GND pins 6, 9, 14, 20, 25, 30, 34, 39.",
-          "- Board supplies come from the power tree, not from SBC pins (`power-tree.svg`).", ""]
+    free = {"bbb": "- BBB: P9.11-P9.16, P8.13 to P8.19 and P8.26 (GPIO), SPI1 (P9.28-31), AIN1-AIN6, UART1 (P9.24/26).",
+            "rpi": "- RPi: SPI0 CE1 (pin 26), GPIO 17/27/22/23/24/25, UART (pins 8/10).",
+            "ebaz": "- EBAZ: DATA2.6 (J18) and every free pin of DATA3 are spare PL IOs (not in the Phase 1 bitstream); DATA1 is reserved for the AD9226 module."}
+    gnd = {"bbb": "- BBB: GND P9.1, P9.2, P9.43-46 and P8.1, P8.2; GNDA_ADC P9.34 (optional, AIN0 cross-check only); ADC reference VDD_ADC P9.32 (1.8 V, do not load).",
+           "rpi": "- RPi: GND pins 6, 9, 14, 20, 25, 30, 34, 39.",
+           "ebaz": "- EBAZ: GND pins 3, 4 and 12 of each DATA connector; pins 1 and 2 are the board supply input (5 to 12 V), pin 10 is not connected."}
+    L += ["", "## Pins left free for later", ""] + [free[c] for c in cols] + ["", "## Ground and supply pins", ""] + [gnd[c] for c in cols]
+    L += ["- Board supplies come from the power tree, not from SBC pins" + (" (`power-tree.svg`)." if sel == "all" else "."), ""]
     return "\n".join(L)
 
 
@@ -684,11 +776,7 @@ def render_png_qt(svg: Path, png: Path, scale: float = 1.6) -> bool:
     return image.save(str(png))
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--no-png", action="store_true")
-    args = ap.parse_args()
-    OUT.mkdir(parents=True, exist_ok=True)
+def gen_bbb() -> list:
     pinout(OUT / "bbb-p9-pinout.svg", "BeagleBone Black header P9: pinout and use",
            "Highlighted pins are used by SAdiy. Pins 1 and 2 are at the top (the end nearest the 5 V DC jack; confirm with the board silkscreen).",
            BBB_P9, "bbb",
@@ -698,13 +786,6 @@ def main() -> None:
             "Check the pin modes on your image (the Trixie image has no config-pin). SPI0 is the only hardware SPI used; the PE4302 is plain GPIO.",
             "P9.34 (GNDA_ADC) and P9.39 (AIN0) are optional, for the AIN0 cross-check only. The ADS1115 needs just I2C2 and board GND."],
            "P9 header (odd pins left, even pins right)")
-    pinout(OUT / "rpi-gpio-pinout.svg", "Raspberry Pi 40-pin header: pinout and use",
-           "Highlighted pins are used by SAdiy. Pin 1 is the corner nearest the SD card slot; odd pins are on the inner row.",
-           RPI_40, "rpi",
-           ["All GPIO are 3.3 V and not 5 V tolerant. The Pi has no analog input: an external ADC (ADS1115) is required.",
-            "SPI0 (ADF4351) via raspi-config; I2C for the ADS1115. Pins 29, 31, 32, 33, 38, 40 drive the PE4302 inputs V1..V6.",
-            "The PE4302 module has 10k pull-downs on V1..V6 (open = 0 dB); optional 2.2k pull-ups to 3V3 make the default maximum attenuation."],
-           "40-pin header (odd pins left, even pins right)")
     pinout(OUT / "bbb-p8-pinout.svg", "BeagleBone Black header P8: pinout and use",
            "Highlighted pins are used by SAdiy. P8.1 and P8.2 are the only ground pins on P8. Confirm the orientation with the silkscreen.",
            BBB_P8, "bbb",
@@ -715,18 +796,74 @@ def main() -> None:
             "Do not drive any pin before SYS_RESETn is high. Check the pin modes on your image (the Trixie image has no config-pin)."],
            "P8 header (odd pins left, even pins right)", header="P8")
     wiring_bbb(OUT / "bbb-wiring.svg")
+    return [OUT / n for n in ("bbb-p9-pinout.svg", "bbb-p8-pinout.svg", "bbb-wiring.svg")]
+
+
+def gen_rpi_and_shared() -> list:
+    pinout(OUT / "rpi-gpio-pinout.svg", "Raspberry Pi 40-pin header: pinout and use",
+           "Highlighted pins are used by SAdiy. Pin 1 is the corner nearest the SD card slot; odd pins are on the inner row.",
+           RPI_40, "rpi",
+           ["All GPIO are 3.3 V and not 5 V tolerant. The Pi has no analog input: an external ADC (ADS1115) is required.",
+            "SPI0 (ADF4351) via raspi-config; I2C for the ADS1115. Pins 29, 31, 32, 33, 38, 40 drive the PE4302 inputs V1..V6.",
+            "The PE4302 module has 10k pull-downs on V1..V6 (open = 0 dB); optional 2.2k pull-ups to 3V3 make the default maximum attenuation."],
+           "40-pin header (odd pins left, even pins right)")
     wiring_rpi(OUT / "rpi-wiring.svg")
     hierarchy(OUT / "board-hierarchy.svg")
     rf_chain(OUT / "rf-chain.svg")
     power_tree(OUT / "power-tree.svg")
-    (HW / "netlist.md").write_text(netlist_md())
-    made = sorted(OUT.glob("*.svg"))
+    return [OUT / n for n in ("rpi-gpio-pinout.svg", "rpi-wiring.svg", "board-hierarchy.svg", "rf-chain.svg", "power-tree.svg")]
+
+
+def gen_ebaz() -> list:
+    notes = {
+        "DATA2": ["The Phase 1 design routes EMIO SPI0 (CLK 5, DAT 7, LE 8), the lock input (9), CE (13), the PE4302 inputs V1..V6 (14 to 19) and I2C0 (SDA 11, SCL 20) to these pins.",
+                  "SPI and I2C are hardware controllers of the Zynq PS wired to the pins in the bitstream: unlike a pin-muxed SBC they can not be turned into GPIO.",
+                  "EMIO GPIO line n is Linux GPIO 54 + n: V1..V6 = 54..59, CE = 60, LD = 61. All lines are inputs (tri-stated) until software drives them.",
+                  "The PE4302 inputs are tri-stated at boot, so the adapter's 2.2k pull-ups give the default 31.5 dB. Pin 6 (J18) is a spare PL IO.",
+                  "Pins 1 and 2 are the board's supply input (5 to 12 V): do not connect them to the boards. Pins 3, 4 and 12 are ground, pin 10 is not connected."],
+        "DATA1": ["Reserved for the AD9226 ADC module (Phase 4): 12 data bits, OTR and the clock. Not in the Phase 1 bitstream, so none of these pins is driven.",
+                  "Pins 1 and 2 are the board's supply input, pins 3, 4 and 12 ground, pin 10 is not connected."],
+        "DATA3": ["Spare PL IOs, not used by any SAdiy design yet. None is driven.",
+                  "Pins 1 and 2 are the board's supply input, pins 3, 4 and 12 ground, pin 10 is not connected."],
+    }
+    made = []
+    for h in ("DATA2", "DATA1", "DATA3"):
+        f = OUT / f"ebaz-{h.lower()}-pinout.svg"
+        pinout(f, f"EBAZ4205 connector {h}: pinout and use",
+               "Highlighted pins are used by SAdiy. Odd pins left, even pins right as in the other pinouts; confirm pin 1 and the orientation on the board.",
+               ebaz_pins(h), "ebaz", notes[h], f"{h} connector (odd pins left, even pins right)", header=h)
+        made.append(f)
+    wiring_ebaz(OUT / "ebaz-wiring.svg")
+    made.append(OUT / "ebaz-wiring.svg")
+    return made
+
+
+def main(argv=None) -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--no-png", action="store_true")
+    ap.add_argument("--platform", choices=("all", "bbb", "ebaz"), default="all",
+                    help="all (default), or only one platform's figures and hw/netlist-<platform>.md")
+    ap.add_argument("--out", help="write the files here instead of hw/ (diagrams in <out>/diagrams); for tests")
+    args = ap.parse_args(argv)
+    global OUT
+    hw = Path(args.out) if args.out else HW
+    OUT = hw / "diagrams"
+    sel = args.platform
+    OUT.mkdir(parents=True, exist_ok=True)
+    made = []
+    if sel in ("all", "bbb"):
+        made += gen_bbb()
+    if sel == "all":
+        made += gen_rpi_and_shared()
+    if sel in ("all", "ebaz"):
+        made += gen_ebaz()
+    (hw / ("netlist.md" if sel == "all" else f"netlist-{sel}.md")).write_text(netlist_md(sel))
     if not args.no_png:
         for s in made:
             if not render_png(s):
                 print("no PNG renderer found (install librsvg2-bin or cairosvg, or PyQt5); SVGs written")
                 break
-    print("wrote", ", ".join(p.name for p in made), "and hw/netlist.md")
+    print("wrote", ", ".join(p.name for p in made), "and", "netlist.md" if sel == "all" else f"netlist-{sel}.md")
 
 
 if __name__ == "__main__":

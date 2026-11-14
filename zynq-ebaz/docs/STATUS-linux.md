@@ -24,3 +24,11 @@ Branch `linux`, worktree `../SAdiy-linux`. Not committed (CLAUDE.md: commit only
 - None. R can start F1 now; it needs nothing from L. `pins.toml` and the signal names follow appendix D.
 - Phase 1 changes vs the base PS7: FCLK0 50 -> 100 MHz, EMIO GPIO width 4 -> 16, CAN0/CAN1/UART0 EMIO off.
   The base display/CAN nodes are gone from `system-user.dtsi`.
+
+
+## Update 2026-11-14: platform choice in GUI and CLI
+- Done (uncommitted): `sweepd --platform`, GUI Pins tab selector or `sa_gui --platform` (other board hidden), `pinmap_ebaz.py`, EBAZ figures and netlist column, tests. Details in `log_linux.md`.
+- Not done: real EBAZ backends in `sweepd` (S5 ebaz-ps, S7 ebaz-pl); `--platform ebaz` works only with `--sim`.
+
+## Update 2026-11-14 (evening): image for R's new hardware
+- Image rebuilt from R's engine XSA (SPI1 EMIO, 18 EMIO GPIO), with ST7789 LCD, 3 LEDs and 5 keys in the device tree and the framebuffer console in the kernel. BOOT.BIN holds the engine bitstream. Not booted yet. Details in `log_linux.md` and `docs/ebaz-bringup.md`.

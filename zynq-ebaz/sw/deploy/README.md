@@ -22,6 +22,12 @@ The PetaLinux project is not in git. The files that matter are mirrored here:
 
 - `petalinux/system-user.dtsi`: copy of `project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi`.
   Edit it here, copy it to the project.
+- `petalinux/kernel/user_lcd.cfg`: kernel fragment (framebuffer console for the adapter LCD), listed in the
+  project's `linux-xlnx_%.bbappend`.
+- `petalinux/build_ebaz_sadiy.sh`: the build; it installs the two files above, imports the XSA and builds. Default XSA is
+  session R's engine XSA (snapshot `xsa/ebaz_sadiy_20261114_1709.xsa` in the project: PS7 with SPI1 and 18 EMIO GPIO, engine and
+  LCD pads), so BOOT.BIN carries the engine bitstream; `XSA=<file>` builds from another one (for example Phase 1).
+- To update an SD card that already runs: copy `images/linux/BOOT.BIN` and `image.ub` to its FAT partition; the rootfs stays.
 
 ## Steps
 
