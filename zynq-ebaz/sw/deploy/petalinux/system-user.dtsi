@@ -1,0 +1,60 @@
+/* SAdiy Phase 1 (session L). Base: ebaz4205_CANI2C, with the display and CAN
+ * nodes removed (CAN0/CAN1/UART0 EMIO are disabled in phase1.tcl).
+ * Copy of the file in the PetaLinux project
+ *   project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
+ * UNTESTED on hardware (written 2026-11-14).
+ */
+
+&clkc {
+    /* FCLK1 is the 25 MHz PHY clock, FCLK0 the 100 MHz fabric clock */
+    fclk-enable = <0xf>;
+};
+
+&gem0 {
+    status = "okay";
+    local-mac-address = [00 0a 35 00 1e 53];
+    phy-mode = "mii";
+    phy-handle = <&phy0>;
+
+    /* PHY clock: clkc 18 is FCLK_CLK1 on the Zynq */
+    assigned-clocks = <&clkc 18>;
+    assigned-clock-rates = <25000000>;
+
+    mdio {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        phy0: ethernet-phy@0 {
+            /* on-board PHY, MDIO address 0 */
+            reg = <0>;
+            device_type = "ethernet-phy";
+        };
+    };
+};
+
+/* ADF4351 on PS SPI0 via EMIO: mode 0, MSB first, LE = CS0, 10 MHz.
+ * Appears as /dev/spidev0.0 (bus number 0). The kernel only accepts a listed
+ * compatible for spidev; rohm,dh2228fv is the usual stand-in (verify on 6.12). */
+&spi0 {
+    status = "okay";
+    num-cs = <1>;
+    bus-num = <0>;
+    is-decoded-cs = <0>;
+
+    spidev@0 {
+        compatible = "rohm,dh2228fv";
+        reg = <0>;
+        spi-max-frequency = <10000000>;
+    };
+};
+
+/* ADS1115 (0x48) on PS I2C0 via EMIO: /dev/i2c-N (N is probably 0, check) */
+&i2c0 {
+    status = "okay";
+    clock-frequency = <100000>;
+};
+
+/* EMIO GPIO (PE4302 V1..V6 = lines 54..59, ADF4351 CE = 60, LD = 61) is in the
+ * Zynq gpio node and needs no entry here; see rtl/vivado/phase1_top.v. */
+
+#include "system-conf.dtsi"
