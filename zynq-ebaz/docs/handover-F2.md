@@ -23,6 +23,14 @@ utilisation; the script fails if WNS or WHS is negative.
 
 ## First checks on the board (S8 / S9), in this order
 
+Most of this is automated: `rtl/scripts/make_bringup_pkg.sh` builds `build/bringup-pkg/` (bitstream, load script,
+`sadiy`, `sadiy_ebaz`, `regmap.toml`, `pl_bringup.py`, `run.sh`); copy it to the board, load the bitstream, then
+`./run.sh` (stages ident regs gen push owner ctrl lock: pass / fail, exit code) and `./run.sh la` (spi att: SPI
+frames at several SPI_DIV values and attenuator changes, with the expected LA picture printed and a prompt before
+each capture). `./run.sh --model` runs the same code against the PlModel on a PC. Needs Python 3.11+ (tomllib)
+or tomli. Steps 1 and 2 below (PS as owner, Phase 1 regression) stay manual. Source: `sw/tools/pl_bringup.py`,
+tests: `sw/tests/test_pl_bringup.py`.
+
 1. Read `ID` (offset 0) = `0x53410001`, `VERSION` = `0x00010000`, `CAPS` = `0x00640C0C`.
 2. With the PS as owner, repeat the Phase 1 checks (SPI frames on the DSLogic, PE4302 walk). Nothing may differ.
 3. `PIN_STATE` shows the pad levels and lock detect.

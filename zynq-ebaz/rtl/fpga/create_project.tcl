@@ -66,10 +66,10 @@ generate_target all $bdfile
 
 # By reference (no -copy_to): files stay in the repo.
 add_files -norecurse -fileset sources_1 $rtl_files
-add_files -norecurse -fileset sources_1 $here/ebaz_sadiy_top.sv
+add_files -norecurse -fileset sources_1 [list $here/ebaz_sadiy_top.sv]
 set_property include_dirs [list $srcdir] [get_filesets sources_1]
 
-add_files -fileset constrs_1 -norecurse $here/constraints/eth.xdc $pins $here/constraints/timing.xdc
+add_files -fileset constrs_1 -norecurse $here/constraints/eth.xdc $pins $here/constraints/timing.xdc $here/constraints/adapter_ui.xdc
 set_property top ebaz_sadiy_top [current_fileset]
 update_compile_order -fileset sources_1
 

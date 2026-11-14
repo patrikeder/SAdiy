@@ -10,7 +10,15 @@
 //         at boot; goes through sadiy_top (emio_pe_o / emio_pe_t -> pad, pad level read back)
 //   6     adf4351_ce      IOBUF straight to the PS, tri-stated until driven
 //   7     adf4351_ld      input, in parallel to sadiy_top.adf4351_ld
-//   8..15 unused (outputs not connected, inputs read 0)
+//   8     lcd_dc          adapter LCD data / command, IOBUF, tri-stated until driven
+//   9     lcd_res         adapter LCD reset (active low, pad pulled up so the panel is not held in reset)
+//   10..12 led[0..2]      adapter LEDs, OBUFT (output only), tri-stated until driven (polarity of the LEDs not verified)
+//   13..17 keys[0..4]     adapter keys, input, raw pad level: pad pull-up, a pressed key reads 0 (active low)
+// The adapter LCD (ST7789) hangs on PS SPI1 via EMIO (SCLK = lcd_scl, MOSI = lcd_sda, SS0 = lcd_cs) and EMIO
+// GPIO 8 / 9: no PL logic, only pads.
+// Adapter board (HelloFPGA, EBAZ4205_ZJB05): keys[4:0] and led[2:0] are pads of this top
+// (constraints/adapter_ui.xdc) and are EMIO GPIO 10..17 for Linux (see the map above): no PL logic.
+// All of the adapter's UI is Linux's: docs/lcd-st7789.md.
 // Pad names are those of session L's generated constraints (pins.toml -> ebaz4205.xdc) and of the
 // Ethernet constraints (constraints/eth.xdc).
 `timescale 1 ps / 1 ps
@@ -48,6 +56,15 @@ module ebaz_sadiy_top (
     inout         i2c_scl,
     inout         i2c_sda,
 
+    // adapter board display, keys, LEDs (constraints/adapter_ui.xdc)
+    input  [4:0]  keys,
+    output [2:0]  led,
+    output        lcd_cs,
+    inout         lcd_dc,
+    output        lcd_scl,
+    output        lcd_sda,
+    inout         lcd_res,
+
     // Ethernet PHY, MII on EMIO (constraints/eth.xdc)
     output        enet0_mdio_mdc,
     inout         enet0_mdio_mdio_io,
@@ -64,8 +81,9 @@ module ebaz_sadiy_top (
   // ---- block design side ----
   wire        fclk0, aresetn;
   wire [0:0]  irq_f2p;
-  wire [15:0] emio_tri_i, emio_tri_o, emio_tri_t;
+  wire [17:0] emio_tri_i, emio_tri_o, emio_tri_t;
   wire        spi_sclk_o, spi_mosi_o, spi_ss_o;
+  wire        spi1_sclk_o, spi1_mosi_o, spi1_ss_o;
   wire        i2c0_scl_i, i2c0_scl_o, i2c0_scl_t;
   wire        i2c0_sda_i, i2c0_sda_o, i2c0_sda_t;
   wire        mdio_i, mdio_o, mdio_t;
@@ -101,6 +119,7 @@ module ebaz_sadiy_top (
       .m_axil_rvalid(m_axil_rvalid), .m_axil_rready(m_axil_rready),
 
       .spi_sclk_o(spi_sclk_o), .spi_mosi_o(spi_mosi_o), .spi_ss_o(spi_ss_o),
+      .spi1_sclk_o(spi1_sclk_o), .spi1_mosi_o(spi1_mosi_o), .spi1_ss_o(spi1_ss_o),
       .i2c0_scl_i(i2c0_scl_i), .i2c0_scl_o(i2c0_scl_o), .i2c0_scl_t(i2c0_scl_t),
       .i2c0_sda_i(i2c0_sda_i), .i2c0_sda_o(i2c0_sda_o), .i2c0_sda_t(i2c0_sda_t),
       .emio_tri_i(emio_tri_i), .emio_tri_o(emio_tri_o), .emio_tri_t(emio_tri_t),
@@ -148,7 +167,22 @@ module ebaz_sadiy_top (
 
   IOBUF u_ce (.I(emio_tri_o[6]), .T(emio_tri_t[6]), .O(emio_tri_i[6]), .IO(adf4351_ce));
   assign emio_tri_i[7]    = adf4351_ld;
-  assign emio_tri_i[15:8] = 8'h00;
+
+  // ---- adapter board LCD: PS SPI1 (EMIO) plus two EMIO GPIO lines, pads only ----
+  assign lcd_scl = spi1_sclk_o;
+  assign lcd_sda = spi1_mosi_o;
+  assign lcd_cs  = spi1_ss_o;
+  IOBUF u_lcd_dc  (.I(emio_tri_o[8]), .T(emio_tri_t[8]), .O(emio_tri_i[8]), .IO(lcd_dc));
+  IOBUF u_lcd_res (.I(emio_tri_o[9]), .T(emio_tri_t[9]), .O(emio_tri_i[9]), .IO(lcd_res));
+
+  // ---- adapter board: LEDs and keys as EMIO GPIO for Linux (pads only, no PL logic) ----
+  generate
+    for (i = 0; i < 3; i = i + 1) begin : g_led
+      OBUFT u_led (.I(emio_tri_o[10+i]), .T(emio_tri_t[10+i]), .O(led[i]));
+    end
+  endgenerate
+  assign emio_tri_i[12:10] = 3'b000;                    // LEDs are outputs only
+  assign emio_tri_i[17:13] = keys;                      // raw pad level, active low
 
   // ---- I2C0 and MDIO ----
   IOBUF u_scl  (.I(i2c0_scl_o), .T(i2c0_scl_t), .O(i2c0_scl_i), .IO(i2c_scl));
@@ -156,6 +190,6 @@ module ebaz_sadiy_top (
   IOBUF u_mdio (.I(mdio_o), .T(mdio_t), .O(mdio_i), .IO(enet0_mdio_mdio_io));
 
   // Unused here: m_axil_awprot, m_axil_arprot (outputs of the BD, left unconnected on purpose).
-  wire unused_ok = &{1'b0, m_axil_awprot, m_axil_arprot, m_axil_awaddr[31:12], m_axil_araddr[31:12], emio_tri_o[15:7], emio_tri_t[15:7]};
+  wire unused_ok = &{1'b0, m_axil_awprot, m_axil_arprot, m_axil_awaddr[31:12], m_axil_araddr[31:12], emio_tri_o[17:13], emio_tri_t[17:13], spi1_ss_o};
 
 endmodule
