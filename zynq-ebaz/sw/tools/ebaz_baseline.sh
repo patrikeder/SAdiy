@@ -28,7 +28,10 @@ sec "System"
 sec "Network"
 {
   if have ip; then ip -4 addr show 2>/dev/null | grep -E 'inet |^[0-9]'; else ifconfig 2>/dev/null; fi
-  have ethtool && ethtool eth0 2>/dev/null | grep -E 'Speed|Duplex|Link detected'
+  for n in /sys/class/net/*; do   # udev renames eth0 to enx<mac>
+    n=${n##*/}; [ "$n" = lo ] && continue
+    have ethtool && ethtool "$n" 2>/dev/null | grep -E 'Speed|Duplex|Link detected'
+  done
 } | blk
 
 sec "Boot media and storage"

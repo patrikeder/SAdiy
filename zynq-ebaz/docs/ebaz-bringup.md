@@ -1,6 +1,6 @@
 # EBAZ4205 bring-up (S4)
 
-Status 2026-11-14: image boots (see `ebaz-baseline.md`); electrical checks not started, they need the user at the bench.
+Status 2026-11-14: Phase 1 image boots (see `ebaz-baseline.md`); the EMIO readback below passed; the rebuilt image (LCD, LEDs, keys) is not booted yet; the other electrical checks need the user at the bench.
 
 ## Known from the first boot (S1 baseline, 2026-11-14)
 - Kernel 6.12.40, Zynq PS7, PL state `operating` (Phase 1 bitstream from BOOT.BIN), Ethernet 100 Mbit/full, IP 192.168.88.244.
@@ -22,6 +22,7 @@ Do each step with the PE4302 at 31.5 dB (nothing driven) before any RF is connec
 4. DSLogic on CLK, DAT, LE: `adf4351-pattern` frames decode as in `patterns.py`.
 5. ADF4351 at 100 MHz on the MSO5354 (outputs off until enabled after lock).
 6. ADS1115 answers at 0x48 (`i2cdetect -y N`).
+7. CE from software: `python3 tools/bringup.py --platform ebaz synth-ce read` (then `off` / `on` / `release`, with sudo -E; DMM on DATA2.13 / the CE header pin, J12 1-2 holds it high). After `off` then `on` the ADF4351 needs its registers again. Deploy the tools first with `sw/deploy/deploy_to_board.sh`.
 
 Results go below (what was measured, instrument, date).
 

@@ -3,6 +3,8 @@
 Written by session R, 2026-11-14. For session L. State of the hardware: built into `rtl/fpga` (bitstream
 `build/fpga/ebaz_sadiy.bit`), **not tested on the board**.
 
+Session L, 2026-11-14: the steps in "What session L must do" are done and the image is built (not booted): `sw/deploy/petalinux/system-user.dtsi` (numeric values, the dt-bindings macros are not preprocessed in that recipe), `kernel/user_lcd.cfg` (`FRAMEBUFFER_CONSOLE`, fonts), `phase1.tcl` aligned with the engine PS7. The board test is `sw/tools/ebaz_lcd_test.py` (`docs/ebaz-bringup.md`). Panel size, colour order, RAM offset and LED polarity are still open.
+
 ## What the hardware provides
 
 No PL logic: the PS SPI1 controller and two EMIO GPIO lines go straight to the pads.

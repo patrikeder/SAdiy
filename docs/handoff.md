@@ -44,11 +44,12 @@ No `.claude/settings.json` is committed. If the same prompts should be skipped o
 }
 ```
 
-## State at last handoff (2026-11-07)
+## State at last handoff (2026-11-14)
 
 Update this section at the end of every session. Details live in the README status table, `CLAUDE.md` ("Not done yet") and the bring-up plan, so this is only the pointer.
 
-- **Tests:** 504 passed (Linux, Python 3.13, PyQt5 5.15, pyqtgraph 0.14, pyzmq 27).
+- **Tests:** 728 passed (Linux, Python 3.13, PyQt5 5.15, pyqtgraph 0.14, pyzmq 27), `QT_QPA_PLATFORM=offscreen`. Generated files checked current: `gen_diagrams.py` output, `regmap` (`gen_regs.py --check`), golden vectors; `zynq-ebaz/docs/pinmap.md` needs Vivado's package table and can only be checked on the RTL machine.
+- **EBAZ4205 port:** `zynq-ebaz/` (see its README). Work happens in two worktrees next to the main checkout (`../SAdiy-linux`, `../SAdiy-rtl`); a new machine needs both to continue that work, and the PetaLinux project at `/media/patrik/Workspaces/HW/ZYNQLinux/ebaz4205_sadiy/` is not in git (only its mirrored files, `zynq-ebaz/sw/deploy/petalinux/`). Platform choice (BBB or EBAZ) is in `sweepd`, the GUI and the tools. CE control from Linux is written for both boards, untested on hardware. Open: boot the rebuilt image (LCD, LEDs, keys), the S4 bench checks, the backends S5/S7.
 - **Software:** the simulator, the GUI, bench mode, device logging, per-point lock gating and flags, and the optional image rejection are written and tested on a PC. **Nothing of the sweep path has run on a real BBB.** ADF4351 registers `R0..R5` are written but not checked against ADI's evaluation software; `build_hw_engine` (real SPI, GPIO, ADS1115 for the sweep) is not written.
 - **Next on the bench:** `docs/bringup-2026-11-07.md` (SPI0, I2C2 and the ADS1115, ADF4351 lock, detector curve, PE4302 weights). Open parts: IF filter, IF amp, LPFs, LO pad (`hw/todo-parts.md`).
 - **Next in code, after the bench:** `build_hw_engine`, the `registers()` check, replacing `settle_s` and the thresholds (`floor_dbm`, `max_dbm`, `outlier_db`) with measured values, and the time per point (`docs/architecture.md`, "Time per point and the PRUs").

@@ -18,7 +18,7 @@ The pin map is a proposal. Pin and mux names come from the BBB system reference,
 | SYN_DATA | ADF4351 DAT | P9.18 SPI0_D1 (MOSI) | n/a | 32-bit words |
 | SYN_LE | ADF4351 LE | P9.17 SPI0_CS0 | n/a | hardware chip select |
 | SYN_LD | ADF4351 LD | P9.23 GPIO1_17 | 49 | input (Lock_Flag), the MUX pin stays unused |
-| SYN_CE (optional) | ADF4351 CE | P9.27 GPIO3_19 | 115 | tie the CE header pin to the board's 3V3 pin until needed |
+| SYN_CE (optional) | ADF4351 CE | P9.27 GPIO3_19 | 115 | tie the CE header pin to the board's 3V3 pin until needed; software control: `python tools/bringup.py synth-ce on\|off\|release\|read` (J12 2-3 to use it) |
 | ATT_V1 | PE4302 V1 (0.5 dB, assumed) | P8.7 GPIO2_2 | 66 | TIMER4 pin, default mode is GPIO |
 | ATT_V2 | PE4302 V2 (1 dB) | P8.8 GPIO2_3 | 67 | TIMER7 pin |
 | ATT_V3 | PE4302 V3 (2 dB) | P8.9 GPIO2_5 | 69 | TIMER5 pin |
