@@ -22,5 +22,5 @@ sadiy-gui = "sadiy.ui.sa_gui:main"
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
+testpaths = ["tests", "zynq-ebaz/sw/tests", "zynq-ebaz/rtl/tests"]
+pythonpath = ["src", "zynq-ebaz/sw"]

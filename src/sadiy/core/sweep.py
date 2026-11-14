@@ -10,6 +10,9 @@ Per point the engine does what only the BBB side can:
 - `run_rejecting()` sweeps twice, with the LO above and below the signal, and keeps the lower reading per
   point: a tone stays, its low-IF image (which moves from 2 IF below to 2 IF above the tone) drops out.
 
+With an `offload` (platform sweep engine, see zynq-ebaz/docs/handover-F1.md) `run()` lets it do the per-point
+work and only evaluates the volts it returns; there is no median or outlier flag then.
+
 `run()` still returns the dBm values. The flags and counts of the last sweep are in `last_flags` and
 `last_stats`; `sweepd` sends the flags with the frame and reports the counts in its log.
 """
@@ -92,6 +95,7 @@ class SweepEngine:
         outlier_db: float = 3.0,
         lock: Optional[Callable[[], bool]] = None,
         lock_retries: int = 2,
+        offload=None,
     ) -> None:
         if combine_method not in COMBINE_METHODS:
             raise ValueError(f"unknown combine method {combine_method!r}, use one of {COMBINE_METHODS}")
@@ -107,6 +111,7 @@ class SweepEngine:
         self.outlier_db = outlier_db
         self._lock = lock if lock is not None else getattr(synth, "locked", None)
         self.lock_retries = lock_retries
+        self.offload = offload      # duck-typed: run_points(points, atten_db, n_avg) -> (volts, unlocked, atten_db_set)
         self.last_atten_db = 0.0
         self.last_peak_det_dbm = float("-inf")
         self.last_flags = np.zeros(0, dtype=np.uint8)
@@ -117,42 +122,72 @@ class SweepEngine:
         return _safe_state_of(self)
 
     def run(self, points: Sequence[SweepPoint], atten_db: float) -> np.ndarray:
+        if self.offload is not None:
+            return self._run_offloaded(points, atten_db)
         self.last_atten_db = self.atten.set_attenuation(atten_db)
         out = np.empty(len(points))
         flags = np.zeros(len(points), dtype=np.uint8)
         stats = SweepStats(points=len(points), lock_checked=self._lock is not None)
         peak_det = float("-inf")
-        det = self.detector
-        volts_per_db = abs(det.slope_v_per_db) * det.divider_ratio
         for i, pt in enumerate(points):
             self.synth.tune(pt)
             self._settle()
             flag = 0
             if self._lock is not None and not self._wait_lock(pt, stats):
-                flag |= FLAG_UNLOCKED
-                stats.unlocked += 1
-                if stats.first_unlocked_hz is None:
-                    stats.first_unlocked_hz = pt.f_rf_hz
+                flag |= self._mark_unlocked(pt, stats)
             samples = self._samples()
             v = combine(samples, self.combine_method)
-            p_det = det.dbm_from_adc_volts(v)
-            if len(samples) >= 3 and max(abs(x - v) for x in samples) / volts_per_db > self.outlier_db:
-                flag |= FLAG_OUTLIER
-                stats.outliers += 1
-            if p_det >= det.max_dbm:
-                flag |= FLAG_OVERRANGE
-                stats.overrange += 1
-            elif p_det <= det.floor_dbm:
-                flag |= FLAG_UNDERRANGE
-                stats.underrange += 1
+            flag, p_det, out[i] = self._evaluate(pt, v, flag, stats, samples)
             if not flag & FLAG_UNLOCKED:        # a point read without lock must not steer the auto-range
                 peak_det = max(peak_det, p_det)
             flags[i] = flag
-            out[i] = self.cal.to_dbm(p_det, pt.f_rf_hz, self.last_atten_db)
         self.last_peak_det_dbm = peak_det
         self.last_flags = flags
         self.last_stats = stats
         return out
+
+    def _run_offloaded(self, points: Sequence[SweepPoint], atten_db: float) -> np.ndarray:
+        """Same result as `run`, with the platform's sweep engine doing the per-point work (it sums the
+        samples, so there is no median and no outlier flag; lock gating is the engine's)."""
+        volts, unlocked, self.last_atten_db = self.offload.run_points(points, atten_db, self.averages)
+        out = np.empty(len(points))
+        flags = np.zeros(len(points), dtype=np.uint8)
+        stats = SweepStats(points=len(points), lock_checked=True)
+        peak_det = float("-inf")
+        for i, pt in enumerate(points):
+            flag = self._mark_unlocked(pt, stats) if unlocked[i] else 0
+            flag, p_det, out[i] = self._evaluate(pt, volts[i], flag, stats)
+            if not flag & FLAG_UNLOCKED:
+                peak_det = max(peak_det, p_det)
+            flags[i] = flag
+        self.last_peak_det_dbm = peak_det
+        self.last_flags = flags
+        self.last_stats = stats
+        return out
+
+    @staticmethod
+    def _mark_unlocked(pt: SweepPoint, stats: SweepStats) -> int:
+        stats.unlocked += 1
+        if stats.first_unlocked_hz is None:
+            stats.first_unlocked_hz = pt.f_rf_hz
+        return FLAG_UNLOCKED
+
+    def _evaluate(self, pt: SweepPoint, v: float, flag: int, stats: SweepStats, samples: Sequence[float] = ()):
+        """Per-point step shared by `run` and `_run_offloaded`: detector power from the ADC volts `v`, outlier
+        and range flags (added to `flag`), input-referred dBm. Returns (flag, detector dBm, dBm)."""
+        det = self.detector
+        p_det = det.dbm_from_adc_volts(v)
+        volts_per_db = abs(det.slope_v_per_db) * det.divider_ratio
+        if len(samples) >= 3 and max(abs(x - v) for x in samples) / volts_per_db > self.outlier_db:
+            flag |= FLAG_OUTLIER
+            stats.outliers += 1
+        if p_det >= det.max_dbm:
+            flag |= FLAG_OVERRANGE
+            stats.overrange += 1
+        elif p_det <= det.floor_dbm:
+            flag |= FLAG_UNDERRANGE
+            stats.underrange += 1
+        return flag, p_det, self.cal.to_dbm(p_det, pt.f_rf_hz, self.last_atten_db)
 
     def run_rejecting(self, points: Sequence[SweepPoint], other_points: Sequence[SweepPoint], have_other,
                       atten_db: float) -> np.ndarray:
@@ -238,6 +273,7 @@ def merge_image_sweeps(p_main, flags_main, p_other, flags_other, have_other):
 def _safe_state_of(engine: "SweepEngine") -> list:
     errors = []
     for what, fn in (
+        ("offload", getattr(getattr(engine, "offload", None), "safe_state", None)),   # first: gives the pins back
         ("synth", getattr(engine.synth, "safe_state", None)),
         ("attenuator", lambda: engine.atten.set_attenuation(float(getattr(engine.atten, "max_db", 31.5)))),
     ):

@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 build/
 dist/
+zynq-ebaz/build/
 # local calibration data and captures
 cal/*.json
 captures/

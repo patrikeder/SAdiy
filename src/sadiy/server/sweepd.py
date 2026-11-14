@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import importlib
 import json
 import logging
 import os
@@ -59,10 +60,23 @@ def build_sim_engine(cfg: dict) -> SweepEngine:
 
 
 def build_hw_engine(cfg: dict) -> SweepEngine:
-    raise NotImplementedError(
-        "Hardware wiring is not implemented yet: needs Adf4351.registers() and the pin map "
-        "(src/sadiy/pinmap.py, hw/wiring-bbb.md). Use --sim until then."
-    )
+    """Real hardware. `[platform] name` picks the platform: "bbb" (not wired yet) or a plugin module
+    `sadiy_ebaz.platforms.<name>` (`-` becomes `_`) with a `build_engine(cfg)` function."""
+    name = cfg.get("platform", {}).get("name", "bbb")
+    if name == "bbb":
+        raise NotImplementedError(
+            "Hardware wiring is not implemented yet: needs Adf4351.registers() and the pin map "
+            "(src/sadiy/pinmap.py, hw/wiring-bbb.md). Use --sim until then."
+        )
+    module = f"sadiy_ebaz.platforms.{name.replace('-', '_')}"
+    try:
+        mod = importlib.import_module(module)
+    except ModuleNotFoundError as exc:
+        if exc.name not in (module, "sadiy_ebaz", "sadiy_ebaz.platforms"):
+            raise
+        raise RuntimeError(f"unknown platform {name!r}: expected a module {module} "
+                           f"(is zynq-ebaz/sw on PYTHONPATH?)") from exc
+    return mod.build_engine(cfg)
 
 
 class Sweepd:
