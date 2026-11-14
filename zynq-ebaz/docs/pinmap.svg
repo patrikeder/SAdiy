@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1560 820" font-family="Helvetica,Arial,sans-serif" font-size="12">
+<title>EBAZ4205 pin map</title>
+<rect width="1560" height="820" fill="#fff"/>
+<text x="20" y="30" font-size="20" font-weight="bold">EBAZ4205 pin map (current bitstream)</text>
+<text x="20" y="50" fill="#555">XC7Z010-CLG400, I/O LVCMOS33, 22 ohm series on the board. Pin numbering of the 2x10 headers: row n holds pins 2n-1 | 2n (orientation not verified on the board).</text>
+<rect x="20" y="70" width="1120" height="730" rx="14" fill="#1f7a4d" stroke="#0f4a2d" stroke-width="3"/>
+<text x="580" y="98" text-anchor="middle" fill="#dff5e6" font-size="14" font-weight="bold">EBAZ4205 (top view, schematic arrangement)</text>
+<rect x="500" y="640" width="160" height="60" rx="6" fill="#16603b" stroke="#0f4a2d"/>
+<text x="580" y="665" text-anchor="middle" fill="#dff5e6">Zynq XC7Z010</text>
+<text x="580" y="683" text-anchor="middle" fill="#dff5e6" font-size="11">PS: SD, UART1, EMIO</text>
+<rect x="142" y="122" width="76" height="460" rx="5" fill="#222"/>
+<text x="180" y="114" text-anchor="middle" fill="#fff" font-weight="bold" font-size="15">DATA1</text>
+<circle cx="162" cy="150" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="162" y="154" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">1</text>
+<text x="132" y="154" text-anchor="end" font-size="11" fill="#bfe3cb">supply</text>
+<circle cx="198" cy="150" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="198" y="154" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">2</text>
+<text x="228" y="154" text-anchor="start" font-size="11" fill="#bfe3cb">supply</text>
+<circle cx="162" cy="194" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="162" y="198" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">3</text>
+<text x="132" y="198" text-anchor="end" font-size="11" fill="#bfe3cb">GND</text>
+<circle cx="198" cy="194" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="198" y="198" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">4</text>
+<text x="228" y="198" text-anchor="start" font-size="11" fill="#bfe3cb">GND</text>
+<circle cx="162" cy="238" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="162" y="242" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">5</text>
+<text x="132" y="242" text-anchor="end" font-size="11" fill="#fff">adc_d[0]  [A20]</text>
+<circle cx="198" cy="238" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="198" y="242" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">6</text>
+<text x="228" y="242" text-anchor="start" font-size="11" fill="#fff">adc_otr  [H16]</text>
+<circle cx="162" cy="282" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="162" y="286" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">7</text>
+<text x="132" y="286" text-anchor="end" font-size="11" fill="#fff">adc_d[1]  [B19]</text>
+<circle cx="198" cy="282" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="198" y="286" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">8</text>
+<text x="228" y="286" text-anchor="start" font-size="11" fill="#fff">adc_d[2]  [B20]</text>
+<circle cx="162" cy="326" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="162" y="330" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">9</text>
+<text x="132" y="330" text-anchor="end" font-size="11" fill="#fff">adc_d[3]  [C20]</text>
+<circle cx="198" cy="326" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="198" y="330" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">10</text>
+<text x="228" y="330" text-anchor="start" font-size="11" fill="#bfe3cb">NC</text>
+<circle cx="162" cy="370" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="162" y="374" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">11</text>
+<text x="132" y="374" text-anchor="end" font-size="11" fill="#fff">adc_d[11]  [H17]</text>
+<circle cx="198" cy="370" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="198" y="374" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">12</text>
+<text x="228" y="374" text-anchor="start" font-size="11" fill="#bfe3cb">GND</text>
+<circle cx="162" cy="414" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="162" y="418" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">13</text>
+<text x="132" y="418" text-anchor="end" font-size="11" fill="#fff">adc_d[4]  [D20]</text>
+<circle cx="198" cy="414" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="198" y="418" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">14</text>
+<text x="228" y="418" text-anchor="start" font-size="11" fill="#fff">adc_d[5]  [D18]</text>
+<circle cx="162" cy="458" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="162" y="462" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">15</text>
+<text x="132" y="462" text-anchor="end" font-size="11" fill="#fff">adc_d[10]  [H18]</text>
+<circle cx="198" cy="458" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="198" y="462" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">16</text>
+<text x="228" y="462" text-anchor="start" font-size="11" fill="#fff">adc_d[6]  [D19]</text>
+<circle cx="162" cy="502" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="162" y="506" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">17</text>
+<text x="132" y="506" text-anchor="end" font-size="11" fill="#fff">adc_d[7]  [F20]</text>
+<circle cx="198" cy="502" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="198" y="506" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">18</text>
+<text x="228" y="506" text-anchor="start" font-size="11" fill="#fff">adc_d[8]  [E19]</text>
+<circle cx="162" cy="546" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="162" y="550" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">19</text>
+<text x="132" y="550" text-anchor="end" font-size="11" fill="#fff">adc_d[9]  [F19]</text>
+<circle cx="198" cy="546" r="13" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="198" y="550" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b6b6b">20</text>
+<text x="228" y="550" text-anchor="start" font-size="11" fill="#fff">adc_clk  [K17]</text>
+<rect x="502" y="122" width="76" height="460" rx="5" fill="#222"/>
+<text x="540" y="114" text-anchor="middle" fill="#fff" font-weight="bold" font-size="15">DATA2</text>
+<circle cx="522" cy="150" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="522" y="154" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">1</text>
+<text x="492" y="154" text-anchor="end" font-size="11" fill="#bfe3cb">supply</text>
+<circle cx="558" cy="150" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="558" y="154" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">2</text>
+<text x="588" y="154" text-anchor="start" font-size="11" fill="#bfe3cb">supply</text>
+<circle cx="522" cy="194" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="522" y="198" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">3</text>
+<text x="492" y="198" text-anchor="end" font-size="11" fill="#bfe3cb">GND</text>
+<circle cx="558" cy="194" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="558" y="198" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">4</text>
+<text x="588" y="198" text-anchor="start" font-size="11" fill="#bfe3cb">GND</text>
+<circle cx="522" cy="238" r="13" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="2"/>
+<text x="522" y="242" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">5</text>
+<text x="492" y="242" text-anchor="end" font-size="11" fill="#fff">adf4351_clk  [G20]</text>
+<circle cx="558" cy="238" r="13" fill="#fff" stroke="#c8c8c8" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="558" y="242" text-anchor="middle" font-size="11" font-weight="bold" fill="#c8c8c8">6</text>
+<text x="588" y="242" text-anchor="start" font-size="11" fill="#fff">spare_d2_6  [J18]</text>
+<circle cx="522" cy="282" r="13" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="2"/>
+<text x="522" y="286" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">7</text>
+<text x="492" y="286" text-anchor="end" font-size="11" fill="#fff">adf4351_dat  [G19]</text>
+<circle cx="558" cy="282" r="13" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="2"/>
+<text x="558" y="286" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">8</text>
+<text x="588" y="286" text-anchor="start" font-size="11" fill="#fff">adf4351_le  [H20]</text>
+<circle cx="522" cy="326" r="13" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="2"/>
+<text x="522" y="330" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">9</text>
+<text x="492" y="330" text-anchor="end" font-size="11" fill="#fff">adf4351_ld  [J19]</text>
+<circle cx="558" cy="326" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="558" y="330" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">10</text>
+<text x="588" y="330" text-anchor="start" font-size="11" fill="#bfe3cb">NC</text>
+<circle cx="522" cy="370" r="13" fill="#2a9d4b" stroke="#2a9d4b" stroke-width="2"/>
+<text x="522" y="374" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">11</text>
+<text x="492" y="374" text-anchor="end" font-size="11" fill="#fff">i2c_sda  [K18]</text>
+<circle cx="558" cy="370" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="558" y="374" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">12</text>
+<text x="588" y="374" text-anchor="start" font-size="11" fill="#bfe3cb">GND</text>
+<circle cx="522" cy="414" r="13" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="2"/>
+<text x="522" y="418" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">13</text>
+<text x="492" y="418" text-anchor="end" font-size="11" fill="#fff">adf4351_ce  [K19]</text>
+<circle cx="558" cy="414" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
+<text x="558" y="418" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">14</text>
+<text x="588" y="418" text-anchor="start" font-size="11" fill="#fff">pe4302_v[0]  [J20]</text>
+<circle cx="522" cy="458" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
+<text x="522" y="462" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">15</text>
+<text x="492" y="462" text-anchor="end" font-size="11" fill="#fff">pe4302_v[1]  [L16]</text>
+<circle cx="558" cy="458" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
+<text x="558" y="462" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">16</text>
+<text x="588" y="462" text-anchor="start" font-size="11" fill="#fff">pe4302_v[2]  [L19]</text>
+<circle cx="522" cy="502" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
+<text x="522" y="506" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">17</text>
+<text x="492" y="506" text-anchor="end" font-size="11" fill="#fff">pe4302_v[3]  [M18]</text>
+<circle cx="558" cy="502" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
+<text x="558" y="506" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">18</text>
+<text x="588" y="506" text-anchor="start" font-size="11" fill="#fff">pe4302_v[4]  [L20]</text>
+<circle cx="522" cy="546" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
+<text x="522" y="550" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">19</text>
+<text x="492" y="550" text-anchor="end" font-size="11" fill="#fff">pe4302_v[5]  [M20]</text>
+<circle cx="558" cy="546" r="13" fill="#2a9d4b" stroke="#2a9d4b" stroke-width="2"/>
+<text x="558" y="550" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">20</text>
+<text x="588" y="550" text-anchor="start" font-size="11" fill="#fff">i2c_scl  [L17]</text>
+<rect x="862" y="122" width="76" height="460" rx="5" fill="#222"/>
+<text x="900" y="114" text-anchor="middle" fill="#fff" font-weight="bold" font-size="15">DATA3</text>
+<circle cx="882" cy="150" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="154" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">1</text>
+<text x="852" y="154" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="150" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="154" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">2</text>
+<text x="948" y="154" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="194" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="198" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">3</text>
+<text x="852" y="198" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="194" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="198" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">4</text>
+<text x="948" y="198" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="238" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="242" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">5</text>
+<text x="852" y="242" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="238" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="242" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">6</text>
+<text x="948" y="242" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="282" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="286" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">7</text>
+<text x="852" y="286" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="282" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="286" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">8</text>
+<text x="948" y="286" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="326" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="330" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">9</text>
+<text x="852" y="330" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="326" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="330" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">10</text>
+<text x="948" y="330" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="370" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="374" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">11</text>
+<text x="852" y="374" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="370" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="374" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">12</text>
+<text x="948" y="374" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="414" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="418" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">13</text>
+<text x="852" y="418" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="414" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="418" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">14</text>
+<text x="948" y="418" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="458" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="462" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">15</text>
+<text x="852" y="462" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="458" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="462" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">16</text>
+<text x="948" y="462" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="502" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="506" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">17</text>
+<text x="852" y="506" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="502" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="506" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">18</text>
+<text x="948" y="506" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="882" cy="546" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="882" y="550" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">19</text>
+<text x="852" y="550" text-anchor="end" font-size="11" fill="#bfe3cb">not mapped</text>
+<circle cx="918" cy="546" r="13" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="918" y="550" text-anchor="middle" font-size="11" font-weight="bold" fill="#222">20</text>
+<text x="948" y="550" text-anchor="start" font-size="11" fill="#bfe3cb">not mapped</text>
+<text x="1180" y="100" font-size="14" font-weight="bold">Legend</text>
+<circle cx="1188" cy="118" r="8" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="2"/>
+<text x="1204" y="122">ADF4351 synthesiser</text>
+<circle cx="1188" cy="142" r="8" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
+<text x="1204" y="146">PE4302 attenuator</text>
+<circle cx="1188" cy="166" r="8" fill="#2a9d4b" stroke="#2a9d4b" stroke-width="2"/>
+<text x="1204" y="170">I2C, ADS1115</text>
+<circle cx="1188" cy="190" r="8" fill="#fff" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="3 2"/>
+<text x="1204" y="194">AD9226 (planned)</text>
+<circle cx="1188" cy="214" r="8" fill="#c8c8c8" stroke="#c8c8c8" stroke-width="2"/>
+<text x="1204" y="218">spare</text>
+<circle cx="1188" cy="238" r="8" fill="#d9d9d9" stroke="#777" stroke-width="2"/>
+<text x="1204" y="242">supply / GND / NC / not mapped</text>
+<text x="1180" y="266" fill="#555" font-size="11">Dashed outline = in pins.toml, not constrained yet.</text>
+<text x="1180" y="310" font-size="14" font-weight="bold">Board-fixed pins</text>
+<text x="1180" y="332" font-weight="bold" fill="#333">Ethernet PHY (MII on EMIO)</text>
+<text x="1188" y="350" font-size="11">phy clk 25 MHz (FCLK1)</text>
+<text x="1502" y="350" font-size="11" text-anchor="end" fill="#333">U18</text>
+<text x="1188" y="367" font-size="11">MDC / MDIO</text>
+<text x="1502" y="367" font-size="11" text-anchor="end" fill="#333">W15 / Y14</text>
+<text x="1188" y="384" font-size="11">RX_CLK, RX_DV, RX_ER</text>
+<text x="1502" y="384" font-size="11" text-anchor="end" fill="#333">U14, W16, G17</text>
+<text x="1188" y="401" font-size="11">RXD[3:0]</text>
+<text x="1502" y="401" font-size="11" text-anchor="end" fill="#333">Y17, V17, V16, Y16</text>
+<text x="1188" y="418" font-size="11">TX_CLK, TX_EN</text>
+<text x="1502" y="418" font-size="11" text-anchor="end" fill="#333">U15, W19</text>
+<text x="1188" y="435" font-size="11">TXD[3:0]</text>
+<text x="1502" y="435" font-size="11" text-anchor="end" fill="#333">Y19, V18, Y18, W18</text>
+<text x="1180" y="452" font-weight="bold" fill="#333">PS MIO (fixed pins)</text>
+<text x="1188" y="470" font-size="11">SD card (TF) SD0</text>
+<text x="1502" y="470" font-size="11" text-anchor="end" fill="#333">MIO 40..45</text>
+<text x="1188" y="487" font-size="11">console UART1 (J7)</text>
+<text x="1502" y="487" font-size="11" text-anchor="end" fill="#333">MIO 24..25</text>
+<text x="1180" y="526" font-size="14" font-weight="bold">EMIO GPIO lines (Linux 54 + n)</text>
+<text x="1188" y="546" font-size="11">n = 0..5</text>
+<text x="1502" y="546" font-size="11" text-anchor="end">V1 .. V6 = pe4302_v[0..5]</text>
+<text x="1188" y="563" font-size="11">n = 6</text>
+<text x="1502" y="563" font-size="11" text-anchor="end">adf4351_ce</text>
+<text x="1188" y="580" font-size="11">n = 7</text>
+<text x="1502" y="580" font-size="11" text-anchor="end">adf4351_ld</text>
+<text x="1188" y="597" font-size="11">n = 8..15</text><text x="1502" y="597" font-size="11" text-anchor="end">unused</text>
+</svg>
