@@ -22,11 +22,13 @@ SKIP_PREFIX = ("PCW_ACT_", "PCW_UIPARAM_ACT_", "PCW_MIO_TREE_")
 # Must stay identical to the overrides in session L's phase1.tcl (check_ps7.py compares them).
 OVERRIDES = [
     ("PCW_FPGA0_PERIPHERAL_FREQMHZ", "100"),
-    ("PCW_GPIO_EMIO_GPIO_WIDTH", "16"),
-    ("PCW_GPIO_EMIO_GPIO_IO", "16"),
+    ("PCW_GPIO_EMIO_GPIO_WIDTH", "18"),
+    ("PCW_GPIO_EMIO_GPIO_IO", "18"),
     ("PCW_CAN0_PERIPHERAL_ENABLE", "0"),
     ("PCW_CAN1_PERIPHERAL_ENABLE", "0"),
     ("PCW_UART0_PERIPHERAL_ENABLE", "0"),
+    ("PCW_SPI1_PERIPHERAL_ENABLE", "1"),      # adapter LCD (ST7789) on EMIO; session L must apply the same
+    ("PCW_SPI1_SPI1_IO", "EMIO"),
 ]
 
 

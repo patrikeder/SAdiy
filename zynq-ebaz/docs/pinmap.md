@@ -69,17 +69,86 @@ Supply / ground per the plan: pins 1-2 of every connector are supply (5..12 V, n
 Bank 34 and 35 are the PL I/O banks (3.3 V here); banks 500 and 501 are the PS MIO banks. Package ball map: `pinmap-fpga.svg`.
 
 
+## Adapter board (HelloFPGA EBAZ4205_ZJB05): display, keys, LEDs
+
+Constrained in `rtl/fpga/constraints/adapter_ui.xdc`. Keys and LEDs are EMIO GPIO for Linux (keys 13..17, active low with pull-up; LEDs 10..12, polarity not verified), no PL logic. The LCD (ST7789) also belongs to Linux: SCL / SDA / CS = PS SPI1 on EMIO, DC / RES = EMIO GPIO 8 / 9 (Linux lines 62 / 63); no PL logic. See `lcd-st7789.md`.
+
+| Adapter silk | FPGA ball | Bank | I/O name | Port | Dir |
+|---|---|---|---|---|---|
+| KEY1 | T19 | 34 | IO_25_34 | `keys[0]` | in |
+| KEY2 | P19 | 34 | IO_L13N_T2_MRCC_34 | `keys[1]` | in |
+| KEY3 | U20 | 34 | IO_L15N_T2_DQS_34 | `keys[2]` | in |
+| KEY4 | U19 | 34 | IO_L12N_T1_MRCC_34 | `keys[3]` | in |
+| KEY5 | V20 | 34 | IO_L16P_T2_34 | `keys[4]` | in |
+| LCD_PIN CS | T20 | 34 | IO_L15P_T2_DQS_34 | `lcd_cs` | out |
+| LCD_PIN DC | R18 | 34 | IO_L20N_T3_34 | `lcd_dc` | out |
+| LCD_PIN RES | N17 | 34 | IO_L23P_T3_34 | `lcd_res` | out |
+| LCD_PIN SCL | R19 | 34 | IO_0_34 | `lcd_scl` | out |
+| LCD_PIN SDA | P20 | 34 | IO_L14N_T2_SRCC_34 | `lcd_sda` | out |
+| LED1 | H18 | 35 | IO_L14N_T2_AD4N_SRCC_35 | `led[0]` | out |
+| LED2 | K17 | 35 | IO_L12P_T1_MRCC_35 | `led[1]` | out |
+| LED3 | E19 | 35 | IO_L5N_T0_AD9N_35 | `led[2]` | out |
+
+Present on the adapter but not constrained: HDMI (DAT0 D19, DAT1 C20, DAT2 B19, CLK F19), buzzer D18, UART header H16 (RX) / H17 (TX).
+
+### Right-hand connector of the adapter (to the SAdiy PCBs), row 1 at the top
+
+| Row | Left | Signal | Right | Signal |
+|---|---|---|---|---|
+| 1 | K18 | `i2c_sda` | J18 | `spare_d2_6` |
+| 2 | G19 | `adf4351_dat` | G20 | `adf4351_clk` |
+| 3 | J20 | `pe4302_v[0]` | H20 | `adf4351_le` |
+| 4 | K19 | `adf4351_ce` | J19 | `adf4351_ld` |
+| 5 | L20 | `pe4302_v[4]` | L19 | `pe4302_v[2]` |
+| 6 | L17 | `i2c_scl` | L16 | `pe4302_v[1]` |
+| 7 | M20 | `pe4302_v[5]` | M18 | `pe4302_v[3]` |
+| 8 | M19 | `free` | N20 | `free` |
+| 9 | P18 | `free` | M17 | `free` |
+| 10 | GND | GND | 3V3 | 3V3 |
+
+All 14 DATA2 control balls are on this connector. Free for the PCBs: J18, M19, N20, P18, M17 (J18 is DATA2-6, the others come from DATA3).
+
+### Conflict with the planned AD9226 on DATA1
+
+With this adapter the following planned `adc_*` balls are also wired to adapter functions: H18 (LED1), K17 (LED2), E19 (LED3), H16 (UART header RX), H17 (UART header TX), D19 (HDMI DAT0), C20 (HDMI DAT1), B19 (HDMI DAT2), F19 (HDMI CLK), D18 (buzzer). The right-hand connector carries no DATA1 signals, so the AD9226 cannot use DATA1 with this adapter.
+
+### Proposal: AD9226 through the HDMI port
+
+The HDMI port carries four differential pairs (DAT0, DAT1, DAT2, CLK) = 8 FPGA balls, exactly 8 of the 14 planned AD9226 balls. With the 5 free balls of the right connector that makes 13: 12 data bits and the clock; OTR needs one more (the UART header H16 once its jumper is removed, or leave it out). Used as single-ended LVCMOS33. NOT in `pins.toml`; the Linux lane owns that file.
+
+| AD9226 signal | Ball | Where | Bank | I/O name |
+|---|---|---|---|---|
+| `adc_d[0]` | A20 | HDMI DAT2 N | 35 | IO_L2N_T0_AD8N_35 |
+| `adc_d[1]` | B19 | HDMI DAT2 P | 35 | IO_L2P_T0_AD8P_35 |
+| `adc_d[2]` | B20 | HDMI DAT1 N | 35 | IO_L1N_T0_AD0N_35 |
+| `adc_d[3]` | C20 | HDMI DAT1 P | 35 | IO_L1P_T0_AD0P_35 |
+| `adc_d[4]` | D20 | HDMI DAT0 N | 35 | IO_L4N_T0_35 |
+| `adc_d[5]` | J18 | right connector row 1 | 35 | IO_L14P_T2_AD4P_SRCC_35 |
+| `adc_d[6]` | D19 | HDMI DAT0 P | 35 | IO_L4P_T0_35 |
+| `adc_d[7]` | F20 | HDMI CLK N | 35 | IO_L15N_T2_DQS_AD12N_35 |
+| `adc_d[8]` | M19 | right connector row 8 | 35 | IO_L7P_T1_AD2P_35 |
+| `adc_d[9]` | F19 | HDMI CLK P | 35 | IO_L15P_T2_DQS_AD12P_35 |
+| `adc_d[10]` | N20 | right connector row 8 | 34 | IO_L14P_T2_SRCC_34 |
+| `adc_d[11]` | P18 | right connector row 9 | 34 | IO_L23N_T3_34 |
+| `adc_clk` | M17 | right connector row 9 | 35 | IO_L8P_T1_AD10P_35 |
+| `adc_otr` | H16 | UART header (remove its jumper) | 35 | IO_L13P_T2_MRCC_35 |
+
+To check before wiring: (1) continuity from each HDMI pad to its EBAZ DATA1 pin and that no series resistor, termination or ESD part sits on it; (2) that the negative balls reach the HDMI pins (the silk only names the positive nets); (3) the HDMI +5 V and shield pins must never touch a signal line; (4) which pad of your HDMI breakout is which TMDS line.
+
+
 ## EMIO line map (Linux GPIO line = 54 + n on the Zynq gpiochip)
 
 | n | Signal | n | Signal |
 |---|---|---|---|
-| 0 | pe4302_v[0] (V1) | 8 | unused |
-| 1 | pe4302_v[1] (V2) | 9 | unused |
-| 2 | pe4302_v[2] (V3) | 10 | unused |
-| 3 | pe4302_v[3] (V4) | 11 | unused |
-| 4 | pe4302_v[4] (V5) | 12 | unused |
-| 5 | pe4302_v[5] (V6) | 13 | unused |
-| 6 | adf4351_ce | 14 | unused |
-| 7 | adf4351_ld | 15 | unused |
+| 0 | pe4302_v[0] (V1) | 8 | lcd_dc (adapter LCD) |
+| 1 | pe4302_v[1] (V2) | 9 | lcd_res (adapter LCD) |
+| 2 | pe4302_v[2] (V3) | 10 | led[0] (adapter) |
+| 3 | pe4302_v[3] (V4) | 11 | led[1] (adapter) |
+| 4 | pe4302_v[4] (V5) | 12 | led[2] (adapter) |
+| 5 | pe4302_v[5] (V6) | 13 | keys[0] (adapter, active low) |
+| 6 | adf4351_ce | 14 | keys[1] (adapter, active low) |
+| 7 | adf4351_ld | 15 | keys[2] (adapter, active low) |
+| | | 16 | keys[3] (adapter, active low) |
+| | | 17 | keys[4] (adapter, active low) |
 
-Also on EMIO: SPI0 (SCLK, MOSI, SS0 = LE) and I2C0 (SCL, SDA), see the table above.
+Also on EMIO: SPI0 (SCLK, MOSI, SS0 = LE), SPI1 (adapter LCD: SCLK, MOSI, SS0) and I2C0 (SCL, SDA), see the tables above.
