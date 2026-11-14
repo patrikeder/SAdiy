@@ -1,0 +1,300 @@
+# Master pin list for the SAdiy adapter on the EBAZ4205 DATA connectors.
+# Owner: session L. The PCB (zynq-ebaz/hw, user only) must match this file;
+# change it here first and announce the change in docs/STATUS-linux.md.
+# `gen_xdc.py` turns it into constraints/ebaz4205.xdc.
+#
+# Schematic check (S2, 2026-11-14), against docs EBAZ4205-SCH.pdf (text layer)
+# and the community XDC (EBAZ4205_tutorial/ebaz4205_merged.xdc):
+#  - All DATA2 balls below agree between the two sources.
+#  - DATA nets carry 22 ohm series resistors on the EBAZ board (60 x "22R 1%"
+#    in the schematic; R2479, R2483 seen on DATA1). Fine for 10 MHz SPI.
+#  - Shared with other functions: DATA1-6 (H16), DATA1-11 (H17), DATA1-15 (H18),
+#    DATA1-18 (E19), DATA1-20 (K17) are used as UART_0 / RGB LED pins in the
+#    community projects. That is only a use in their designs, not extra
+#    hardware on the board (verify with a continuity check before Phase 4).
+#  - MISMATCH to resolve before Phase 4: the schematic text puts DATA1-13 on
+#    D19, the community table on D20 (and DATA1-16 on D19). Appendix D of the
+#    plan follows the community table. D19/D20 are a swap at most.
+#  - DATA2 pins carry no board function (no LED, key or PHY on them).
+# The schematic PDF has a damaged optional-content list; its text extraction is
+# positional and noisy, so this check is "no contradiction found", not a proof.
+
+[defaults]
+iostandard = "LVCMOS33"
+
+# phase: first project phase that needs the signal. active = true puts the
+# constraint into the XDC, false emits it commented out (the port does not
+# exist in the current top level).
+# dir: in, out, inout (documentation and gen_xdc sanity only).
+
+# ---- DATA2: control (Phase 1, EMIO) ----
+[[signal]]
+name = "adf4351_clk"
+connector = "DATA2"
+pin = 5
+ball = "G20"
+dir = "out"
+phase = 1
+active = true
+note = "PS SPI0 SCLK via EMIO"
+
+[[signal]]
+name = "adf4351_dat"
+connector = "DATA2"
+pin = 7
+ball = "G19"
+dir = "out"
+phase = 1
+active = true
+note = "PS SPI0 MOSI via EMIO"
+
+[[signal]]
+name = "adf4351_le"
+connector = "DATA2"
+pin = 8
+ball = "H20"
+dir = "out"
+phase = 1
+active = true
+note = "PS SPI0 SS0 via EMIO (LE = chip select)"
+
+[[signal]]
+name = "adf4351_ld"
+connector = "DATA2"
+pin = 9
+ball = "J19"
+dir = "in"
+phase = 1
+active = true
+pulltype = "PULLDOWN"
+note = "lock detect, EMIO GPIO input; pulldown so a missing cable reads unlocked"
+
+[[signal]]
+name = "adf4351_ce"
+connector = "DATA2"
+pin = 13
+ball = "K19"
+dir = "out"
+phase = 1
+active = true
+note = "EMIO GPIO, tri-stated until software drives it; adapter jumper holds CE high"
+
+[[signal]]
+name = "pe4302_v[0]"
+connector = "DATA2"
+pin = 14
+ball = "J20"
+dir = "out"
+phase = 1
+active = true
+note = "V1 = 0.5 dB"
+
+[[signal]]
+name = "pe4302_v[1]"
+connector = "DATA2"
+pin = 15
+ball = "L16"
+dir = "out"
+phase = 1
+active = true
+note = "V2 = 1 dB"
+
+[[signal]]
+name = "pe4302_v[2]"
+connector = "DATA2"
+pin = 16
+ball = "L19"
+dir = "out"
+phase = 1
+active = true
+note = "V3 = 2 dB"
+
+[[signal]]
+name = "pe4302_v[3]"
+connector = "DATA2"
+pin = 17
+ball = "M18"
+dir = "out"
+phase = 1
+active = true
+note = "V4 = 4 dB"
+
+[[signal]]
+name = "pe4302_v[4]"
+connector = "DATA2"
+pin = 18
+ball = "L20"
+dir = "out"
+phase = 1
+active = true
+note = "V5 = 8 dB"
+
+[[signal]]
+name = "pe4302_v[5]"
+connector = "DATA2"
+pin = 19
+ball = "M20"
+dir = "out"
+phase = 1
+active = true
+note = "V6 = 16 dB"
+
+[[signal]]
+name = "i2c_scl"
+connector = "DATA2"
+pin = 20
+ball = "L17"
+dir = "inout"
+phase = 1
+active = true
+pulltype = "PULLUP"
+note = "PS I2C0 SCL via EMIO (ADS1115, address 0x48)"
+
+[[signal]]
+name = "i2c_sda"
+connector = "DATA2"
+pin = 11
+ball = "K18"
+dir = "inout"
+phase = 1
+active = true
+pulltype = "PULLUP"
+note = "PS I2C0 SDA via EMIO"
+
+[[signal]]
+name = "spare_d2_6"
+connector = "DATA2"
+pin = 6
+ball = "J18"
+dir = "inout"
+phase = 4
+active = false
+note = "spare"
+
+# ---- DATA1: AD9226 (Phase 4, constraints stay commented until the port exists) ----
+[[signal]]
+name = "adc_d[0]"
+connector = "DATA1"
+pin = 5
+ball = "A20"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[1]"
+connector = "DATA1"
+pin = 7
+ball = "B19"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[2]"
+connector = "DATA1"
+pin = 8
+ball = "B20"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[3]"
+connector = "DATA1"
+pin = 9
+ball = "C20"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[4]"
+connector = "DATA1"
+pin = 13
+ball = "D20"
+dir = "in"
+phase = 4
+active = false
+note = "schematic text says D19, see header"
+
+[[signal]]
+name = "adc_d[5]"
+connector = "DATA1"
+pin = 14
+ball = "D18"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[6]"
+connector = "DATA1"
+pin = 16
+ball = "D19"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[7]"
+connector = "DATA1"
+pin = 17
+ball = "F20"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[8]"
+connector = "DATA1"
+pin = 18
+ball = "E19"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[9]"
+connector = "DATA1"
+pin = 19
+ball = "F19"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[10]"
+connector = "DATA1"
+pin = 15
+ball = "H18"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_d[11]"
+connector = "DATA1"
+pin = 11
+ball = "H17"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_otr"
+connector = "DATA1"
+pin = 6
+ball = "H16"
+dir = "in"
+phase = 4
+active = false
+
+[[signal]]
+name = "adc_clk"
+connector = "DATA1"
+pin = 20
+ball = "K17"
+dir = "out"
+phase = 4
+active = false
