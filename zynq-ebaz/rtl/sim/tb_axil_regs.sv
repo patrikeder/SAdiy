@@ -93,6 +93,25 @@ module tb_axil_regs;
   logic [7:0] caps_table_aw = 8'd10;
   logic [7:0] caps_result_aw = 8'd12;
   logic [15:0] caps_clk_mhz = 16'd100;
+  logic pin_state_ce = 1'b0, pin_state_scl = 1'b0, pin_state_sda = 1'b0, pin_state_i2c_pl = 1'b0;
+  logic [15:0] adc_cfg_config;
+  logic [6:0]  adc_cfg_addr;
+  logic [11:0] adc_i2c_div_div;
+  logic [19:0] adc_t_conv_us_us;
+  logic [15:0] adc_stat_last = '0;
+  logic adc_stat_err_nack = 1'b0, adc_stat_busy = 1'b0;
+  logic [7:0]  adc_stat_count = '0;
+  logic adf_pins_ce;
+  logic det_cfg_mode, det_cfg_stream;
+  logic [15:0] gen_cfg_div;
+  logic [11:0] gen_cfg_len_m1;
+  logic gen_cfg_sync, gen_cfg_enable;
+  logic gen_addr_wr, gen_addr_rd, gen_data_wr, gen_data_rd;
+  logic [31:0] gen_addr_rdata = 32'h0000_0ABC, gen_data_rdata = 32'h0;
+  logic [31:0] if_nco_inc, if_nco_step_step;
+  logic [15:0] if_cic_r;
+  logic [5:0]  if_cic_shift;
+  logic [3:0]  if_cic_skip;
 
   axil_regs dut (.*);
 
@@ -316,11 +335,11 @@ module tb_axil_regs;
 
     // ---- constants
     rd_expect(A_ID, 32'h5341_0001, "ID");
-    rd_expect(A_VERSION, 32'h0001_0000, "VERSION");
+    rd_expect(A_VERSION, 32'h0001_0002, "VERSION");
     axi_write(A_ID, 32'h0, 0, 0, 0);
     axi_write(A_VERSION, 32'hFFFF_FFFF, 0, 0, 0);
     rd_expect(A_ID, 32'h5341_0001, "ID after write");
-    rd_expect(A_VERSION, 32'h0001_0000, "VERSION after write");
+    rd_expect(A_VERSION, 32'h0001_0002, "VERSION after write");
 
     // ---- rw fields: read back, unused bits read 0
     axi_write(A_SPI_DIV, 32'hFFFF_FFFF);
@@ -347,7 +366,7 @@ module tb_axil_regs;
     axi_write(A_N_ENTRIES, 32'hABCD_1234);
     rd_expect(A_N_ENTRIES, 32'h0000_1234, "N_ENTRIES");
     axi_write(A_DET_CFG, 32'hFFFF_FFFF);
-    rd_expect(A_DET_CFG, 32'h3, "DET_CFG");
+    rd_expect(A_DET_CFG, 32'h113, "DET_CFG");
     axi_write(A_DET_TEST, 32'h1234_ABCD);
     rd_expect(A_DET_TEST, 32'h0000_ABCD, "DET_TEST");
     axi_write(A_TABLE_W0, 32'hDEAD_BEEF);
@@ -388,6 +407,47 @@ module tb_axil_regs;
     pin_state_pe_in <= 6'h2A; pin_state_ld <= 1; pin_state_le <= 0; pin_state_clk <= 1; pin_state_dat <= 0;
     pin_state_pe_out <= 6'h15; pin_state_pe_t <= 6'h3F;
     rd_expect(A_PIN_STATE, 32'h3F15_052A, "PIN_STATE");
+    pin_state_ce <= 1; pin_state_scl <= 0; pin_state_sda <= 1; pin_state_i2c_pl <= 1;
+    rd_expect(A_PIN_STATE, 32'h3F15_D52A, "PIN_STATE with ce, sda, i2c_pl");
+    // ---- ADS1115 reader and CE registers (map 1.1)
+    rd_expect(12'h080, 32'h0048_C3E3, "ADC_CFG reset");
+    rd_expect(12'h084, 32'd70, "ADC_I2C_DIV reset");
+    rd_expect(12'h088, 32'd1400, "ADC_T_CONV_US reset");
+    rd_expect(12'h090, 32'h1, "ADF_PINS reset");
+    axi_write(12'h080, 32'hFFFF_FFFF);
+    rd_expect(12'h080, 32'h007F_FFFF, "ADC_CFG all ones");
+    if (adc_cfg_config !== 16'hFFFF || adc_cfg_addr !== 7'h7F) fail("ADC_CFG outputs");
+    axi_write(12'h080, 32'h0048_C3E3);
+    axi_write(12'h084, 32'hFFFF_FFFF);
+    rd_expect(12'h084, 32'h0000_0FFF, "ADC_I2C_DIV all ones");
+    axi_write(12'h088, 32'hFFFF_FFFF);
+    rd_expect(12'h088, 32'h000F_FFFF, "ADC_T_CONV_US all ones");
+    axi_write(12'h090, 32'h0);
+    rd_expect(12'h090, 32'h0, "ADF_PINS ce = 0");
+    if (adf_pins_ce !== 1'b0) fail("ADF_PINS output");
+    adc_stat_last <= 16'h8123; adc_stat_err_nack <= 1; adc_stat_busy <= 0; adc_stat_count <= 8'hA5;
+    rd_expect(12'h08C, 32'hA501_8123, "ADC_STAT");
+    axi_write(12'h08C, 32'h0);
+    rd_expect(12'h08C, 32'hA501_8123, "ADC_STAT is read-only");
+    // ---- generator and IF path registers (map 1.2)
+    rd_expect(12'h0A0, 32'h4000_03E8, "GEN_CFG reset");
+    axi_write(12'h0A0, 32'hFFFF_FFFF);
+    rd_expect(12'h0A0, 32'hCFFF_FFFF, "GEN_CFG all ones");
+    if (gen_cfg_div !== 16'hFFFF || gen_cfg_len_m1 !== 12'hFFF || !gen_cfg_sync || !gen_cfg_enable) fail("GEN_CFG outputs");
+    axi_write(12'h0A0, 32'h4000_03E8);
+    rd_expect(12'h0A4, 32'h0000_0ABC, "GEN_ADDR reads the ext value");
+    rd_expect(12'h0B0, 32'h0, "IF_NCO reset");
+    axi_write(12'h0B0, 32'hDEAD_BEEF);
+    rd_expect(12'h0B0, 32'hDEAD_BEEF, "IF_NCO");
+    axi_write(12'h0B4, 32'h1234_5678);
+    rd_expect(12'h0B4, 32'h1234_5678, "IF_NCO_STEP");
+    rd_expect(12'h0B8, 32'h040B_0010, "IF_CIC reset");
+    axi_write(12'h0B8, 32'hFFFF_FFFF);
+    rd_expect(12'h0B8, 32'h0F3F_FFFF, "IF_CIC all ones");
+    axi_write(12'h038, 32'hFFFF_FFFF);
+    rd_expect(12'h038, 32'h0000_0113, "DET_CFG all ones");
+    if (!det_cfg_mode || !det_cfg_stream) fail("DET_CFG mode / stream outputs");
+    axi_write(12'h038, 32'h0);
     rd_expect(A_CAPS, 32'h0064_0C0A, "CAPS");
     expect_pulses(-1, 0, 0, "ro registers");
 

@@ -59,6 +59,7 @@ module sweep_seq #(
   output      logic        det_run,
   input  wire logic        det_done,
   input  wire logic [27:0] det_sum,
+  input  wire logic        det_ovr,           // with det_done: over-range in this point (result bit 30)
   // lock detect, already synchronised
   input  wire logic        ld
 );
@@ -84,6 +85,7 @@ module sweep_seq #(
   // point being measured
   logic        unlocked;
   logic [27:0] sum_q;
+  logic        ovr_q;
   logic [16:0] pcount;            // one bit more than the register: detects a full result memory
   // timers, restarted on every state change
   logic [USW:0] us_div, st_div;
@@ -101,7 +103,7 @@ module sweep_seq #(
   assign tbl_raddr     = entry_index[TABLE_AW-1:0];
   assign spi_word      = ent_word;
   assign res_waddr     = pcount[RESULT_AW-1:0];
-  assign res_wdata     = {unlocked, 3'b000, sum_q};
+  assign res_wdata     = {unlocked, ovr_q, 2'b00, sum_q};
 
   // Combinational strobes to the SPI writer, attenuator driver and result memory.
   logic take_pins, manual_changed;
@@ -162,6 +164,7 @@ module sweep_seq #(
       ent_skip_lock   <= 1'b0;
       unlocked        <= 1'b0;
       sum_q           <= '0;
+      ovr_q           <= 1'b0;
       us_div          <= '0;
       us_cnt          <= '0;
       st_div          <= '0;
@@ -292,6 +295,7 @@ module sweep_seq #(
           S_SAMPLE: begin
             if (det_done) begin
               sum_q <= det_sum;
+              ovr_q <= det_ovr;
               state <= S_STORE;
             end
           end

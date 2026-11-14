@@ -33,6 +33,14 @@ module sadiy_top #(
   input  wire logic        emio_adf_le,
   input  wire logic [5:0]  emio_pe_o,
   input  wire logic [5:0]  emio_pe_t,
+  input  wire logic        emio_ce_o,       // EMIO GPIO 6
+  input  wire logic        emio_ce_t,
+  input  wire logic        emio_scl_o,      // PS I2C0
+  input  wire logic        emio_scl_t,
+  input  wire logic        emio_sda_o,
+  input  wire logic        emio_sda_t,
+  output      logic        emio_scl_i,
+  output      logic        emio_sda_i,
   // pins
   output      logic        adf4351_clk,
   output      logic        adf4351_dat,
@@ -41,9 +49,19 @@ module sadiy_top #(
   output      logic [5:0]  pe4302_v_o,
   output      logic [5:0]  pe4302_v_t,
   input  wire logic [5:0]  pe4302_v_i,
-  // detector sample stream of a PL ADC reader (S10)
+  output      logic        adf4351_ce_o,
+  output      logic        adf4351_ce_t,
+  input  wire logic        adf4351_ce_i,
+  output      logic        i2c_scl_o,       // ADS1115 bus: PS I2C0 or the reader of the PL
+  output      logic        i2c_scl_t,
+  input  wire logic        i2c_scl_i,
+  output      logic        i2c_sda_o,
+  output      logic        i2c_sda_t,
+  input  wire logic        i2c_sda_i,
+  // sample stream of an ADC adapter (spec section 8b): 16 bit two's complement, full scale +/-32767
   input  wire logic        det_ext_valid,
-  input  wire logic [15:0] det_ext_data
+  input  wire logic [15:0] det_ext_data,
+  input  wire logic        det_ext_ovr
 );
   localparam int CLK_PER_US = CLK_HZ / 1_000_000;
   localparam int TBL_DW     = 44;        // {w1[11:0], w0[31:0]}; the other w1 bits are not stored
@@ -73,6 +91,28 @@ module sadiy_top #(
   logic [1:0]  ld_sync;
   logic [5:0]  pe_in_meta, pe_in_sync;
   logic        ld;
+  logic [1:0]  ce_sync, scl_sync, sda_sync;
+  // ADS1115 reader
+  logic [15:0] adc_config, adc_last, adc_data;
+  logic [6:0]  adc_addr;
+  logic [11:0] adc_div;
+  logic [19:0] adc_t_conv_us;
+  logic        adc_err_nack, adc_busy, adc_valid, adc_scl_t, adc_sda_t, adc_run;
+  logic [7:0]  adc_count;
+  logic        adf_ce, i2c_pl;
+  // sample stream, generator, IF path
+  logic        det_mode, det_stream;
+  logic [15:0] gen_div;
+  logic [11:0] gen_len_m1, gen_addr;
+  logic        gen_sync, gen_enable, gen_addr_wr, gen_data_wr, gen_valid;
+  logic signed [15:0] gen_data, s_data;
+  logic        s_valid, s_ovr;
+  logic [31:0] if_nco, if_nco_step;
+  logic [15:0] if_r;
+  logic [5:0]  if_shift;
+  logic [3:0]  if_skip;
+  logic        if_clr, if_done, if_ovr, vid_done, det_run_d;
+  logic [27:0] if_sum, vid_sum;
   logic        eng_clk, eng_dat, eng_le;
   logic [5:0]  eng_pe;
 
@@ -80,6 +120,9 @@ module sadiy_top #(
     ld_sync    <= {ld_sync[0], adf4351_ld};
     pe_in_meta <= pe4302_v_i;
     pe_in_sync <= pe_in_meta;
+    ce_sync    <= {ce_sync[0], adf4351_ce_i};
+    scl_sync   <= {scl_sync[0], i2c_scl_i};
+    sda_sync   <= {sda_sync[0], i2c_sda_i};
   end
   assign ld = ld_sync[1];
 
@@ -124,9 +167,15 @@ module sadiy_top #(
     .pin_state_le           (adf4351_le),
     .pin_state_clk          (adf4351_clk),
     .pin_state_dat          (adf4351_dat),
+    .pin_state_ce           (ce_sync[1]),
+    .pin_state_scl          (scl_sync[1]),
+    .pin_state_sda          (sda_sync[1]),
+    .pin_state_i2c_pl       (i2c_pl),
     .pin_state_pe_out       (pe4302_v_o),
     .pin_state_pe_t         (pe4302_v_t),
     .det_cfg_src            (det_src),
+    .det_cfg_mode           (det_mode),
+    .det_cfg_stream         (det_stream),
     .det_test_base          (det_test_base),
     .det_push_wr            (det_push_wr),
     .det_push_rd            (),
@@ -150,7 +199,31 @@ module sadiy_top #(
     .result_data_rdata      (result_rdata),
     .caps_table_aw          (8'(TABLE_AW)),
     .caps_result_aw         (8'(RESULT_AW)),
-    .caps_clk_mhz           (16'(CLK_PER_US))
+    .caps_clk_mhz           (16'(CLK_PER_US)),
+    .adc_cfg_config         (adc_config),
+    .adc_cfg_addr           (adc_addr),
+    .adc_i2c_div_div        (adc_div),
+    .adc_t_conv_us_us       (adc_t_conv_us),
+    .adc_stat_last          (adc_last),
+    .adc_stat_err_nack      (adc_err_nack),
+    .adc_stat_busy          (adc_busy),
+    .adc_stat_count         (adc_count),
+    .adf_pins_ce            (adf_ce),
+    .gen_cfg_div            (gen_div),
+    .gen_cfg_len_m1         (gen_len_m1),
+    .gen_cfg_sync           (gen_sync),
+    .gen_cfg_enable         (gen_enable),
+    .gen_addr_wr            (gen_addr_wr),
+    .gen_addr_rd            (),
+    .gen_addr_rdata         ({20'd0, gen_addr}),
+    .gen_data_wr            (gen_data_wr),
+    .gen_data_rd            (),
+    .gen_data_rdata         (32'd0),
+    .if_nco_inc             (if_nco),
+    .if_nco_step_step       (if_nco_step),
+    .if_cic_r               (if_r),
+    .if_cic_shift           (if_shift),
+    .if_cic_skip            (if_skip)
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
@@ -248,6 +321,7 @@ module sadiy_top #(
     .det_run           (det_run),
     .det_done          (det_done),
     .det_sum           (det_sum),
+    .det_ovr           (det_mode && if_ovr),
     .ld                (ld)
   );
 
@@ -273,30 +347,115 @@ module sadiy_top #(
     .busy        (mbb_busy)
   );
 
+  // ---- sample stream (spec 8b): generator or ADC adapter port; video path or IF path (DET_CFG.mode) ----
+  always_ff @(posedge clk) begin
+    if (!resetn) begin
+      det_run_d <= 1'b0;
+      gen_addr  <= '0;
+    end else begin
+      det_run_d <= det_run;
+      if (gen_addr_wr)      gen_addr <= reg_wdata[11:0];
+      else if (gen_data_wr) gen_addr <= gen_addr + 12'd1;
+    end
+  end
+
+  sample_gen #(.AW(12)) u_gen (
+    .clk, .resetn,
+    .enable   (gen_enable),
+    .sync_clr (gen_sync && det_run && !det_run_d),      // first clock of SAMPLE
+    .div      (gen_div),
+    .len_m1   (gen_len_m1),
+    .we       (gen_data_wr),
+    .waddr    (gen_addr),
+    .wdata    (reg_wdata[15:0]),
+    .valid    (gen_valid),
+    .data     (gen_data)
+  );
+
+  assign s_valid = det_stream ? gen_valid : det_ext_valid;
+  assign s_data  = det_stream ? gen_data  : $signed(det_ext_data);
+  assign s_ovr   = det_stream ? 1'b0      : det_ext_ovr;
+
+  if_power u_if (
+    .clk, .resetn,
+    .run      (det_run && det_mode),
+    .first    (point_count == 16'd0),
+    .s_valid, .s_data, .s_ovr,
+    .nco_base (if_nco),
+    .nco_step (if_nco_step),
+    .r        (if_r),
+    .shift    (if_shift),
+    .skip     (if_skip),
+    .n_avg    (n_avg),
+    .clr      (if_clr),
+    .sum      (if_sum),
+    .ovr      (if_ovr),
+    .done     (if_done)
+  );
+
+  assign det_done = det_mode ? if_done : vid_done;
+  assign det_sum  = det_mode ? if_sum  : vid_sum;
+
   det_sampler #(.CLK_PER_US(CLK_PER_US)) u_det (
     .clk, .resetn,
-    .run          (det_run),
+    .run          (det_run && !det_mode),
     .src          (det_src),
     .n_avg        (n_avg),
     .test_base    (det_test_base),
     .result_index (point_count[7:0]),
     .push_valid   (det_push_wr),
     .push_data    (reg_wdata[15:0]),
-    .ext_valid    (det_ext_valid),
-    .ext_data     (det_ext_data),
-    .sum          (det_sum),
-    .done         (det_done)
+    .ext_valid    (s_valid && det_run_d),           // not in the first clock: a restarted generator starts at sample 0
+    .ext_data     (s_data[15] ? 16'd0 : 16'(s_data)),
+    .adc_valid    (adc_valid),
+    .adc_data     (adc_data),
+    .sum          (vid_sum),
+    .done         (vid_done)
+  );
+
+  // ---- ADS1115 reader (DET_CFG.src = 3) ----
+  // It runs only while the sampler wants samples; the I2C pins change hands only between samples.
+  assign adc_run = det_run && !det_done && (det_src == 2'd3) && i2c_pl;
+
+  always_ff @(posedge clk) begin
+    if (!resetn)        i2c_pl <= 1'b0;
+    else if (!adc_busy) i2c_pl <= st_owner && (det_src == 2'd3);
+  end
+
+  ads1115_reader #(.CLK_PER_US(CLK_PER_US)) u_adc (
+    .clk, .resetn,
+    .run       (adc_run),
+    .addr      (adc_addr),
+    .cfg       (adc_config),
+    .div       (adc_div),
+    .t_conv_us (adc_t_conv_us),
+    .err_clear (ctrl_start || ctrl_soft_reset),
+    .valid     (adc_valid),
+    .data      (adc_data),
+    .last_raw  (adc_last),
+    .err_nack  (adc_err_nack),
+    .count     (adc_count),
+    .busy      (adc_busy),
+    .scl_t     (adc_scl_t),
+    .sda_t     (adc_sda_t),
+    .sda_i     (i2c_sda_i)
   );
 
   pin_mux u_pins (
     .clk, .resetn,
     .owner        (st_owner),
     .emio_adf_clk, .emio_adf_dat, .emio_adf_le, .emio_pe_o, .emio_pe_t,
+    .emio_ce_o, .emio_ce_t, .emio_scl_o, .emio_scl_t, .emio_sda_o, .emio_sda_t, .emio_scl_i, .emio_sda_i,
     .eng_adf_clk  (eng_clk),
     .eng_adf_dat  (eng_dat),
     .eng_adf_le   (eng_le),
     .eng_pe       (eng_pe),
-    .adf4351_clk, .adf4351_dat, .adf4351_le, .pe4302_v_o, .pe4302_v_t
+    .eng_ce       (adf_ce),
+    .i2c_pl       (i2c_pl),
+    .eng_scl_t    (adc_scl_t),
+    .eng_sda_t    (adc_sda_t),
+    .adf4351_clk, .adf4351_dat, .adf4351_le, .pe4302_v_o, .pe4302_v_t,
+    .adf4351_ce_o, .adf4351_ce_t, .i2c_scl_o, .i2c_scl_t, .i2c_sda_o, .i2c_sda_t, .i2c_scl_i, .i2c_sda_i
   );
 endmodule
 `default_nettype wire

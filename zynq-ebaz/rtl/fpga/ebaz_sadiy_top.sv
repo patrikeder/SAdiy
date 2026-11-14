@@ -8,7 +8,7 @@
 // EMIO GPIO line map (same as session L's Phase 1; Linux line = 54 + n on the Zynq gpiochip):
 //   0..5  pe4302_v[0..5]  tri-state until software drives it, so the adapter's pull-ups give 31.5 dB
 //         at boot; goes through sadiy_top (emio_pe_o / emio_pe_t -> pad, pad level read back)
-//   6     adf4351_ce      IOBUF straight to the PS, tri-stated until driven
+//   6     adf4351_ce      through the pin mux of sadiy_top (PS line, or ADF_PINS.ce while the engine owns the pins)
 //   7     adf4351_ld      input, in parallel to sadiy_top.adf4351_ld
 //   8     lcd_dc          adapter LCD data / command, IOBUF, tri-stated until driven
 //   9     lcd_res         adapter LCD reset (active low, pad pulled up so the panel is not held in reset)
@@ -135,6 +135,7 @@ module ebaz_sadiy_top (
   // ---- the engine ----
   wire [5:0] pe4302_v_o, pe4302_v_t, pe4302_v_i;
   wire       eng_irq;
+  wire       ce_o, ce_t, scl_o, scl_t, scl_i, sda_o, sda_t, sda_i;
 
   sadiy_top u_engine (
       .clk(fclk0), .resetn(aresetn),
@@ -151,7 +152,13 @@ module ebaz_sadiy_top (
       .adf4351_clk(adf4351_clk), .adf4351_dat(adf4351_dat), .adf4351_le(adf4351_le),
       .adf4351_ld(adf4351_ld),
       .pe4302_v_o(pe4302_v_o), .pe4302_v_t(pe4302_v_t), .pe4302_v_i(pe4302_v_i),
-      .det_ext_valid(1'b0), .det_ext_data(16'h0000)
+      .emio_ce_o(emio_tri_o[6]), .emio_ce_t(emio_tri_t[6]),
+      .emio_scl_o(i2c0_scl_o), .emio_scl_t(i2c0_scl_t), .emio_sda_o(i2c0_sda_o), .emio_sda_t(i2c0_sda_t),
+      .emio_scl_i(i2c0_scl_i), .emio_sda_i(i2c0_sda_i),
+      .adf4351_ce_o(ce_o), .adf4351_ce_t(ce_t), .adf4351_ce_i(emio_tri_i[6]),
+      .i2c_scl_o(scl_o), .i2c_scl_t(scl_t), .i2c_scl_i(scl_i),
+      .i2c_sda_o(sda_o), .i2c_sda_t(sda_t), .i2c_sda_i(sda_i),
+      .det_ext_valid(1'b0), .det_ext_data(16'h0000), .det_ext_ovr(1'b0)
   );
   // m_axil_awprot / arprot are not used by the engine (AXI-lite protection is ignored).
   assign irq_f2p[0] = eng_irq;
@@ -165,7 +172,7 @@ module ebaz_sadiy_top (
   endgenerate
   assign emio_tri_i[5:0] = pe4302_v_i;      // PS reads back the pad level
 
-  IOBUF u_ce (.I(emio_tri_o[6]), .T(emio_tri_t[6]), .O(emio_tri_i[6]), .IO(adf4351_ce));
+  IOBUF u_ce (.I(ce_o), .T(ce_t), .O(emio_tri_i[6]), .IO(adf4351_ce));   // PS GPIO 6 or ADF_PINS.ce (pin mux)
   assign emio_tri_i[7]    = adf4351_ld;
 
   // ---- adapter board LCD: PS SPI1 (EMIO) plus two EMIO GPIO lines, pads only ----
@@ -185,8 +192,8 @@ module ebaz_sadiy_top (
   assign emio_tri_i[17:13] = keys;                      // raw pad level, active low
 
   // ---- I2C0 and MDIO ----
-  IOBUF u_scl  (.I(i2c0_scl_o), .T(i2c0_scl_t), .O(i2c0_scl_i), .IO(i2c_scl));
-  IOBUF u_sda  (.I(i2c0_sda_o), .T(i2c0_sda_t), .O(i2c0_sda_i), .IO(i2c_sda));
+  IOBUF u_scl  (.I(scl_o), .T(scl_t), .O(scl_i), .IO(i2c_scl));           // PS I2C0 or the ADS1115 reader (pin mux)
+  IOBUF u_sda  (.I(sda_o), .T(sda_t), .O(sda_i), .IO(i2c_sda));
   IOBUF u_mdio (.I(mdio_o), .T(mdio_t), .O(mdio_i), .IO(enet0_mdio_mdio_io));
 
   // Unused here: m_axil_awprot, m_axil_arprot (outputs of the BD, left unconnected on purpose).

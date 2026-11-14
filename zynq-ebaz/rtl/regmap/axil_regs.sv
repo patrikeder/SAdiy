@@ -99,11 +99,17 @@ module axil_regs (
   input  logic pin_state_le,
   input  logic pin_state_clk,
   input  logic pin_state_dat,
+  input  logic pin_state_ce,
+  input  logic pin_state_scl,
+  input  logic pin_state_sda,
+  input  logic pin_state_i2c_pl,
   input  logic [5:0] pin_state_pe_out,
   input  logic [5:0] pin_state_pe_t,
 
   // DET_CFG @ 0x038
   output logic [1:0] det_cfg_src,
+  output logic det_cfg_mode,
+  output logic det_cfg_stream,
 
   // DET_TEST @ 0x03C
   output logic [15:0] det_test_base,
@@ -151,7 +157,53 @@ module axil_regs (
   // CAPS @ 0x078
   input  logic [7:0] caps_table_aw,
   input  logic [7:0] caps_result_aw,
-  input  logic [15:0] caps_clk_mhz
+  input  logic [15:0] caps_clk_mhz,
+
+  // ADC_CFG @ 0x080
+  output logic [15:0] adc_cfg_config,
+  output logic [6:0] adc_cfg_addr,
+
+  // ADC_I2C_DIV @ 0x084
+  output logic [11:0] adc_i2c_div_div,
+
+  // ADC_T_CONV_US @ 0x088
+  output logic [19:0] adc_t_conv_us_us,
+
+  // ADC_STAT @ 0x08C
+  input  logic [15:0] adc_stat_last,
+  input  logic adc_stat_err_nack,
+  input  logic adc_stat_busy,
+  input  logic [7:0] adc_stat_count,
+
+  // ADF_PINS @ 0x090
+  output logic adf_pins_ce,
+
+  // GEN_CFG @ 0x0A0
+  output logic [15:0] gen_cfg_div,
+  output logic [11:0] gen_cfg_len_m1,
+  output logic gen_cfg_sync,
+  output logic gen_cfg_enable,
+
+  // GEN_ADDR @ 0x0A4 (ext)
+  output logic gen_addr_wr,
+  output logic gen_addr_rd,
+  input  logic [31:0] gen_addr_rdata,
+
+  // GEN_DATA @ 0x0A8 (ext)
+  output logic gen_data_wr,
+  output logic gen_data_rd,
+  input  logic [31:0] gen_data_rdata,
+
+  // IF_NCO @ 0x0B0
+  output logic [31:0] if_nco_inc,
+
+  // IF_NCO_STEP @ 0x0B4
+  output logic [31:0] if_nco_step_step,
+
+  // IF_CIC @ 0x0B8
+  output logic [15:0] if_cic_r,
+  output logic [5:0] if_cic_shift,
+  output logic [3:0] if_cic_skip
 );
 
   // ---- write channel
@@ -196,6 +248,8 @@ module axil_regs (
     table_w1_wr <= 1'b0;
     result_addr_wr <= 1'b0;
     result_data_wr <= 1'b0;
+    gen_addr_wr <= 1'b0;
+    gen_data_wr <= 1'b0;
     if (!resetn) begin
       ctrl_irq_en <= 1'h0;
       ctrl_pin_owner <= 1'h0;
@@ -211,8 +265,24 @@ module axil_regs (
       pe4302_manual <= 6'h3F;
       pe4302_active_high <= 1'h1;
       det_cfg_src <= 2'h0;
+      det_cfg_mode <= 1'h0;
+      det_cfg_stream <= 1'h0;
       det_test_base <= 16'h0;
       table_w0_word <= 32'h0;
+      adc_cfg_config <= 16'hC3E3;
+      adc_cfg_addr <= 7'h48;
+      adc_i2c_div_div <= 12'h46;
+      adc_t_conv_us_us <= 20'h578;
+      adf_pins_ce <= 1'h1;
+      gen_cfg_div <= 16'h3E8;
+      gen_cfg_len_m1 <= 12'h0;
+      gen_cfg_sync <= 1'h1;
+      gen_cfg_enable <= 1'h0;
+      if_nco_inc <= 32'h0;
+      if_nco_step_step <= 32'h0;
+      if_cic_r <= 16'h10;
+      if_cic_shift <= 6'hB;
+      if_cic_skip <= 4'h4;
     end else if (wr_phase) begin
       case (waddr_q[11:2])
         10'h002: begin  // CTRL
@@ -255,6 +325,8 @@ module axil_regs (
         end
         10'h00E: begin  // DET_CFG
           det_cfg_src <= wdata_q[1:0];
+          det_cfg_mode <= wdata_q[4];
+          det_cfg_stream <= wdata_q[8];
         end
         10'h00F: begin  // DET_TEST
           det_test_base <= wdata_q[15:0];
@@ -276,6 +348,42 @@ module axil_regs (
         end
         10'h01D: begin  // RESULT_DATA
           result_data_wr <= 1'b1;
+        end
+        10'h020: begin  // ADC_CFG
+          adc_cfg_config <= wdata_q[15:0];
+          adc_cfg_addr <= wdata_q[22:16];
+        end
+        10'h021: begin  // ADC_I2C_DIV
+          adc_i2c_div_div <= wdata_q[11:0];
+        end
+        10'h022: begin  // ADC_T_CONV_US
+          adc_t_conv_us_us <= wdata_q[19:0];
+        end
+        10'h024: begin  // ADF_PINS
+          adf_pins_ce <= wdata_q[0];
+        end
+        10'h028: begin  // GEN_CFG
+          gen_cfg_div <= wdata_q[15:0];
+          gen_cfg_len_m1 <= wdata_q[27:16];
+          gen_cfg_sync <= wdata_q[30];
+          gen_cfg_enable <= wdata_q[31];
+        end
+        10'h029: begin  // GEN_ADDR
+          gen_addr_wr <= 1'b1;
+        end
+        10'h02A: begin  // GEN_DATA
+          gen_data_wr <= 1'b1;
+        end
+        10'h02C: begin  // IF_NCO
+          if_nco_inc <= wdata_q[31:0];
+        end
+        10'h02D: begin  // IF_NCO_STEP
+          if_nco_step_step <= wdata_q[31:0];
+        end
+        10'h02E: begin  // IF_CIC
+          if_cic_r <= wdata_q[15:0];
+          if_cic_shift <= wdata_q[21:16];
+          if_cic_skip <= wdata_q[27:24];
         end
         default: ;
       endcase
@@ -299,6 +407,8 @@ module axil_regs (
   assign table_w1_rd = rd_phase && (raddr_q[11:2] == 10'h01A);
   assign result_addr_rd = rd_phase && (raddr_q[11:2] == 10'h01C);
   assign result_data_rd = rd_phase && (raddr_q[11:2] == 10'h01D);
+  assign gen_addr_rd = rd_phase && (raddr_q[11:2] == 10'h029);
+  assign gen_data_rd = rd_phase && (raddr_q[11:2] == 10'h02A);
 
   always_comb begin
     rd_mux = 32'd0;
@@ -307,7 +417,7 @@ module axil_regs (
         rd_mux[31:0] = 32'h53410001;
       end
       10'h001: begin  // VERSION
-        rd_mux[31:0] = 32'h10000;
+        rd_mux[31:0] = 32'h10002;
       end
       10'h002: begin  // CTRL
         rd_mux[3] = ctrl_irq_en;
@@ -359,11 +469,17 @@ module axil_regs (
         rd_mux[9] = pin_state_le;
         rd_mux[10] = pin_state_clk;
         rd_mux[11] = pin_state_dat;
+        rd_mux[12] = pin_state_ce;
+        rd_mux[13] = pin_state_scl;
+        rd_mux[14] = pin_state_sda;
+        rd_mux[15] = pin_state_i2c_pl;
         rd_mux[21:16] = pin_state_pe_out;
         rd_mux[29:24] = pin_state_pe_t;
       end
       10'h00E: begin  // DET_CFG
         rd_mux[1:0] = det_cfg_src;
+        rd_mux[4] = det_cfg_mode;
+        rd_mux[8] = det_cfg_stream;
       end
       10'h00F: begin  // DET_TEST
         rd_mux[15:0] = det_test_base;
@@ -402,6 +518,48 @@ module axil_regs (
         rd_mux[7:0] = caps_table_aw;
         rd_mux[15:8] = caps_result_aw;
         rd_mux[31:16] = caps_clk_mhz;
+      end
+      10'h020: begin  // ADC_CFG
+        rd_mux[15:0] = adc_cfg_config;
+        rd_mux[22:16] = adc_cfg_addr;
+      end
+      10'h021: begin  // ADC_I2C_DIV
+        rd_mux[11:0] = adc_i2c_div_div;
+      end
+      10'h022: begin  // ADC_T_CONV_US
+        rd_mux[19:0] = adc_t_conv_us_us;
+      end
+      10'h023: begin  // ADC_STAT
+        rd_mux[15:0] = adc_stat_last;
+        rd_mux[16] = adc_stat_err_nack;
+        rd_mux[17] = adc_stat_busy;
+        rd_mux[31:24] = adc_stat_count;
+      end
+      10'h024: begin  // ADF_PINS
+        rd_mux[0] = adf_pins_ce;
+      end
+      10'h028: begin  // GEN_CFG
+        rd_mux[15:0] = gen_cfg_div;
+        rd_mux[27:16] = gen_cfg_len_m1;
+        rd_mux[30] = gen_cfg_sync;
+        rd_mux[31] = gen_cfg_enable;
+      end
+      10'h029: begin  // GEN_ADDR
+        rd_mux = gen_addr_rdata;
+      end
+      10'h02A: begin  // GEN_DATA
+        rd_mux = gen_data_rdata;
+      end
+      10'h02C: begin  // IF_NCO
+        rd_mux[31:0] = if_nco_inc;
+      end
+      10'h02D: begin  // IF_NCO_STEP
+        rd_mux[31:0] = if_nco_step_step;
+      end
+      10'h02E: begin  // IF_CIC
+        rd_mux[15:0] = if_cic_r;
+        rd_mux[21:16] = if_cic_shift;
+        rd_mux[27:24] = if_cic_skip;
       end
       default: ;
     endcase

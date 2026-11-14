@@ -42,8 +42,32 @@ tests: `sw/tests/test_pl_bringup.py`.
    lock timeout with the synthesiser unplugged (`err_lock`, result bit 31), abort.
 Write the results to `docs/ebaz-pl-measurements.md`.
 
+## sweepd on the PL engine (register map 1.1, 2026-11-14)
+
+- The bitstream now reads the ADS1115 itself (`DET_CFG.src = 3`, `rtl-spec.md` section 8a), drives CE from
+  `ADF_PINS.ce` and muxes the I2C pins between PS I2C0 and its reader. PS push (`src = 0`) is unchanged.
+- `sw/sadiy_ebaz/platforms/ebaz_pl.py` is a platform that uses only the registers (/dev/mem): SPI words, PE4302,
+  CE, lock detect, detector. `sweepd --platform ebaz` (or `[platform] name = "ebaz-pl"`) starts it; in the
+  bring-up package: `./sweepd.sh`. `[platform] detector = "pl" | "ps" | "test"` picks the sample source.
+  The RF outputs are enabled only after the PLL locked once with them off. No bench mode on the hardware yet.
+- **The bitstream must be the new one** (VERSION 0x00010001): load `ebaz_sadiy.bit.bin` at runtime or rebuild
+  BOOT.BIN from the new XSA. PS7 settings did not change (no FSBL / device tree change needed).
+- Check first: `./run.sh adc` (I2C acknowledge, codes, hand-over of the bus), optional `./run.sh ce`.
+- Tested on the PlModel and in xsim (`tb_adc`), not on the board.
+
+## Fast path without an ADC (register map 1.2, 2026-11-15)
+
+- Sample stream format for every fast ADC, the software-filled generator and the IF path (NCO, mixer, CIC,
+  power): `rtl-spec.md` sections 8b and 8c. `DET_CFG.mode = 1` selects the IF path, `DET_CFG.stream = 1` the
+  generator. Python: `sw/sadiy_ebaz/ifpath.py` (pattern builder, bit-exact reference, result decoding).
+- On the board: `./run.sh if` loads a two-tone pattern, sweeps the NCO across it and compares every result
+  word with the reference. Not connected to sweepd yet (no detector kind for it in `ebaz_pl.py`), because
+  there is no IF signal to measure until an ADC adapter exists.
+- Tested in xsim (`tb_if`, bit for bit) and on the PlModel, not on the board.
+
 ## For S10: SPI ADC reader
 
+(The ADS1115 on I2C is read by the PL since map 1.1, see above; this is for a faster SPI ADC later.)
 Own module with `valid` and `data[15:0]` (unsigned), instantiated in `rtl/fpga/ebaz_sadiy_top.sv`, connected to
 `det_ext_valid / det_ext_data` of `sadiy_top`, selected with `DET_CFG.src = 2`. Samples are taken only while the
 sequencer is in SAMPLE, so the reader may free-run. New pins go into `pins.toml` first. `sadiy_top` does not change.

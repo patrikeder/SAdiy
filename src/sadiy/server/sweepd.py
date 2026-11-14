@@ -91,6 +91,7 @@ class Sweepd:
         self._announce = True       # the next sweep is logged at INFO (first after run or a settings change)
         self.engine = engine        # None: no sweep hardware yet, the daemon only offers bench mode
         self.bench = bench
+        self.platform = platforms.from_config(cfg).name       # reported when there is no bench
         self.settings = {
             "start_hz": cfg["rf"]["rf_min_hz"],
             "stop_hz": cfg["rf"]["rf_max_hz"],
@@ -188,7 +189,7 @@ class Sweepd:
                 "seq": self.seq,
                 "settings": self.settings,
                 "bench": {"active": self.bench_active},
-                "platform": self.bench.pm.name if self.bench is not None else platforms.DEFAULT,
+                "platform": self.bench.pm.name if self.bench is not None else self.platform,
                 "last_error": self.last_error,
                 "last_sweep": dataclasses.asdict(self.engine.last_stats) if self.engine is not None else None,
                 "log_seq": self.ring.last_seq if self.ring is not None else 0,
@@ -373,13 +374,25 @@ def main(argv=None) -> None:
                                                float(log_cfg.get("dedup_s", 5.0))))
     mode = "bench-only" if args.bench_only else "simulated chain" if args.sim else "hardware"
     log.info("sweepd starting: %s on %s, log level %s", mode, pm.label, logs.level_name(level))
-    if pm.name != "bbb" and not args.sim:
-        sys.exit(f"sweepd: no hardware backend for {pm.label} yet (only --sim); see zynq-ebaz/docs/ebaz4205-zynq-plan.md S5")
+    # EBAZ4205 hardware: the PL sweep engine does the sweeps through its registers (sadiy_ebaz.platforms.ebaz_pl)
+    # and owns the pins, so there is no bench mode there yet (plan S5).
+    pl_hardware = pm.name != "bbb" and not args.sim
+    if pl_hardware and args.bench_only:
+        sys.exit(f"sweepd: no bench mode on {pm.label} hardware yet (only with --sim); see zynq-ebaz/docs/ebaz4205-zynq-plan.md S5")
     if args.bench_only:
         engine = None
+    elif pl_hardware:
+        try:
+            engine = build_hw_engine(cfg)
+        except (RuntimeError, OSError) as exc:      # no package, no /dev/mem access, no bitstream, wrong core
+            sys.exit(f"sweepd: cannot start the {pm.label} hardware backend: {exc}")
     else:
         engine = build_sim_engine(cfg) if args.sim else build_hw_engine(cfg)
-    bench = Bench(fake_backend(pm) if args.sim else linux_backend(cfg), cfg, platform=pm)
+    if pl_hardware:
+        log.warning("no bench mode on %s hardware: the PL engine owns the pins", pm.label)
+        bench = None
+    else:
+        bench = Bench(fake_backend(pm) if args.sim else linux_backend(cfg), cfg, platform=pm)
     daemon = Sweepd(cfg, engine, bench, ring)
     if args.rt:
         _try_realtime()

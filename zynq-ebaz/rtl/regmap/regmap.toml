@@ -21,7 +21,7 @@
 name = "sadiy"
 data_width = 32
 addr_width = 12
-version = 0x00010000        # major << 16 | minor; bump on every incompatible change
+version = 0x00010002        # major << 16 | minor; bump on every incompatible change
 
 [[reg]]
 name = "ID"
@@ -42,7 +42,7 @@ doc = "Register map version (major << 16 | minor). Equals [map] version."
   name = "version"
   bits = "31:0"
   access = "const"
-  reset = 0x00010000
+  reset = 0x00010002
   doc = "must equal map.version (gen_regs.py checks)"
 
 [[reg]]
@@ -270,6 +270,26 @@ doc = "Live pins after the pin mux, synchronised to clk."
   access = "ro"
   doc = "adf4351_dat as driven"
   [[reg.field]]
+  name = "ce"
+  bits = "12"
+  access = "ro"
+  doc = "adf4351_ce pad level"
+  [[reg.field]]
+  name = "scl"
+  bits = "13"
+  access = "ro"
+  doc = "i2c_scl pad level"
+  [[reg.field]]
+  name = "sda"
+  bits = "14"
+  access = "ro"
+  doc = "i2c_sda pad level"
+  [[reg.field]]
+  name = "i2c_pl"
+  bits = "15"
+  access = "ro"
+  doc = "1 = the ADS1115 reader of the PL owns the I2C pins (engine owns the pins and DET_CFG.src = 3); 0 = PS I2C0."
+  [[reg.field]]
   name = "pe_out"
   bits = "21:16"
   access = "ro"
@@ -288,7 +308,17 @@ doc = "Detector sample source."
   name = "src"
   bits = "1:0"
   access = "rw"
-  doc = "0 = PS push (DET_PUSH), 1 = test generator (DET_TEST), 2 = external stream (det_ext_*, the PL ADC reader of S10), 3 = reserved (no samples)."
+  doc = "Video path (mode = 0): 0 = PS push (DET_PUSH), 1 = test generator (DET_TEST), 2 = sample stream selected by `stream` (negative samples count as 0), 3 = ADS1115 reader in the PL (ADC_* registers; the engine then owns the I2C pins while it owns the other pins)."
+  [[reg.field]]
+  name = "mode"
+  bits = "4"
+  access = "rw"
+  doc = "0 = video path: a result is the sum of N_AVG detector samples. 1 = IF path: the sample stream goes through NCO, mixer, CIC and power detector (IF_* registers); a result is {exp[5:0], mant[21:0]} of the power sum, bit 30 = over-range."
+  [[reg.field]]
+  name = "stream"
+  bits = "8"
+  access = "rw"
+  doc = "Sample stream for src = 2 and for the IF path: 0 = det_ext_* port of sadiy_top (an ADC adapter), 1 = sample generator (GEN_* registers)."
 
 [[reg]]
 name = "DET_TEST"
@@ -449,3 +479,170 @@ doc = "Build parameters."
   bits = "31:16"
   access = "ro"
   doc = "fabric clock in MHz (the microsecond tick divides by this)"
+
+[[reg]]
+name = "ADC_CFG"
+offset = 0x080
+doc = "ADS1115 reader (DET_CFG.src = 3): what is written to the ADC for every sample."
+  [[reg.field]]
+  name = "config"
+  bits = "15:0"
+  access = "rw"
+  reset = 0xC3E3
+  doc = "ADS1115 config register word, written before every sample; must have OS = 1 and MODE = 1 (single shot). Reset: AIN0 to GND, +/-4.096 V, 860 SPS, comparator off."
+  [[reg.field]]
+  name = "addr"
+  bits = "22:16"
+  access = "rw"
+  reset = 0x48
+  doc = "I2C address of the ADS1115 (0x48 = ADDR pin to GND)."
+
+[[reg]]
+name = "ADC_I2C_DIV"
+offset = 0x084
+doc = "ADS1115 reader: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 70 = 357 kHz at 100 MHz (t_low 1.4 us)."
+  [[reg.field]]
+  name = "div"
+  bits = "11:0"
+  access = "rw"
+  reset = 70
+  doc = ""
+
+[[reg]]
+name = "ADC_T_CONV_US"
+offset = 0x088
+doc = "ADS1115 reader: microseconds between the config write (conversion start) and the read. Must exceed the conversion time of the data rate in ADC_CFG.config plus its 10 % tolerance. Reset 1400 for 860 SPS."
+  [[reg.field]]
+  name = "us"
+  bits = "19:0"
+  access = "rw"
+  reset = 1400
+  doc = ""
+
+[[reg]]
+name = "ADC_STAT"
+offset = 0x08C
+doc = "ADS1115 reader status, read-only."
+  [[reg.field]]
+  name = "last"
+  bits = "15:0"
+  access = "ro"
+  doc = "Conversion register of the last sample as read from the ADC (two's complement)."
+  [[reg.field]]
+  name = "err_nack"
+  bits = "16"
+  access = "ro"
+  doc = "Sticky: the ADC did not acknowledge (missing, wrong address, bus held). That sample was delivered as 0. Cleared by start and soft_reset."
+  [[reg.field]]
+  name = "busy"
+  bits = "17"
+  access = "ro"
+  doc = "A sample (bus transaction or conversion wait) is in progress."
+  [[reg.field]]
+  name = "count"
+  bits = "31:24"
+  access = "ro"
+  doc = "Conversions read since reset, wraps."
+
+[[reg]]
+name = "ADF_PINS"
+offset = 0x090
+doc = "ADF4351 pins outside the SPI, driven while the engine owns the pins."
+  [[reg.field]]
+  name = "ce"
+  bits = "0"
+  access = "rw"
+  reset = 1
+  doc = "Level of adf4351_ce while the engine owns the pins (1 = chip enabled). With the PS as owner the pin follows EMIO GPIO 6."
+
+[[reg]]
+name = "GEN_CFG"
+offset = 0x0A0
+doc = "Sample generator: plays the pattern written through GEN_ADDR / GEN_DATA as a sample stream, in place of an ADC."
+  [[reg.field]]
+  name = "div"
+  bits = "15:0"
+  access = "rw"
+  reset = 1000
+  doc = "clk cycles per sample (0 and 1 = one sample every clock). Reset 1000 = 100 kSPS at 100 MHz."
+  [[reg.field]]
+  name = "len_m1"
+  bits = "27:16"
+  access = "rw"
+  doc = "Last sample index of the pattern (length - 1); the playback wraps to 0 after it."
+  [[reg.field]]
+  name = "sync"
+  bits = "30"
+  access = "rw"
+  reset = 1
+  doc = "1 = the playback restarts at sample 0 when a measurement (SAMPLE) starts, so results are repeatable. 0 = free running like an ADC."
+  [[reg.field]]
+  name = "enable"
+  bits = "31"
+  access = "rw"
+  doc = "1 = play."
+
+[[reg]]
+name = "GEN_ADDR"
+offset = 0x0A4
+ext = true
+doc = "Pattern index for the next GEN_DATA write. Read / write; increments by one on every GEN_DATA write."
+  [[reg.field]]
+  name = "index"
+  bits = "11:0"
+  access = "rw"
+  doc = ""
+
+[[reg]]
+name = "GEN_DATA"
+offset = 0x0A8
+ext = true
+doc = "Write: one pattern sample (stream format: 16 bit two's complement) to GEN_ADDR, then GEN_ADDR + 1. Reads 0. Write only while the generator is disabled or idle."
+  [[reg.field]]
+  name = "sample"
+  bits = "15:0"
+  access = "rw"
+  doc = ""
+
+[[reg]]
+name = "IF_NCO"
+offset = 0x0B0
+doc = "IF path: NCO phase increment of the first point of a sweep (f = inc * fs / 2^32, two's complement for negative frequencies)."
+  [[reg.field]]
+  name = "inc"
+  bits = "31:0"
+  access = "rw"
+  doc = ""
+
+[[reg]]
+name = "IF_NCO_STEP"
+offset = 0x0B4
+doc = "IF path: added to the NCO increment at every further measured point of the sweep (digital sweep inside the IF window). 0 = the same IF for all points."
+  [[reg.field]]
+  name = "step"
+  bits = "31:0"
+  access = "rw"
+  doc = ""
+
+[[reg]]
+name = "IF_CIC"
+offset = 0x0B8
+doc = "IF path: decimating filter. The resolution bandwidth is about fs / r."
+  [[reg.field]]
+  name = "r"
+  bits = "15:0"
+  access = "rw"
+  reset = 16
+  doc = "Decimation factor of the 3-stage CIC (1 .. 65535; 0 is treated as 1). Gain r^3."
+  [[reg.field]]
+  name = "shift"
+  bits = "21:16"
+  access = "rw"
+  reset = 11
+  doc = "Arithmetic right shift after the filter, before the saturation to 18 bit; about 3 * log2(r) - 1."
+  [[reg.field]]
+  name = "skip"
+  bits = "27:24"
+  access = "rw"
+  reset = 4
+  doc = "Filter outputs dropped at the start of every measurement (settling; at least 3)."

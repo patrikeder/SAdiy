@@ -6,6 +6,7 @@
 #   scp -r zynq-ebaz/build/bringup-pkg root@<ip>:/tmp/
 # On the board (after loading the bitstream, see sw/deploy/sadiy_pl_load.sh):
 #   cd /tmp/bringup-pkg && ./run.sh [stages]          # default: the automatic stages; 'la' for the logic analyzer
+#   ./sweepd.sh                                        # sweepd on the PL engine (needs register map 1.1)
 set -eu
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 ROOT="$REPO_DIR"
@@ -15,6 +16,7 @@ cp -r "$ROOT/src/sadiy" "$OUT/sadiy"
 cp -r "$EBAZ_DIR/sw/sadiy_ebaz" "$OUT/sadiy_ebaz"
 cp "$EBAZ_DIR/sw/tools/pl_bringup.py" "$OUT/pl_bringup.py"
 cp "$EBAZ_DIR/rtl/regmap/regmap.toml" "$OUT/regmap.toml"
+mkdir -p "$OUT/config" && cp "$ROOT/config/default.toml" "$OUT/config/default.toml"
 find "$OUT" -name __pycache__ -type d -prune -exec rm -rf {} +
 [ -f "$BUILD_DIR/fpga/ebaz_sadiy.bit.bin" ] && cp "$BUILD_DIR/fpga/ebaz_sadiy.bit.bin" "$OUT/"
 [ -f "$EBAZ_DIR/sw/deploy/sadiy_pl_load.sh" ] && cp "$EBAZ_DIR/sw/deploy/sadiy_pl_load.sh" "$OUT/"
@@ -25,5 +27,16 @@ cd "$(dirname "$0")"
 export PYTHONPATH="$PWD" SADIY_REGMAP_TOML="$PWD/regmap.toml"
 exec python3 pl_bringup.py "$@"
 EOS
-chmod +x "$OUT/run.sh"
+cat > "$OUT/sweepd.sh" <<'EOS'
+#!/bin/sh
+# sweepd on the EBAZ4205 with the PL sweep engine (registers through /dev/mem, run as root).
+#   ./sweepd.sh                 PL reads the ADS1115 itself ([platform] detector = "pl", the default)
+#   ./sweepd.sh -v              more log
+# Other detector sources ("ps" = Linux reads the ADC and pushes, "test" = test generator): set
+# [platform] detector in config/default.toml. GUI on the PC: python -m sadiy.ui.sa_gui --host <ip> --connect
+cd "$(dirname "$0")"
+export PYTHONPATH="$PWD" SADIY_REGMAP_TOML="$PWD/regmap.toml"
+exec python3 -m sadiy.server.sweepd --platform ebaz --config "$PWD/config/default.toml" "$@"
+EOS
+chmod +x "$OUT/run.sh" "$OUT/sweepd.sh"
 ls -l "$OUT"

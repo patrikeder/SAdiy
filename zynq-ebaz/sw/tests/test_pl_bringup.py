@@ -27,6 +27,7 @@ def locking_model(ld: bool) -> PlModel:
     m = PlModel()
     m.ld_now = ld
     m.lock_model = lambda idx, word: ld
+    m.adc_code = lambda idx: 9000 + idx
     return m
 
 
@@ -78,6 +79,32 @@ def test_unknown_stage_is_refused():
     assert pl_bringup.run(["nonsense"], model=PlModel()) == 2
 
 
-@pytest.mark.parametrize("stage", ["ident", "regs", "gen", "push", "owner", "ctrl", "spi", "att"])
+def test_missing_adc_is_reported(capsys):
+    m = locking_model(False)
+    m.adc_code = None
+    assert run(m, "adc") == 1
+    assert "FAIL  the ADS1115 acknowledged" in capsys.readouterr().out
+
+
+def test_old_bitstream_skips_the_adc_stage(capsys):
+    class Old(PlModel):
+        def read(self, offset):
+            return 0x00010000 if offset == REGS["VERSION"].offset else super().read(offset)
+
+    assert run(Old(), "adc", "ce", "if") == 0
+    assert capsys.readouterr().out.count("SKIP") == 3
+
+
+def test_if_stage_detects_a_wrong_dsp_result(capsys):
+    class Bad(PlModel):
+        def read(self, offset):
+            v = super().read(offset)
+            return v ^ 0x10 if offset == RESULT_DATA and self._rw[("DET_CFG", "mode")] else v
+
+    assert run(Bad(), "if") == 1
+    assert "FAIL  every result word equals the Python reference" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("stage", ["ident", "regs", "gen", "push", "owner", "ctrl", "adc", "if", "ce", "spi", "att"])
 def test_each_stage_alone(stage):
     assert run(locking_model(False), stage) == 0

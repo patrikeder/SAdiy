@@ -4,7 +4,7 @@ generated from regmap.toml by gen_regs.py, do not edit.
 """
 
 ADDR_WIDTH = 12
-MAP_VERSION = 0x00010000
+MAP_VERSION = 0x00010002
 ID_MAGIC = 0x53410001
 
 
@@ -28,7 +28,7 @@ ID_MAGIC_WIDTH = 32
 ID_MAGIC_MASK = 0xFFFFFFFF
 
 VERSION = 0x004
-VERSION_RESET = 0x00010000
+VERSION_RESET = 0x00010002
 VERSION_VERSION_LSB = 0
 VERSION_VERSION_WIDTH = 32
 VERSION_VERSION_MASK = 0xFFFFFFFF
@@ -161,6 +161,18 @@ PIN_STATE_CLK_MASK = 0x00000400
 PIN_STATE_DAT_LSB = 11
 PIN_STATE_DAT_WIDTH = 1
 PIN_STATE_DAT_MASK = 0x00000800
+PIN_STATE_CE_LSB = 12
+PIN_STATE_CE_WIDTH = 1
+PIN_STATE_CE_MASK = 0x00001000
+PIN_STATE_SCL_LSB = 13
+PIN_STATE_SCL_WIDTH = 1
+PIN_STATE_SCL_MASK = 0x00002000
+PIN_STATE_SDA_LSB = 14
+PIN_STATE_SDA_WIDTH = 1
+PIN_STATE_SDA_MASK = 0x00004000
+PIN_STATE_I2C_PL_LSB = 15
+PIN_STATE_I2C_PL_WIDTH = 1
+PIN_STATE_I2C_PL_MASK = 0x00008000
 PIN_STATE_PE_OUT_LSB = 16
 PIN_STATE_PE_OUT_WIDTH = 6
 PIN_STATE_PE_OUT_MASK = 0x003F0000
@@ -173,6 +185,12 @@ DET_CFG_RESET = 0x00000000
 DET_CFG_SRC_LSB = 0
 DET_CFG_SRC_WIDTH = 2
 DET_CFG_SRC_MASK = 0x00000003
+DET_CFG_MODE_LSB = 4
+DET_CFG_MODE_WIDTH = 1
+DET_CFG_MODE_MASK = 0x00000010
+DET_CFG_STREAM_LSB = 8
+DET_CFG_STREAM_WIDTH = 1
+DET_CFG_STREAM_MASK = 0x00000100
 
 DET_TEST = 0x03C
 DET_TEST_RESET = 0x00000000
@@ -267,6 +285,99 @@ CAPS_CLK_MHZ_LSB = 16
 CAPS_CLK_MHZ_WIDTH = 16
 CAPS_CLK_MHZ_MASK = 0xFFFF0000
 
+ADC_CFG = 0x080
+ADC_CFG_RESET = 0x0048C3E3
+ADC_CFG_CONFIG_LSB = 0
+ADC_CFG_CONFIG_WIDTH = 16
+ADC_CFG_CONFIG_MASK = 0x0000FFFF
+ADC_CFG_ADDR_LSB = 16
+ADC_CFG_ADDR_WIDTH = 7
+ADC_CFG_ADDR_MASK = 0x007F0000
+
+ADC_I2C_DIV = 0x084
+ADC_I2C_DIV_RESET = 0x00000046
+ADC_I2C_DIV_DIV_LSB = 0
+ADC_I2C_DIV_DIV_WIDTH = 12
+ADC_I2C_DIV_DIV_MASK = 0x00000FFF
+
+ADC_T_CONV_US = 0x088
+ADC_T_CONV_US_RESET = 0x00000578
+ADC_T_CONV_US_US_LSB = 0
+ADC_T_CONV_US_US_WIDTH = 20
+ADC_T_CONV_US_US_MASK = 0x000FFFFF
+
+ADC_STAT = 0x08C
+ADC_STAT_RESET = 0x00000000
+ADC_STAT_LAST_LSB = 0
+ADC_STAT_LAST_WIDTH = 16
+ADC_STAT_LAST_MASK = 0x0000FFFF
+ADC_STAT_ERR_NACK_LSB = 16
+ADC_STAT_ERR_NACK_WIDTH = 1
+ADC_STAT_ERR_NACK_MASK = 0x00010000
+ADC_STAT_BUSY_LSB = 17
+ADC_STAT_BUSY_WIDTH = 1
+ADC_STAT_BUSY_MASK = 0x00020000
+ADC_STAT_COUNT_LSB = 24
+ADC_STAT_COUNT_WIDTH = 8
+ADC_STAT_COUNT_MASK = 0xFF000000
+
+ADF_PINS = 0x090
+ADF_PINS_RESET = 0x00000001
+ADF_PINS_CE_LSB = 0
+ADF_PINS_CE_WIDTH = 1
+ADF_PINS_CE_MASK = 0x00000001
+
+GEN_CFG = 0x0A0
+GEN_CFG_RESET = 0x400003E8
+GEN_CFG_DIV_LSB = 0
+GEN_CFG_DIV_WIDTH = 16
+GEN_CFG_DIV_MASK = 0x0000FFFF
+GEN_CFG_LEN_M1_LSB = 16
+GEN_CFG_LEN_M1_WIDTH = 12
+GEN_CFG_LEN_M1_MASK = 0x0FFF0000
+GEN_CFG_SYNC_LSB = 30
+GEN_CFG_SYNC_WIDTH = 1
+GEN_CFG_SYNC_MASK = 0x40000000
+GEN_CFG_ENABLE_LSB = 31
+GEN_CFG_ENABLE_WIDTH = 1
+GEN_CFG_ENABLE_MASK = 0x80000000
+
+GEN_ADDR = 0x0A4
+GEN_ADDR_RESET = 0x00000000
+GEN_ADDR_INDEX_LSB = 0
+GEN_ADDR_INDEX_WIDTH = 12
+GEN_ADDR_INDEX_MASK = 0x00000FFF
+
+GEN_DATA = 0x0A8
+GEN_DATA_RESET = 0x00000000
+GEN_DATA_SAMPLE_LSB = 0
+GEN_DATA_SAMPLE_WIDTH = 16
+GEN_DATA_SAMPLE_MASK = 0x0000FFFF
+
+IF_NCO = 0x0B0
+IF_NCO_RESET = 0x00000000
+IF_NCO_INC_LSB = 0
+IF_NCO_INC_WIDTH = 32
+IF_NCO_INC_MASK = 0xFFFFFFFF
+
+IF_NCO_STEP = 0x0B4
+IF_NCO_STEP_RESET = 0x00000000
+IF_NCO_STEP_STEP_LSB = 0
+IF_NCO_STEP_STEP_WIDTH = 32
+IF_NCO_STEP_STEP_MASK = 0xFFFFFFFF
+
+IF_CIC = 0x0B8
+IF_CIC_RESET = 0x040B0010
+IF_CIC_R_LSB = 0
+IF_CIC_R_WIDTH = 16
+IF_CIC_R_MASK = 0x0000FFFF
+IF_CIC_SHIFT_LSB = 16
+IF_CIC_SHIFT_WIDTH = 6
+IF_CIC_SHIFT_MASK = 0x003F0000
+IF_CIC_SKIP_LSB = 24
+IF_CIC_SKIP_WIDTH = 4
+IF_CIC_SKIP_MASK = 0x0F000000
+
 
 REGISTERS = {
     "ID": {
@@ -280,7 +391,7 @@ REGISTERS = {
         "offset": 0x004,
         "ext": False,
         "fields": {
-            "version": {"lsb": 0, "width": 32, "access": "const", "reset": 0x00010000},
+            "version": {"lsb": 0, "width": 32, "access": "const", "reset": 0x00010002},
         },
     },
     "CTRL": {
@@ -384,6 +495,10 @@ REGISTERS = {
             "le": {"lsb": 9, "width": 1, "access": "ro", "reset": 0x00000000},
             "clk": {"lsb": 10, "width": 1, "access": "ro", "reset": 0x00000000},
             "dat": {"lsb": 11, "width": 1, "access": "ro", "reset": 0x00000000},
+            "ce": {"lsb": 12, "width": 1, "access": "ro", "reset": 0x00000000},
+            "scl": {"lsb": 13, "width": 1, "access": "ro", "reset": 0x00000000},
+            "sda": {"lsb": 14, "width": 1, "access": "ro", "reset": 0x00000000},
+            "i2c_pl": {"lsb": 15, "width": 1, "access": "ro", "reset": 0x00000000},
             "pe_out": {"lsb": 16, "width": 6, "access": "ro", "reset": 0x00000000},
             "pe_t": {"lsb": 24, "width": 6, "access": "ro", "reset": 0x00000000},
         },
@@ -393,6 +508,8 @@ REGISTERS = {
         "ext": False,
         "fields": {
             "src": {"lsb": 0, "width": 2, "access": "rw", "reset": 0x00000000},
+            "mode": {"lsb": 4, "width": 1, "access": "rw", "reset": 0x00000000},
+            "stream": {"lsb": 8, "width": 1, "access": "rw", "reset": 0x00000000},
         },
     },
     "DET_TEST": {
@@ -484,6 +601,92 @@ REGISTERS = {
             "table_aw": {"lsb": 0, "width": 8, "access": "ro", "reset": 0x00000000},
             "result_aw": {"lsb": 8, "width": 8, "access": "ro", "reset": 0x00000000},
             "clk_mhz": {"lsb": 16, "width": 16, "access": "ro", "reset": 0x00000000},
+        },
+    },
+    "ADC_CFG": {
+        "offset": 0x080,
+        "ext": False,
+        "fields": {
+            "config": {"lsb": 0, "width": 16, "access": "rw", "reset": 0x0000C3E3},
+            "addr": {"lsb": 16, "width": 7, "access": "rw", "reset": 0x00000048},
+        },
+    },
+    "ADC_I2C_DIV": {
+        "offset": 0x084,
+        "ext": False,
+        "fields": {
+            "div": {"lsb": 0, "width": 12, "access": "rw", "reset": 0x00000046},
+        },
+    },
+    "ADC_T_CONV_US": {
+        "offset": 0x088,
+        "ext": False,
+        "fields": {
+            "us": {"lsb": 0, "width": 20, "access": "rw", "reset": 0x00000578},
+        },
+    },
+    "ADC_STAT": {
+        "offset": 0x08C,
+        "ext": False,
+        "fields": {
+            "last": {"lsb": 0, "width": 16, "access": "ro", "reset": 0x00000000},
+            "err_nack": {"lsb": 16, "width": 1, "access": "ro", "reset": 0x00000000},
+            "busy": {"lsb": 17, "width": 1, "access": "ro", "reset": 0x00000000},
+            "count": {"lsb": 24, "width": 8, "access": "ro", "reset": 0x00000000},
+        },
+    },
+    "ADF_PINS": {
+        "offset": 0x090,
+        "ext": False,
+        "fields": {
+            "ce": {"lsb": 0, "width": 1, "access": "rw", "reset": 0x00000001},
+        },
+    },
+    "GEN_CFG": {
+        "offset": 0x0A0,
+        "ext": False,
+        "fields": {
+            "div": {"lsb": 0, "width": 16, "access": "rw", "reset": 0x000003E8},
+            "len_m1": {"lsb": 16, "width": 12, "access": "rw", "reset": 0x00000000},
+            "sync": {"lsb": 30, "width": 1, "access": "rw", "reset": 0x00000001},
+            "enable": {"lsb": 31, "width": 1, "access": "rw", "reset": 0x00000000},
+        },
+    },
+    "GEN_ADDR": {
+        "offset": 0x0A4,
+        "ext": True,
+        "fields": {
+            "index": {"lsb": 0, "width": 12, "access": "rw", "reset": 0x00000000},
+        },
+    },
+    "GEN_DATA": {
+        "offset": 0x0A8,
+        "ext": True,
+        "fields": {
+            "sample": {"lsb": 0, "width": 16, "access": "rw", "reset": 0x00000000},
+        },
+    },
+    "IF_NCO": {
+        "offset": 0x0B0,
+        "ext": False,
+        "fields": {
+            "inc": {"lsb": 0, "width": 32, "access": "rw", "reset": 0x00000000},
+        },
+    },
+    "IF_NCO_STEP": {
+        "offset": 0x0B4,
+        "ext": False,
+        "fields": {
+            "step": {"lsb": 0, "width": 32, "access": "rw", "reset": 0x00000000},
+        },
+    },
+    "IF_CIC": {
+        "offset": 0x0B8,
+        "ext": False,
+        "fields": {
+            "r": {"lsb": 0, "width": 16, "access": "rw", "reset": 0x00000010},
+            "shift": {"lsb": 16, "width": 6, "access": "rw", "reset": 0x0000000B},
+            "skip": {"lsb": 24, "width": 4, "access": "rw", "reset": 0x00000004},
         },
     },
 }

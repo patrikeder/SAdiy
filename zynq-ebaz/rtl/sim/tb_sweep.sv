@@ -46,7 +46,11 @@ module tb_sweep;
     .emio_pe_o, .emio_pe_t,
     .adf4351_clk(adf_clk), .adf4351_dat(adf_dat), .adf4351_le(adf_le), .adf4351_ld(ld),
     .pe4302_v_o(pe_o), .pe4302_v_t(pe_t), .pe4302_v_i(pe_pad),
-    .det_ext_valid(1'b0), .det_ext_data(16'd0)
+    .emio_ce_o(1'b0), .emio_ce_t(1'b1), .emio_scl_o(1'b0), .emio_scl_t(1'b1), .emio_sda_o(1'b0), .emio_sda_t(1'b1),
+    .emio_scl_i(), .emio_sda_i(),
+    .adf4351_ce_o(), .adf4351_ce_t(), .adf4351_ce_i(1'b1),
+    .i2c_scl_o(), .i2c_scl_t(), .i2c_scl_i(1'b1), .i2c_sda_o(), .i2c_sda_t(), .i2c_sda_i(1'b1),
+    .det_ext_valid(1'b0), .det_ext_data(16'd0), .det_ext_ovr(1'b0)
   );
 
   task automatic fail(input string why);
@@ -162,7 +166,7 @@ module tb_sweep;
 
     // 1. identity, reset state: PS owns the pins, PE4302 not driven
     expect_reg(ID, 32'h53410001, "ID");
-    expect_reg(VERSION, 32'h00010000, "VERSION");
+    expect_reg(VERSION, 32'h00010002, "VERSION");
     expect_reg(CAPS, {16'd100, 8'd12, 8'd12}, "CAPS");
     expect_reg(PE4302, 32'h0000013F, "PE4302 reset");
     if (pe_t !== 6'h3F || adf_le !== 1 || adf_clk !== 0) fail("pins after reset");

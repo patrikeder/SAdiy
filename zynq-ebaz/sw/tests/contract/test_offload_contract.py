@@ -130,7 +130,7 @@ def test_bad_n_avg(make):
 
 
 def test_timeout_aborts_the_sweep(make):
-    plat = make(det_src=3)
+    plat = make(det_src=2)
     off = plat.offload()
     off.upload(table(2))
     with pytest.raises(TimeoutError):

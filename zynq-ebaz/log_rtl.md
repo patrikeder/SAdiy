@@ -20,6 +20,39 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
 
 **F1 and F2 done and verified in simulation; bitstream built with timing met; nothing run on the board yet. Committed on branch `rtl` (seam commit + zynq-ebaz commit), not pushed, not merged to main.**
 
+## 2026-11-15 register map 1.2: sample stream format, generator, IF fast path (no ADC needed)
+
+- User: build the fast path without the ADC adapter, with a signal format every ADC option converts to and a
+  data generator fed by software. Done: stream format (valid, signed 16 bit, ovr; spec 8b), `sample_gen.sv`
+  (4096-sample pattern RAM written by the PS), `if_power.sv` (NCO, mixer, 3-stage CIC by R, power sum as
+  mantissa / exponent, over-range in result bit 30; spec 8c), `nco_rom.sv` (generated). `DET_CFG.mode / stream`,
+  `GEN_*`, `IF_*` registers. `det_ext_data` is now two's complement and has `det_ext_ovr`.
+- Python: `sw/sadiy_ebaz/ifpath.py` is the bit-exact reference; the PL model uses it; `tb_if` compares RTL and
+  reference word for word (3 scenarios pass; 5 deliberate faults caught, a 1 LSB phase increment error is below
+  the table resolution). Bring-up stage `if` does the same comparison on the board.
+- Not done: sweepd does not use the IF path yet; no FFT, no FIR after the CIC; no ADC adapter (AD9226 pins are
+  still open). Nothing of this has run on the board.
+
+## 2026-11-14 register map 1.1: ADS1115 reader in the PL, CE, register-only sweepd platform (for L: read)
+
+- User: implement what is missing so sweepd runs, and read the detector in the PL (no software in the loop), keep
+  PS push for bring-up. First board run of map 1.0 before this: 57 checks passed (`docs/ebaz-pl-measurements.md`).
+- RTL: `ads1115_reader.sv` (I2C master, single shot per sample) = `DET_CFG.src = 3`; `ADC_CFG`, `ADC_I2C_DIV`,
+  `ADC_T_CONV_US`, `ADC_STAT`, `ADF_PINS.ce`; CE and the I2C pins now go through `pin_mux` (PS I2C0 keeps the
+  bus unless the engine owns the pins and src = 3). VERSION = 0x00010001. Spec sections 8a and 9.
+- Built: WNS +1.91 ns, 1172 LUT (6.7 %), 1374 FF (3.9 %), 8.5 BRAM tiles (14 %), 0 critical warnings.
+  **PS7 unchanged**: the new `ebaz_sadiy.bit.bin` loads at runtime on the current image, or put the new XSA /
+  bitstream into BOOT.BIN (L).
+- Software: `sw/sadiy_ebaz/platforms/ebaz_pl.py` (+ alias `ebaz.py`), `RegOffload.send_words / read_detector /
+  configure_adc / set_ce / estimated_s`, `OffloadSweep` re-uploads after single actions. `sweepd --platform ebaz`
+  on hardware now starts this backend (was: exit). No bench mode on EBAZ hardware yet (bench = None).
+  L: I changed `src/sadiy/server/sweepd.py` (main) and `tests/test_gen_diagrams.py` (the "refuses ebaz" test now
+  checks a clean failure without the board). S5's PS-only backend is no longer needed for sweeps.
+- Verified: `test.sh` (723 pytest, lint, 5 of 5 testbenches incl. new `tb_adc`; 4 deliberate RTL faults in the
+  reader are caught). Not verified: anything of this on the board (I2C levels and timing with the real ADS1115,
+  CE with the adapter's jumper, sweepd end to end).
+- Board: `rtl/scripts/make_bringup_pkg.sh`, then `./run.sh adc`, then `./sweepd.sh`.
+
 ## 2026-11-14 board bring-up script (user connected board + logic analyzer)
 
 - `sw/tools/pl_bringup.py` (stages ident regs gen push owner ctrl lock; spi att for the LA), packaged by
