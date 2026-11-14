@@ -1,6 +1,15 @@
 # EBAZ4205 bring-up (S4)
 
-Status 2026-11-14: not started. Needs the Phase 1 boot image (S3) and the user at the bench.
+Status 2026-11-14: image boots (see `ebaz-baseline.md`); electrical checks not started, they need the user at the bench.
+
+## Known from the first boot (S1 baseline, 2026-11-14)
+- Kernel 6.12.40, Zynq PS7, PL state `operating` (Phase 1 bitstream from BOOT.BIN), Ethernet 100 Mbit/full, IP 192.168.88.244.
+- The network interface is `enx000a35001e53` (renamed from eth0 by udev), MAC 00:0a:35:00:1e:53.
+- `/dev/spidev0.0`, `/dev/i2c-0`, `/dev/gpiochip0` exist, all `root` only (mode 600): use sudo or add a udev rule / group.
+- GPIO: `zynq_gpio`, sysfs base 512, 118 lines (54 MIO + 64 EMIO). Expected EMIO line n at gpiochip0 offset 54 + n
+  (sysfs number 512 + 54 + n); check with `gpioinfo`.
+- Python 3.12.11 with zmq, numpy, spidev, tomllib; no gpiod or smbus module; `devmem`, i2c-tools, gpiod tools present.
+- Root is mounted `ro` (mmcblk0p2 ext4).
 
 ## Checklist for the bench session
 Do each step with the PE4302 at 31.5 dB (nothing driven) before any RF is connected.
@@ -15,3 +24,24 @@ Do each step with the PE4302 at 31.5 dB (nothing driven) before any RF is connec
 6. ADS1115 answers at 0x48 (`i2cdetect -y N`).
 
 Results go below (what was measured, instrument, date).
+
+## Results, 2026-11-14 (nothing connected to DATA1/2/3; instruments: none)
+
+Scripts: `sw/tools/ebaz_s4_readonly.sh`, `sw/tools/ebaz_s4_readback.sh`, run on the board with sudo; raw output was read from
+`/tmp/s4_*.txt` on the board.
+
+| Check | Result |
+|---|---|
+| EMIO direction after boot (DIRM_2, OEN_2) | 0x00000000: all EMIO lines are inputs, PE4302 and CE tri-stated. |
+| Readback of EMIO n = 0..6 through sysfs (offset 512 + 54 + n) | **ALL PASS**: pad level, sysfs value, DIRM and OEN follow high and low for V1..V6 and CE. After the test DIRM_2 and OEN_2 are 0 again. |
+| LD (n = 7) | 0 with nothing connected (pull-down in the XDC), as expected. |
+| I2C bus 0 scan | Inconclusive and expected: nothing wired. The Cadence controller has no SMBus Quick Write, so `i2cdetect` skips 0x48 unless run as `-r`; use `i2cget -y 0 0x48 0x01 w` (expect 0x8583) once the ADS1115 is wired. |
+| Pad levels of floating lines | Not meaningful. `gpioget` on 54..60 returned 1 and `devmem DATA_2_RO` returned 0 a moment apart; unexplained, most likely floating pads, repeat with the adapter connected. |
+
+What this proves: line numbering 54 + n and the PL IOBUF path. What it does not prove: that each signal is on the right DATA2 pin
+(needs a DMM or the DSLogic at the connector) and anything about the PE4302, ADF4351 or ADS1115.
+
+## Still open (needs the user at the bench)
+- Pin location: drive each line and probe the DATA2 pins (G20 CLK, G19 DAT, H20 LE, J19 LD in, K19 CE, J20 L16 L19 M18 L20 M20 V1..V6, K18 L17 I2C).
+- SPI frames from `/dev/spidev0.0` on the DSLogic (needs `adf4351-pattern`-style words; mode 0, 10 MHz, LE low for the whole word).
+- With the adapter connected: pad levels with pull-ups (expect V1..V6 = 1, CE = 1), PE4302 walk, ADF4351 at 100 MHz, ADS1115.
