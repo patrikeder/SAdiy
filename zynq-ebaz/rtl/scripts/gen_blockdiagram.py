@@ -99,7 +99,7 @@ def ext(y, h, title, lines):
     box(EXX, y, EXW, h, title, lines, fill=C["ext"], stroke=C["extl"], size=12)
 
 
-ext(128, 44, "ADS1115 (I2C 0x48)", ["main ADC of the detector, read by the PS"])
+ext(128, 44, "ADS1115 (I2C 0x48)", ["detector ADC, read by the PL (or the PS)"])
 ext(183, 44, "Ethernet PHY (EBAZ4205)", ["MII on EMIO, 25 MHz PHY clock out (FCLK1)"])
 ext(238, 100, "Adapter LCD, Sitronix ST7789", ["SCL R19, SDA P20, CS T20 (SPI1)", "DC R18, RES N17 (GPIO)",
                                              "driven by Linux fbtft"])
@@ -128,7 +128,7 @@ def lab(x, y, s, anchor="middle"):
 # 1 I2C
 y = 150
 arrow([(PX, y), (CX, y)], both=True)
-padcell(y, "IOBUF x2", "i2c_scl, i2c_sda")
+padcell(y, "IOBUF x2 (via pin_mux)", "i2c_scl, i2c_sda: PS I2C0 or PL reader")
 arrow([(CX + CW, y), (EXX, y)], both=True)
 lab(515, y - 6, "SCL / SDA")
 # 2 ENET
@@ -164,7 +164,7 @@ lab(515, y - 6, "raw level")
 # 7 CE
 y = 480
 arrow([(PX, y), (CX, y)], both=True)
-padcell(y, "IOBUF", "adf4351_ce (n=6)")
+padcell(y, "IOBUF (via pin_mux)", "adf4351_ce: n=6 or ADF_PINS.ce")
 arrow([(CX + CW, y), (EXX, y)], both=True)
 lab(515, y - 6, "CE (high = on)")
 # 8 LD
@@ -209,9 +209,19 @@ box(C2X, TBY, C2W, 60, "table RAM", ["2^12 x 44 b", "{W1 flags, W0 SPI word}"], 
 RSY = 720
 box(C2X, RSY, C2W, 60, "result RAM", ["2^12 x 32 b", "average sample per point"], fill="#fff", stroke=C["engl"], size=11.5)
 DTY = 810
-box(C2X, DTY, C2W, 82, "det_sampler", ["sum of N samples from:", "0 PS push (DET_PUSH)", "1 test generator", "2 det_ext port"],
+box(C2X, DTY, C2W, 82, "det_sampler", ["sum of N samples from: 0 PS", "push, 1 test generator,", "2 det_ext port,", "3 ADS1115 reader"],
     fill="#fff", stroke=C["engl"], size=11.5)
-box(C2X, 902, C2W, 38, "det_ext (tied 0)", ["PL ADC reader (S10)"], fill="#fff", stroke="#888", dash=True, size=11)
+box(C2X, 902, C2W, 38, "det_ext (tied 0)", ["stream port for an ADC"], fill="#fff", stroke="#888", dash=True, size=11)
+# generator and IF path (register map 1.2), right of the sequencer column
+box(C4X - 5, 800, C4W + 10, 150, "sample_gen", ["pattern RAM", "from the PS", "", "if_power", "NCO, mixer,", "CIC, I^2+Q^2"], fill="#fff", stroke=C["engl"], size=10.5, tsize=10.5)
+arrow([(C4X - 5, 880), (C3X + C3W, 880)], both=True)
+t((C3X + C3W + C4X) / 2 - 2, 874, "run/sum", 8.5, "middle", fill=C["sub"])
+# ADS1115 reader: I2C master, source 3
+box(C1X, 870, C1W, 72, "ads1115_reader", ["I2C master, one single-", "shot conversion per", "sample (ADC_* regs)"], fill="#fff", stroke=C["engl"], size=11.5)
+arrow([(C1X + C1W, 884), (C2X, 884)])
+t((C1X + C1W + C2X) / 2, 880, "valid, data", 9, "middle", fill=C["sub"])
+arrow([(C1X + 40, 942), (C1X + 40, 975)], both=True)
+t(C1X + 46, 962, "scl, sda", 9, "start", fill=C["sub"])
 arrow([(C2X + C2W / 2, 902), (C2X + C2W / 2, DTY + 82)], color="#888", dash=True)
 
 SQY, SQH = 640, 300
@@ -225,7 +235,7 @@ box(C4X, 730, C4W, 60, "pe4302_mbb", ["glitch-free", "attenuation"], fill="#fff"
 # pin_mux across the bottom
 PMY, PMH = 975, 100
 box(C1X, PMY, EX + EW - 10 - C1X, PMH, "pin_mux", ["CTRL.pin_owner: PS (bench mode, Linux drives the SPI0 / GPIO lines)  or  engine (sweep)",
-                                                    "PE4302 outputs are tri-stated until driven; default LE / CLK idle levels set here"],
+                                                    "also here: CE (PS GPIO 6 or ADF_PINS.ce) and the I2C pins (PS I2C0, or the ADS1115 reader when DET_CFG.src = 3)"],
     fill="#fff", stroke=C["engl"], size=12)
 
 # regs <-> seq control line over the top
@@ -257,8 +267,8 @@ t((C3X + C3W + C4X) / 2, 752, "load,val", 8.5, "middle", fill=C["sub"])
 R1, R2 = EX + EW - 32, EX + EW - 16
 arrow([(C4X + C4W, 670), (R1, 670), (R1, PMY)])
 arrow([(C4X + C4W, 760), (R2, 760), (R2, PMY)])
-t(R1 - 8, 870, "left rail: adf clk/dat/le", 9, "end", fill=C["sub"])
-t(R1 - 8, 883, "right rail: pe_v[5:0]", 9, "end", fill=C["sub"])
+t(R1 - 8, 780, "left rail: adf clk/dat/le", 9, "end", fill=C["sub"])
+t(R1 - 8, 793, "right rail: pe_v[5:0]", 9, "end", fill=C["sub"])
 
 # lock detect to the sequencer (from the pad cell, down over the engine top)
 LDX = C3X + 85
@@ -290,7 +300,7 @@ for i, (fill, stroke, s) in enumerate([(C["ps"], C["psl"], "processing system"),
     x = 30 + 250 * i
     o.append(f'<rect x="{x}" y="{LY - 11}" width="18" height="12" fill="{fill}" stroke="{stroke}"/>')
     t(x + 26, LY, s, 11)
-t(1000, LY, "not built yet: det_ext (PL ADC reader), PL access to keys / LEDs", 11, fill=C["sub"])
+t(1000, LY, "not built yet: an ADC adapter on det_ext, FFT, PL access to keys / LEDs", 11, fill=C["sub"])
 o.append("</svg>")
 
 text = "\n".join(o) + "\n"

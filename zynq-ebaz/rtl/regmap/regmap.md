@@ -1,13 +1,13 @@
 <!-- generated from regmap.toml by gen_regs.py, do not edit -->
 # Register map
 
-Map `sadiy`, version 0x00010000, 12-bit address, 32-bit registers. Writes are full words (WSTRB ignored); bits without a field read 0.
+Map `sadiy`, version 0x00010002, 12-bit address, 32-bit registers. Writes are full words (WSTRB ignored); bits without a field read 0.
 Registers marked *ext* are implemented outside `axil_regs.sv`.
 
 | Offset | Name | Reset | Description |
 |---|---|---|---|
 | 0x000 | ID | 0x53410001 | Magic number, identifies the core. |
-| 0x004 | VERSION | 0x00010000 | Register map version (major << 16 \| minor). Equals [map] version. |
+| 0x004 | VERSION | 0x00010002 | Register map version (major << 16 \| minor). Equals [map] version. |
 | 0x008 | CTRL | 0x00000000 | Control. Pulse bits read 0. |
 | 0x00C | STATUS | 0x00000000 | Status, read-only. |
 | 0x010 | N_ENTRIES | 0x00000000 | Number of table entries one sweep executes (1 .. 2^TABLE_AW). |
@@ -33,6 +33,17 @@ Registers marked *ext* are implemented outside `axil_regs.sv`.
 | 0x070 | RESULT_ADDR (ext) | 0x00000000 | Result index for the next RESULT_DATA read. Read / write; increments by one on every RESULT_DATA read. |
 | 0x074 | RESULT_DATA (ext) | 0x00000000 | Result word at RESULT_ADDR (read-only, read increments RESULT_ADDR). Wait at least 2 clk cycles after writing RESULT_ADDR (always true from the PS). |
 | 0x078 | CAPS | 0x00000000 | Build parameters. |
+| 0x080 | ADC_CFG | 0x0048C3E3 | ADS1115 reader (DET_CFG.src = 3): what is written to the ADC for every sample. |
+| 0x084 | ADC_I2C_DIV | 0x00000046 | ADS1115 reader: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 70 = 357 kHz at 100 MHz (t_low 1.4 us). |
+| 0x088 | ADC_T_CONV_US | 0x00000578 | ADS1115 reader: microseconds between the config write (conversion start) and the read. Must exceed the conversion time of the data rate in ADC_CFG.config plus its 10 % tolerance. Reset 1400 for 860 SPS. |
+| 0x08C | ADC_STAT | 0x00000000 | ADS1115 reader status, read-only. |
+| 0x090 | ADF_PINS | 0x00000001 | ADF4351 pins outside the SPI, driven while the engine owns the pins. |
+| 0x0A0 | GEN_CFG | 0x400003E8 | Sample generator: plays the pattern written through GEN_ADDR / GEN_DATA as a sample stream, in place of an ADC. |
+| 0x0A4 | GEN_ADDR (ext) | 0x00000000 | Pattern index for the next GEN_DATA write. Read / write; increments by one on every GEN_DATA write. |
+| 0x0A8 | GEN_DATA (ext) | 0x00000000 | Write: one pattern sample (stream format: 16 bit two's complement) to GEN_ADDR, then GEN_ADDR + 1. Reads 0. Write only while the generator is disabled or idle. |
+| 0x0B0 | IF_NCO | 0x00000000 | IF path: NCO phase increment of the first point of a sweep (f = inc * fs / 2^32, two's complement for negative frequencies). |
+| 0x0B4 | IF_NCO_STEP | 0x00000000 | IF path: added to the NCO increment at every further measured point of the sweep (digital sweep inside the IF window). 0 = the same IF for all points. |
+| 0x0B8 | IF_CIC | 0x040B0010 | IF path: decimating filter. The resolution bandwidth is about fs / r. |
 
 ## ID (0x000)
 
@@ -48,7 +59,7 @@ Register map version (major << 16 \| minor). Equals [map] version.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
-| 31:0 | version | const | 0x10000 | must equal map.version (gen_regs.py checks) |
+| 31:0 | version | const | 0x10002 | must equal map.version (gen_regs.py checks) |
 
 ## CTRL (0x008)
 
@@ -161,6 +172,10 @@ Live pins after the pin mux, synchronised to clk.
 |---|---|---|---|---|
 | 29:24 | pe_t | ro | 0x0 | 1 = that PE4302 pin is not driven (PS owner with the GPIO line as input). |
 | 21:16 | pe_out | ro | 0x0 | Levels driven on the PE4302 pins (meaningful where pe_t = 0). |
+| 15 | i2c_pl | ro | 0x0 | 1 = the ADS1115 reader of the PL owns the I2C pins (engine owns the pins and DET_CFG.src = 3); 0 = PS I2C0. |
+| 14 | sda | ro | 0x0 | i2c_sda pad level |
+| 13 | scl | ro | 0x0 | i2c_scl pad level |
+| 12 | ce | ro | 0x0 | adf4351_ce pad level |
 | 11 | dat | ro | 0x0 | adf4351_dat as driven |
 | 10 | clk | ro | 0x0 | adf4351_clk as driven |
 | 9 | le | ro | 0x0 | adf4351_le as driven |
@@ -173,7 +188,9 @@ Detector sample source.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
-| 1:0 | src | rw | 0x0 | 0 = PS push (DET_PUSH), 1 = test generator (DET_TEST), 2 = external stream (det_ext_*, the PL ADC reader of S10), 3 = reserved (no samples). |
+| 8 | stream | rw | 0x0 | Sample stream for src = 2 and for the IF path: 0 = det_ext_* port of sadiy_top (an ADC adapter), 1 = sample generator (GEN_* registers). |
+| 4 | mode | rw | 0x0 | 0 = video path: a result is the sum of N_AVG detector samples. 1 = IF path: the sample stream goes through NCO, mixer, CIC and power detector (IF_* registers); a result is {exp[5:0], mant[21:0]} of the power sum, bit 30 = over-range. |
+| 1:0 | src | rw | 0x0 | Video path (mode = 0): 0 = PS push (DET_PUSH), 1 = test generator (DET_TEST), 2 = sample stream selected by `stream` (negative samples count as 0), 3 = ADS1115 reader in the PL (ADC_* registers; the engine then owns the I2C pins while it owns the other pins). |
 
 ## DET_TEST (0x03C)
 
@@ -277,3 +294,100 @@ Build parameters.
 | 31:16 | clk_mhz | ro | 0x0 | fabric clock in MHz (the microsecond tick divides by this) |
 | 15:8 | result_aw | ro | 0x0 | result depth = 2^result_aw points |
 | 7:0 | table_aw | ro | 0x0 | table depth = 2^table_aw entries |
+
+## ADC_CFG (0x080)
+
+ADS1115 reader (DET_CFG.src = 3): what is written to the ADC for every sample.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 22:16 | addr | rw | 0x48 | I2C address of the ADS1115 (0x48 = ADDR pin to GND). |
+| 15:0 | config | rw | 0xC3E3 | ADS1115 config register word, written before every sample; must have OS = 1 and MODE = 1 (single shot). Reset: AIN0 to GND, +/-4.096 V, 860 SPS, comparator off. |
+
+## ADC_I2C_DIV (0x084)
+
+ADS1115 reader: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 70 = 357 kHz at 100 MHz (t_low 1.4 us).
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 11:0 | div | rw | 0x46 |  |
+
+## ADC_T_CONV_US (0x088)
+
+ADS1115 reader: microseconds between the config write (conversion start) and the read. Must exceed the conversion time of the data rate in ADC_CFG.config plus its 10 % tolerance. Reset 1400 for 860 SPS.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 19:0 | us | rw | 0x578 |  |
+
+## ADC_STAT (0x08C)
+
+ADS1115 reader status, read-only.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 31:24 | count | ro | 0x0 | Conversions read since reset, wraps. |
+| 17 | busy | ro | 0x0 | A sample (bus transaction or conversion wait) is in progress. |
+| 16 | err_nack | ro | 0x0 | Sticky: the ADC did not acknowledge (missing, wrong address, bus held). That sample was delivered as 0. Cleared by start and soft_reset. |
+| 15:0 | last | ro | 0x0 | Conversion register of the last sample as read from the ADC (two's complement). |
+
+## ADF_PINS (0x090)
+
+ADF4351 pins outside the SPI, driven while the engine owns the pins.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 0 | ce | rw | 0x1 | Level of adf4351_ce while the engine owns the pins (1 = chip enabled). With the PS as owner the pin follows EMIO GPIO 6. |
+
+## GEN_CFG (0x0A0)
+
+Sample generator: plays the pattern written through GEN_ADDR / GEN_DATA as a sample stream, in place of an ADC.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 31 | enable | rw | 0x0 | 1 = play. |
+| 30 | sync | rw | 0x1 | 1 = the playback restarts at sample 0 when a measurement (SAMPLE) starts, so results are repeatable. 0 = free running like an ADC. |
+| 27:16 | len_m1 | rw | 0x0 | Last sample index of the pattern (length - 1); the playback wraps to 0 after it. |
+| 15:0 | div | rw | 0x3E8 | clk cycles per sample (0 and 1 = one sample every clock). Reset 1000 = 100 kSPS at 100 MHz. |
+
+## GEN_ADDR (0x0A4) ext
+
+Pattern index for the next GEN_DATA write. Read / write; increments by one on every GEN_DATA write.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 11:0 | index | rw | 0x0 |  |
+
+## GEN_DATA (0x0A8) ext
+
+Write: one pattern sample (stream format: 16 bit two's complement) to GEN_ADDR, then GEN_ADDR + 1. Reads 0. Write only while the generator is disabled or idle.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 15:0 | sample | rw | 0x0 |  |
+
+## IF_NCO (0x0B0)
+
+IF path: NCO phase increment of the first point of a sweep (f = inc * fs / 2^32, two's complement for negative frequencies).
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 31:0 | inc | rw | 0x0 |  |
+
+## IF_NCO_STEP (0x0B4)
+
+IF path: added to the NCO increment at every further measured point of the sweep (digital sweep inside the IF window). 0 = the same IF for all points.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 31:0 | step | rw | 0x0 |  |
+
+## IF_CIC (0x0B8)
+
+IF path: decimating filter. The resolution bandwidth is about fs / r.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 27:24 | skip | rw | 0x4 | Filter outputs dropped at the start of every measurement (settling; at least 3). |
+| 21:16 | shift | rw | 0xB | Arithmetic right shift after the filter, before the saturation to 18 bit; about 3 * log2(r) - 1. |
+| 15:0 | r | rw | 0x10 | Decimation factor of the 3-stage CIC (1 .. 65535; 0 is treated as 1). Gain r^3. |

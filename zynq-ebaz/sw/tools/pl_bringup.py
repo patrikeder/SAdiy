@@ -3,7 +3,7 @@
 
 Run ON THE EBAZ4205 after the bitstream is loaded (an AXI access to an unconfigured PL stalls the CPU):
 
-    python3 pl_bringup.py                      # automatic stages: ident regs gen push owner ctrl lock
+    python3 pl_bringup.py                      # automatic stages: ident regs gen push owner ctrl lock adc if
     python3 pl_bringup.py ident gen            # chosen stages only
     python3 pl_bringup.py spi att              # stages for the logic analyzer (they ask before each capture)
     python3 pl_bringup.py --model              # same code against the PlModel on a PC (self test, no board)
@@ -16,6 +16,10 @@ Stages
   owner  pin owner switching, refused starts (owner and start in one write, N_ENTRIES = 0, too many)
   ctrl   abort while waiting for samples, soft_reset, irq_ack, interrupt count
   lock   lock wait: timeout flags when LD is low, no flags when LD is high, stop_on_err
+  adc    ADS1115 reader of the PL (DET_CFG.src = 3): samples without software in the loop, I2C pin hand-over
+  if     IF fast path with the sample generator: a pattern with two tones is loaded, the NCO sweeps across it,
+         every result word is compared with the Python reference (bit-exact) and the peaks are checked
+  ce     (not in auto) ADF4351 CE pin through ADF_PINS.ce: drives CE low for a moment
   spi    (LA)  ADF4351 SPI frames at several SPI_DIV values: CLK, DAT, LE
   att    (LA)  PE4302 make-before-break changes: V1..V6
 
@@ -47,7 +51,8 @@ ID_MAGIC = 0x53410001
 SRC_PUSH, SRC_TEST = 0, 1
 ALL_IN = 0x3F                                        # PE4302 levels V1..V6: every stage in (31.5 dB)
 SAFE_WORDS = [0xA5A5A5A7, 0x5A5A5A5F, 0x00000007, 0xFFFFFFFF]   # control bits 111: no ADF4351 register
-AUTO = ["ident", "regs", "gen", "push", "owner", "ctrl", "lock"]
+AUTO = ["ident", "regs", "gen", "push", "owner", "ctrl", "lock", "adc", "if"]
+SRC_ADC = 3
 LA_STAGES = ["spi", "att"]
 
 
@@ -473,6 +478,161 @@ def stage_lock(c: Ctx) -> None:
             c.reset()
 
 
+def stage_adc(c: Ctx) -> None:
+    r, rep = c.r, c.rep
+    if r.rd("VERSION") & 0xFFFF < 1 or "ADC_CFG" not in REGS:
+        rep.skip("this bitstream has no ADS1115 reader (register map 1.0)")
+        return
+    n_avg, n_pts = 4, 2
+    c.reset()
+    with Saved(r, ["N_AVG", "DET_CFG", "T_MIN_US", "T_SETTLE_US"]):
+        try:
+            cfgw, addr = r.get("ADC_CFG", "config"), r.get("ADC_CFG", "addr")
+            div, t_conv = max(4, r.rd("ADC_I2C_DIV")), r.rd("ADC_T_CONV_US")
+            rep.info(f"ADC_CFG: config 0x{cfgw:04X}, address 0x{addr:02X}; I2C {100e3 / (4 * div):.0f} kHz; "
+                     f"conversion wait {t_conv} us")
+            rep.check("config word is single shot with OS set", bool(cfgw & 0x8000 and cfgw & 0x0100), f"0x{cfgw:04X}")
+            rep.check("PS owns the I2C pins before (PIN_STATE.i2c_pl = 0)", r.get("PIN_STATE", "i2c_pl") == 0)
+            rep.check("bus idle: SCL and SDA high", (r.get("PIN_STATE", "scl"), r.get("PIN_STATE", "sda")) == (1, 1),
+                      f"scl={r.get('PIN_STATE', 'scl')} sda={r.get('PIN_STATE', 'sda')} (pull-ups? ADC powered?)")
+            r.put("DET_CFG", "src", SRC_ADC)
+            if not rep.check("engine takes the pins", c.take_pins()):
+                return
+            rep.check("the reader owns the I2C pins now (PIN_STATE.i2c_pl = 1)", r.get("PIN_STATE", "i2c_pl") == 1)
+            r.wr("N_AVG", n_avg)
+            r.wr("T_MIN_US", 10)
+            r.wr("T_SETTLE_US", 10)
+            count0 = r.get("ADC_STAT", "count")
+            rep.la(f"i2c_scl / i2c_sda: per sample S {addr:02X}+W 01 {cfgw >> 8:02X} {cfgw & 0xFF:02X} P, {t_conv} us, "
+                   f"S {addr:02X}+W 00 P, S {addr:02X}+R hi lo P")
+            ok, dt = c.sweep([TableEntry(word=0, measure=True, skip_lock=True)] * n_pts, timeout=10.0)
+            if not rep.check(f"{n_pts} points x {n_avg} samples taken by the PL", ok):
+                r.ctrl(abort=1)
+                return
+            nack = r.get("ADC_STAT", "err_nack")
+            rep.check("the ADS1115 acknowledged (no err_nack)", nack == 0,
+                      "no answer: check SDA / SCL wiring, the address pin, 3.3 V supply and pull-ups" if nack else "")
+            got = c.results(n_pts)
+            done = (r.get("ADC_STAT", "count") - count0) & 0xFF
+            rep.check(f"{n_pts * n_avg} conversions read", done == n_pts * n_avg or bool(nack), f"{done}")
+            last = r.get("ADC_STAT", "last")
+            signed = last - 0x10000 if last & 0x8000 else last
+            fs = {0: 6.144, 1: 4.096, 2: 2.048, 3: 1.024, 4: 0.512, 5: 0.256}.get((cfgw >> 9) & 7, 0.256)
+            for i, w in enumerate(got):
+                mean = (w & 0x0FFFFFFF) / n_avg
+                rep.info(f"point {i}: sum {w & 0x0FFFFFFF}, mean code {mean:.1f} = {mean * fs / 32768:.4f} V at the ADC pin")
+            rep.info(f"last conversion register 0x{last:04X} = {signed} = {signed * fs / 32768:.4f} V")
+            if not nack:
+                rep.check("codes are in range (0 .. 32767 per sample)", all((w & 0x0FFFFFFF) <= n_avg * 32767 for w in got))
+                spread = max(got) - min(got)
+                rep.info(f"difference between the two points: {spread / n_avg:.1f} codes")
+            if c.real:
+                rep.info(f"{dt / (n_pts * n_avg) * 1e3:.2f} ms per sample incl. Python polling "
+                         f"(wait {t_conv} us + about {90 * 4 * div / 100:.0f} us on the bus)")
+        finally:
+            c.release_pins()
+            c.reset()
+    rep.check("I2C pins back with the PS (PIN_STATE.i2c_pl = 0)", r.get("PIN_STATE", "i2c_pl") == 0)
+
+
+def stage_if(c: Ctx) -> None:
+    import math
+
+    from sadiy_ebaz import ifpath
+
+    r, rep = c.r, c.rep
+    if r.rd("VERSION") & 0xFFFF < 2 or "IF_CIC" not in REGS:
+        rep.skip("this bitstream has no IF path (register map before 1.2)")
+        return
+    n, tones, div = 1024, ((100, 16000.0), (260, 1600.0)), max(1, c.args.gen_div)
+    cic_r, skip, n_avg, bin0, dbin, n_pts = 16, 4, 8, 40, 5, 56
+    shift = ifpath.shift_for(cic_r)
+    pat = ifpath.make_pattern(n, tones, noise_rms=20.0, seed=7)
+    inc0, step = ifpath.inc_for(bin0 / n, 1.0), ifpath.inc_for(dbin / n, 1.0)
+    f = {name: REGS[reg].fields[name] for reg, name in (("GEN_CFG", "enable"), ("GEN_CFG", "sync"),
+                                                        ("GEN_CFG", "len_m1"), ("GEN_CFG", "div"))}
+    c.reset()
+    with Saved(r, ["N_AVG", "DET_CFG", "T_MIN_US", "T_SETTLE_US", "GEN_CFG", "IF_NCO", "IF_NCO_STEP", "IF_CIC"]):
+        try:
+            r.wr("GEN_CFG", 0)
+            r.wr("GEN_ADDR", 0)
+            for v in pat:
+                r.wr("GEN_DATA", v & 0xFFFF)
+            rep.check(f"pattern of {n} samples written (GEN_ADDR wrapped to {n & 0xFFF})", r.rd("GEN_ADDR") == n & 0xFFF)
+            r.wr("GEN_CFG", f["enable"].put(1) | f["sync"].put(1) | f["len_m1"].put(n - 1) | f["div"].put(div))
+            r.wr("DET_CFG", REGS["DET_CFG"].fields["mode"].put(1) | REGS["DET_CFG"].fields["stream"].put(1))
+            r.wr("IF_NCO", inc0)
+            r.wr("IF_NCO_STEP", step)
+            cic = REGS["IF_CIC"].fields
+            r.wr("IF_CIC", cic["r"].put(cic_r) | cic["shift"].put(shift) | cic["skip"].put(skip))
+            r.wr("N_AVG", n_avg)
+            r.wr("T_MIN_US", 5)
+            r.wr("T_SETTLE_US", 5)
+            if not rep.check("engine takes the pins", c.take_pins()):
+                return
+            fs = 100e6 / div
+            rep.info(f"generator: {fs / 1e6:.2f} MSPS, tones at bins {tones[0][0]} and {tones[1][0]} of {n} "
+                     f"({tones[0][0] * fs / n / 1e3:.1f} kHz, {tones[1][0] * fs / n / 1e3:.1f} kHz, second 20 dB lower); "
+                     f"CIC R = {cic_r} (RBW about {fs / cic_r / 1e3:.0f} kHz), {n_pts} points of {dbin} bins")
+            ok, dt = c.sweep([TableEntry(word=0, measure=True, skip_lock=True)] * n_pts, timeout=20.0)
+            if not rep.check(f"IF sweep of {n_pts} points finished", ok):
+                r.ctrl(abort=1)
+                return
+            got = c.results(n_pts)
+            want = [ifpath.if_power_ref(pat, (inc0 + k * step) & 0xFFFFFFFF, cic_r, shift, skip, n_avg)
+                    for k in range(n_pts)]
+            wantw = [w | (int(o) << ifpath.OVR_BIT) for w, o in want]
+            bad = [k for k in range(n_pts) if got[k] != wantw[k]]
+            rep.check("every result word equals the Python reference (bit-exact DSP chain)", not bad,
+                      "" if not bad else f"{len(bad)} differ, first at point {bad[0]}: 0x{got[bad[0]]:08X}, "
+                                         f"reference 0x{wantw[bad[0]]:08X}")
+            db = [10 * math.log10(max(1, ifpath.decode(w)[0]) / n_avg) for w in got]
+            k1, k2 = (tones[0][0] - bin0) // dbin, (tones[1][0] - bin0) // dbin
+            peak = max(range(n_pts), key=lambda k: db[k])
+            rep.check(f"strongest point is the first tone (point {k1})", peak == k1, f"point {peak}")
+            ref = 10 * math.log10(ifpath.tone_power(tones[0][1], cic_r, shift))
+            rep.check("level of the first tone as calculated (within 0.2 dB)", abs(db[k1] - ref) < 0.2,
+                      f"{db[k1]:.2f} dB, expected {ref:.2f} dB")
+            rep.check("second tone 20 dB below the first (within 1 dB)", abs((db[k1] - db[k2]) - 20.0) < 1.0,
+                      f"{db[k1] - db[k2]:.2f} dB")
+            floor = sorted(db)[n_pts // 4]
+            rep.info(f"first tone {db[k1]:.1f} dB, second {db[k2]:.1f} dB, lower quartile of the trace {floor:.1f} dB "
+                     f"(dynamic range shown: {db[k1] - floor:.0f} dB)")
+            rep.check("no over-range flag", not any(ifpath.decode(w)[1] for w in got))
+            if c.real:
+                per = (skip + n_avg) * cic_r * div * 10e-9
+                rep.info(f"{dt / n_pts * 1e6:.0f} us per point incl. Python polling (filter time alone {per * 1e6:.1f} us)")
+        finally:
+            r.wr("GEN_CFG", 0)
+            c.release_pins()
+            c.reset()
+
+
+def stage_ce(c: Ctx) -> None:
+    r, rep = c.r, c.rep
+    if "ADF_PINS" not in REGS or r.rd("VERSION") & 0xFFFF < 1:
+        rep.skip("this bitstream has no ADF_PINS register (register map 1.0)")
+        return
+    c.reset()
+    rep.info("CE goes low for a moment: the ADF4351 powers down and loses lock. If CE is jumpered high on the "
+             "adapter the pin cannot follow (read-back stays 1): remove the jumper to control CE.")
+    try:
+        r.wr("ADF_PINS", 1)
+        c.take_pins()
+        rep.check("ADF_PINS.ce = 1: pin high", r.get("PIN_STATE", "ce") == 1)
+        r.wr("ADF_PINS", 0)
+        time.sleep(0.01)
+        rep.check("ADF_PINS.ce = 0: pin low", r.get("PIN_STATE", "ce") == 0)
+        rep.info(f"lock detect with CE low: {r.status()['ld_now']}")
+        r.wr("ADF_PINS", 1)
+        time.sleep(0.01)
+        rep.check("ADF_PINS.ce = 1 again: pin high", r.get("PIN_STATE", "ce") == 1)
+    finally:
+        r.wr("ADF_PINS", 1)
+        c.release_pins()
+        c.reset()
+
+
 def stage_spi(c: Ctx) -> None:
     r, rep = c.r, c.rep
     divs = [int(x) for x in c.args.div.split(",")]
@@ -532,7 +692,9 @@ def stage_att(c: Ctx) -> None:
 
 
 STAGES = {"ident": stage_ident, "regs": stage_regs, "gen": stage_gen, "push": stage_push, "owner": stage_owner,
-          "ctrl": stage_ctrl, "lock": stage_lock, "spi": stage_spi, "att": stage_att}
+          "ctrl": stage_ctrl, "lock": stage_lock, "adc": stage_adc, "if": stage_if, "ce": stage_ce,
+          "spi": stage_spi,
+          "att": stage_att}
 
 
 # ------------------------------------------------------------------------------------------------ main
@@ -548,6 +710,7 @@ def make_parser() -> argparse.ArgumentParser:
     p.add_argument("--words", default="", help="SPI words of the spi stage, comma separated (control bits 111 set)")
     p.add_argument("--repeat", type=int, default=3, help="repetitions per SPI_DIV in the spi stage (3)")
     p.add_argument("--att-levels", default="0x00,0x20,0x01,0x1F", help="PE4302 level sequence of the att stage")
+    p.add_argument("--gen-div", type=int, default=4, help="clocks per generator sample in the if stage (4 = 25 MSPS)")
     p.add_argument("--no-prompt", action="store_true", help="do not wait for Enter before the LA captures")
     return p
 
@@ -567,6 +730,7 @@ def run(argv: Optional[Sequence[str]] = None, model=None) -> int:
         from sadiy_ebaz.ebaz_pl_model import PlModel
         model = PlModel()
         model.lock_model = lambda idx, word, m=model: bool(m.ld_now)
+        model.adc_code = lambda idx: 8000 + idx
     if model is not None:
         regs = Regs(model.read, model.write)
         close = lambda: None  # noqa: E731

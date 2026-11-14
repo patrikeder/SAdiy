@@ -42,6 +42,8 @@ class OffloadSweep:
         code = self.code_for(atten_db)
         pins = att_pins_for(code, self.steps, self.active_high)
         key = self._table_key(points, pins)
+        if getattr(self.offload, "table_dirty", False):     # single SPI words / detector reads used the table
+            self._key = None
         if key != self._key:
             self._key = None
             self.offload.upload(build_table(points, self.synth, pins, full=self.full, skip_lock=self.skip_lock))

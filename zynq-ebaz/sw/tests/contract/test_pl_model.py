@@ -73,7 +73,7 @@ def test_reset_values():
         for f in reg.fields.values():
             if f.access in ("rw", "const"):
                 assert g.f(reg.name, f.name) == f.reset, (reg.name, f.name)
-    assert g.r("ID") == 0x53410001 and g.r("VERSION") == 0x00010000
+    assert g.r("ID") == 0x53410001 and g.r("VERSION") == 0x00010002
     assert g.r("PE4302") == 0x13F
     assert g.r("STATUS") == 0
     assert (g.r("N_AVG"), g.r("SPI_DIV"), g.r("T_ATT_GAP_CYC")) == (1, 5, 100)
@@ -87,7 +87,7 @@ def test_const_and_ro_ignore_writes_and_unknown_addresses_read_zero():
     g.w("CAPS", 0)
     assert g.r("ID") == 0x53410001 and g.r("STATUS") == 0 and g.r("POINT_COUNT") == 0
     g.m.write(0x7FC, 123)
-    assert g.m.read(0x7FC) == 0 and g.m.read(0x0A0) == 0
+    assert g.m.read(0x7FC) == 0 and g.m.read(0x0F0) == 0
 
 
 def test_rw_fields_truncate_and_unused_bits_read_zero():
@@ -99,7 +99,7 @@ def test_rw_fields_truncate_and_unused_bits_read_zero():
     g.w("PE4302", 0xFFFFFFFF)
     assert g.r("PE4302") == 0x13F
     g.w("DET_CFG", 0xFFFFFFFF)
-    assert g.r("DET_CFG") == 3
+    assert g.r("DET_CFG") == 0x113
     g.w("T_MIN_US", 0xFFFFFFFF)
     assert g.r("T_MIN_US") == 0xFFFFF
 
@@ -137,7 +137,7 @@ def test_table_w1_ignores_undefined_bits():
 
 
 def test_table_writes_ignored_while_busy():
-    g = rig_with([measure(0x11)], src=3)
+    g = rig_with([measure(0x11)], src=2)
     g.start()
     assert g.f("STATUS", "busy")
     g.w("TABLE_ADDR", 5)
@@ -174,7 +174,7 @@ def test_start_refused(why):
 
 
 def test_start_clears_status():
-    g = rig_with([measure(1)], src=3)
+    g = rig_with([measure(1)], src=2)
     g.start()
     g.pulse("abort")
     assert g.f("STATUS", "aborted") and g.f("STATUS", "done")
@@ -185,7 +185,7 @@ def test_start_clears_status():
 
 
 def test_start_ignored_while_busy():
-    g = rig_with([measure(1)], src=3)
+    g = rig_with([measure(1)], src=2)
     g.start()
     n = len(g.m.spi_words)
     g.start()
@@ -391,7 +391,7 @@ def test_det_push_outside_sample_is_dropped():
 
 
 def test_src3_pauses_forever_and_abort_ends_it():
-    g = rig_with([measure(1), measure(2)], src=3)
+    g = rig_with([measure(1), measure(2)], src=2)
     g.start()
     for _ in range(5):
         g.w("DET_PUSH", 1)
@@ -472,7 +472,7 @@ def test_counters():
     g.start()
     g.start()
     assert (g.f("SWEEP_COUNT", "count"), g.f("POINT_COUNT", "count"), g.f("ENTRY_INDEX", "index")) == (2, 2, 2)
-    g.w("DET_CFG", 3)
+    g.w("DET_CFG", 2)
     g.start()
     g.pulse("abort")
     assert g.f("SWEEP_COUNT", "count") == 2
@@ -503,7 +503,7 @@ def test_the_model_only_emits_words_of_the_table():
 
 # ---- pins ---------------------------------------------------------------------------------------------------
 def test_pin_owner_act_follows_request_only_while_idle():
-    g = rig_with([measure(1)], src=3)
+    g = rig_with([measure(1)], src=2)
     assert g.f("STATUS", "pin_owner_act") == 1
     g.start()
     g.w("CTRL", g.r("CTRL") & ~CTRL["pin_owner"].mask)         # request the PS while busy
@@ -548,7 +548,7 @@ def test_manual_write_without_ownership_or_while_busy_does_not_touch_pins():
     g = Rig()
     g.w("PE4302", 0x01 | 1 << 8)
     assert g.m.pe_trace == []
-    g2 = rig_with([measure(1)], src=3)
+    g2 = rig_with([measure(1)], src=2)
     g2.start()
     before = list(g2.m.pe_trace)
     g2.w("PE4302", 0x02 | 1 << 8)

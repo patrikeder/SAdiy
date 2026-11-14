@@ -77,8 +77,17 @@ def test_other_tools_take_the_platform():
     assert "DATA2.14" in out.stdout and "ATT_V1" in out.stdout and "P8.7" not in out.stdout
 
 
-def test_sweepd_refuses_ebaz_hardware_for_now():
+def test_sweepd_ebaz_hardware_fails_cleanly_without_the_board():
+    """On a PC there is no PL engine: without the sadiy_ebaz package, or without access to /dev/mem, sweepd must
+    stop with one clear line, not a traceback. Bench-only mode is not available on EBAZ hardware yet."""
     out = subprocess.run([sys.executable, "-m", "sadiy.server.sweepd", "--platform", "ebaz"],
                          capture_output=True, text=True, env={"PYTHONPATH": str(ROOT / "src")}, timeout=30)
     assert out.returncode != 0
-    assert "no hardware backend" in out.stderr and "EBAZ4205" in out.stderr
+    assert "cannot start the EBAZ4205 hardware backend" in out.stderr and "Traceback" not in out.stderr
+    both = f"{ROOT / 'src'}:{ROOT / 'zynq-ebaz' / 'sw'}"
+    out = subprocess.run([sys.executable, "-m", "sadiy.server.sweepd", "--platform", "ebaz"],
+                         capture_output=True, text=True, env={"PYTHONPATH": both}, timeout=30)
+    assert out.returncode != 0 and "Traceback" not in out.stderr      # no /dev/mem access (or no core) on a PC
+    out = subprocess.run([sys.executable, "-m", "sadiy.server.sweepd", "--platform", "ebaz", "--bench-only"],
+                         capture_output=True, text=True, env={"PYTHONPATH": str(ROOT / "src")}, timeout=30)
+    assert out.returncode != 0 and "no bench mode" in out.stderr

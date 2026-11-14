@@ -9,24 +9,30 @@ Test side of the model (what a testbench drives):
   lock_model(result_index, last_spi_word) -> bool    lock reached before the timeout (default: always)
   ld_now                                             level of the lock detect pin (STATUS.ld_now)
   ext_samples(result_index) -> int                   one sample of the external stream (DET_CFG.src = 2)
+  adc_code(result_index) -> int or None              ADS1115 behind the PL reader (DET_CFG.src = 3): the signed
+                                                     conversion code, or None when the ADC does not answer
+  ext_stream                                         samples of an ADC adapter on the det_ext port (stream format,
+                                                     played cyclically from index 0 at every measurement); None: no stream
+  emio_ce_o / emio_ce_t / pad_ce                     PS side of the CE pin and the level of an undriven pin
   emio_pe_o / emio_pe_t / pad_pe                     PS side of the PE4302 pins (used while the PS owns them)
   spi_words, pe_trace                                everything the engine put on the pins, in order
 
 A `start` write runs the whole sweep inside `write()`, except when it must wait for detector samples that only
-the caller can supply (DET_CFG.src = 0: DET_PUSH writes; src = 3 / no stream: never): then the model stays in
+the caller can supply (DET_CFG.src = 0: DET_PUSH writes; src = 2 without a stream: never): then the model stays in
 SAMPLE, STATUS.busy = 1, STATUS.wait_sample = 1, until enough samples have been pushed (or `abort`).
 """
 from __future__ import annotations
 
 from typing import Callable, Dict, Generator, List, Optional
 
+from .ifpath import OVR_BIT, if_power_ref
 from .platform import SUM_MASK, UNLOCKED_BIT, W1_USED_MASK, TableEntry
 from .regmap_toml import REGS
 
 IDLE, FETCH, ATT, SPI, WAIT_MIN, WAIT_LOCK, SETTLE, SAMPLE, STORE, NEXT = range(10)
 
 PE_ALL_IN = 0x3F
-SRC_PUSH, SRC_TEST, SRC_EXT, SRC_NONE = range(4)
+SRC_PUSH, SRC_TEST, SRC_EXT, SRC_ADC = range(4)
 
 _END_NORMAL, _END_STOP_ON_ERR, _END_TABLE_FULL = "normal", "stop_on_err", "table_full"
 
@@ -44,6 +50,9 @@ class PlModel:
         self.lock_model: Callable[[int, int], bool] = _always_locked
         self.ld_now = False
         self.ext_samples: Optional[Callable[[int], int]] = None
+        self.adc_code: Optional[Callable[[int], Optional[int]]] = None   # None: no ADC on the bus
+        self.emio_ce_o, self.emio_ce_t, self.pad_ce = 0, 1, 1
+        self.ext_stream: Optional[List[int]] = None
         self.emio_pe_o = PE_ALL_IN       # level the PS drives on the PE4302 lines
         self.emio_pe_t = PE_ALL_IN       # 1 = PS line is an input (not driven)
         self.pad_pe = PE_ALL_IN          # level the board (pull-ups) gives an undriven line
@@ -64,6 +73,13 @@ class PlModel:
         self._pin_owner_act = 0
         self._last_spi_word = 0
         self._sweep_count = 0
+        self._adc_last = 0
+        self._adc_count = 0
+        self._adc_err = False
+        self._gen_mem = [0] * 4096
+        self._gen_addr = 0
+        self._if_inc = 0
+        self._ovr = False
         self._reset_sequencer()
 
     def _reset_sequencer(self) -> None:
@@ -83,6 +99,7 @@ class PlModel:
             self._gen.close()
         self._reset_sequencer()
         self._sweep_count = 0
+        self._adc_err = False
         self._update_owner()
 
     @property
@@ -98,6 +115,10 @@ class PlModel:
             return self._read_result_data()
         if name in ("TABLE_W1", "DET_PUSH"):
             return 0
+        if name == "GEN_DATA":
+            return 0
+        if name == "GEN_ADDR":
+            return self._gen_addr
         if name == "TABLE_ADDR":
             return self._table_addr
         if name == "RESULT_ADDR":
@@ -129,6 +150,12 @@ class PlModel:
             self._result_addr = value & 0xFFFF
         elif name == "DET_PUSH":
             self._push(value & 0xFFFF)
+        elif name == "GEN_ADDR":
+            self._gen_addr = value & 0xFFF
+        elif name == "GEN_DATA":
+            v = value & 0xFFFF
+            self._gen_mem[self._gen_addr] = v - 0x10000 if v & 0x8000 else v
+            self._gen_addr = (self._gen_addr + 1) & 0xFFF
         elif name == "PE4302":
             self._write_pe4302(value)
         else:
@@ -160,6 +187,10 @@ class PlModel:
             ("PIN_STATE", "pe_in"): pe_in, ("PIN_STATE", "ld"): int(self.ld_now),
             ("PIN_STATE", "le"): le, ("PIN_STATE", "clk"): clk, ("PIN_STATE", "dat"): dat,
             ("PIN_STATE", "pe_out"): pe_out, ("PIN_STATE", "pe_t"): pe_t,
+            ("PIN_STATE", "ce"): self._ce_pin(), ("PIN_STATE", "scl"): 1, ("PIN_STATE", "sda"): 1,
+            ("PIN_STATE", "i2c_pl"): int(self._engine_owns() and self._rw[("DET_CFG", "src")] == SRC_ADC),
+            ("ADC_STAT", "last"): self._adc_last, ("ADC_STAT", "err_nack"): int(self._adc_err),
+            ("ADC_STAT", "busy"): 0, ("ADC_STAT", "count"): self._adc_count & 0xFF,
             ("FIRST_ERR_INDEX", "index"): self._first_err_index,
             ("POINT_COUNT", "count"): self._point_count,
             ("SWEEP_COUNT", "count"): self._sweep_count,
@@ -202,6 +233,7 @@ class PlModel:
         if self._busy:
             return
         self._done = self._err_lock = self._aborted = self._err_table = False
+        self._adc_err = False
         self._point_count = 0
         self._first_err_index = 0
         n = self._rw[("N_ENTRIES", "n")]
@@ -288,7 +320,8 @@ class PlModel:
         self._state = STORE
         if self._point_count >= len(self._results):
             return _END_TABLE_FULL
-        self._results[self._point_count] = (int(unlocked) << UNLOCKED_BIT) | (total & SUM_MASK)
+        self._results[self._point_count] = ((int(unlocked) << UNLOCKED_BIT) | (int(self._ovr) << OVR_BIT)
+                                            | (total & SUM_MASK))
         self._point_count += 1
         return None
 
@@ -297,18 +330,57 @@ class PlModel:
         n_avg = self._rw[("N_AVG", "n")] or 1
         src = self._rw[("DET_CFG", "src")]
         self._state = SAMPLE
+        self._ovr = False
+        if self._rw[("DET_CFG", "mode")]:              # IF path: NCO, mixer, CIC, power (bit-exact reference)
+            stream = self._stream()
+            step = self._rw[("IF_NCO_STEP", "step")]
+            self._if_inc = self._rw[("IF_NCO", "inc")] if index == 0 else (self._if_inc + step) & 0xFFFF_FFFF
+            while stream is None:
+                yield                                   # no samples: forever (abort ends it)
+            total, self._ovr = if_power_ref(stream, self._if_inc, self._rw[("IF_CIC", "r")],
+                                            self._rw[("IF_CIC", "shift")], self._rw[("IF_CIC", "skip")], n_avg)
+            return total
+        if src == SRC_EXT and self._stream() is not None:
+            stream = self._stream()                     # video path: negative samples count as 0
+            return sum(max(0, stream[k % len(stream)]) for k in range(n_avg))
         if src == SRC_TEST:
             base = self._rw[("DET_TEST", "base")]
             return n_avg * ((base + (index & 0xFF)) & 0xFFFF)
         if src == SRC_EXT and self.ext_samples is not None:
             return sum(self.ext_samples(index) & 0xFFFF for _ in range(n_avg))
+        if src == SRC_ADC:
+            return sum(self._adc_sample(index) for _ in range(n_avg))
         self._samples = []
         self._samples_needed = n_avg
-        while src == SRC_NONE or src == SRC_EXT or len(self._samples) < n_avg:
-            yield                      # PS source: wait for DET_PUSH; no stream / src 3: forever (abort ends it)
+        while src == SRC_EXT or len(self._samples) < n_avg:
+            yield                      # PS source: wait for DET_PUSH; src 2 without a stream: forever (abort ends it)
         total = sum(self._samples)
         self._samples = []
         return total
+
+    def _stream(self) -> Optional[List[int]]:
+        """The selected sample stream as one period, or None when nothing delivers samples. The model plays it
+        from index 0 at every measurement (the generator with GEN_CFG.sync = 1)."""
+        if self._rw[("DET_CFG", "stream")]:
+            if not self._rw[("GEN_CFG", "enable")]:
+                return None
+            return self._gen_mem[:self._rw[("GEN_CFG", "len_m1")] + 1]
+        return self.ext_stream
+
+    def _adc_sample(self, index: int) -> int:
+        """One sample of the ADS1115 reader: negative codes count as 0; no answer = 0 and ADC_STAT.err_nack."""
+        raw = self.adc_code(index) if self.adc_code is not None else None
+        if raw is None:
+            self._adc_err = True
+            return 0
+        self._adc_last = raw & 0xFFFF
+        self._adc_count += 1
+        return max(0, min(0x7FFF, raw))
+
+    def _ce_pin(self) -> int:
+        if self._engine_owns():
+            return self._rw[("ADF_PINS", "ce")]
+        return self.pad_ce if self.emio_ce_t else self.emio_ce_o
 
     def _push(self, sample: int) -> None:
         """DET_PUSH: counts only in SAMPLE with src 0, dropped otherwise."""

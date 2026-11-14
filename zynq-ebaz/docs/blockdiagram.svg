@@ -25,7 +25,7 @@
 <text x="342" y="98" font-size="11" text-anchor="start" font-weight="normal" fill="#555">pad cells below: no logic, only IOBUF / OBUFT / direct wires</text>
 <rect x="1450" y="128" width="270" height="44" rx="4" fill="#fdebd3" stroke="#b8651b" stroke-width="1.4"/>
 <text x="1585.0" y="145" font-size="12" text-anchor="middle" font-weight="bold" fill="#1a1a1a">ADS1115 (I2C 0x48)</text>
-<text x="1585.0" y="160" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#555">main ADC of the detector, read by the PS</text>
+<text x="1585.0" y="160" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#555">detector ADC, read by the PL (or the PS)</text>
 <rect x="1450" y="183" width="270" height="44" rx="4" fill="#fdebd3" stroke="#b8651b" stroke-width="1.4"/>
 <text x="1585.0" y="200" font-size="12" text-anchor="middle" font-weight="bold" fill="#1a1a1a">Ethernet PHY (EBAZ4205)</text>
 <text x="1585.0" y="215" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#555">MII on EMIO, 25 MHz PHY clock out (FCLK1)</text>
@@ -54,8 +54,8 @@
 <text x="1585.0" y="1036" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#555">-&gt; detector -&gt; ADS1115 (analog)</text>
 <polyline points="270,150 700,150" fill="none" stroke="#222" stroke-width="1.5" marker-start="url(#ah)" marker-end="url(#ah)"/>
 <rect x="700" y="133.0" width="230" height="34" rx="3" fill="#ececec" stroke="#666" stroke-width="1.4"/>
-<text x="815.0" y="148" font-size="11" text-anchor="middle" font-weight="bold" fill="#1a1a1a">IOBUF x2</text>
-<text x="815.0" y="161" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#555">i2c_scl, i2c_sda</text>
+<text x="815.0" y="148" font-size="11" text-anchor="middle" font-weight="bold" fill="#1a1a1a">IOBUF x2 (via pin_mux)</text>
+<text x="815.0" y="161" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#555">i2c_scl, i2c_sda: PS I2C0 or PL reader</text>
 <polyline points="930,150 1450,150" fill="none" stroke="#222" stroke-width="1.5" marker-start="url(#ah)" marker-end="url(#ah)"/>
 <text x="515" y="144" font-size="10" text-anchor="middle" font-weight="normal" fill="#555">SCL / SDA</text>
 <polyline points="270,205 700,205" fill="none" stroke="#222" stroke-width="1.5" marker-start="url(#ah)" marker-end="url(#ah)"/>
@@ -90,8 +90,8 @@
 <text x="515" y="419" font-size="10" text-anchor="middle" font-weight="normal" fill="#555">raw level</text>
 <polyline points="270,480 700,480" fill="none" stroke="#222" stroke-width="1.5" marker-start="url(#ah)" marker-end="url(#ah)"/>
 <rect x="700" y="463.0" width="230" height="34" rx="3" fill="#ececec" stroke="#666" stroke-width="1.4"/>
-<text x="815.0" y="478" font-size="11" text-anchor="middle" font-weight="bold" fill="#1a1a1a">IOBUF</text>
-<text x="815.0" y="491" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#555">adf4351_ce (n=6)</text>
+<text x="815.0" y="478" font-size="11" text-anchor="middle" font-weight="bold" fill="#1a1a1a">IOBUF (via pin_mux)</text>
+<text x="815.0" y="491" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#555">adf4351_ce: n=6 or ADF_PINS.ce</text>
 <polyline points="930,480 1450,480" fill="none" stroke="#222" stroke-width="1.5" marker-start="url(#ah)" marker-end="url(#ah)"/>
 <text x="515" y="474" font-size="10" text-anchor="middle" font-weight="normal" fill="#555">CE (high = on)</text>
 <polyline points="700,535 270,535" fill="none" stroke="#222" stroke-width="1.5" marker-end="url(#ah)"/>
@@ -131,13 +131,32 @@
 <text x="885.0" y="765" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">average sample per point</text>
 <rect x="815" y="810" width="140" height="82" rx="4" fill="#fff" stroke="#2f7d32" stroke-width="1.4"/>
 <text x="885.0" y="827" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1a1a1a">det_sampler</text>
-<text x="885.0" y="842" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">sum of N samples from:</text>
-<text x="885.0" y="855" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">0 PS push (DET_PUSH)</text>
-<text x="885.0" y="868" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">1 test generator</text>
-<text x="885.0" y="881" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">2 det_ext port</text>
+<text x="885.0" y="842" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">sum of N samples from: 0 PS</text>
+<text x="885.0" y="855" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">push, 1 test generator,</text>
+<text x="885.0" y="868" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">2 det_ext port,</text>
+<text x="885.0" y="881" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">3 ADS1115 reader</text>
 <rect x="815" y="902" width="140" height="38" rx="4" fill="#fff" stroke="#888" stroke-width="1.4" stroke-dasharray="6 4"/>
 <text x="885.0" y="919" font-size="11" text-anchor="middle" font-weight="bold" fill="#1a1a1a">det_ext (tied 0)</text>
-<text x="885.0" y="934" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#555">PL ADC reader (S10)</text>
+<text x="885.0" y="934" font-size="9.5" text-anchor="middle" font-weight="normal" fill="#555">stream port for an ADC</text>
+<rect x="1220" y="800" width="90" height="150" rx="4" fill="#fff" stroke="#2f7d32" stroke-width="1.4"/>
+<text x="1265.0" y="817" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#1a1a1a">sample_gen</text>
+<text x="1265.0" y="832" font-size="9.0" text-anchor="middle" font-weight="normal" fill="#555">pattern RAM</text>
+<text x="1265.0" y="845" font-size="9.0" text-anchor="middle" font-weight="normal" fill="#555">from the PS</text>
+<text x="1265.0" y="858" font-size="9.0" text-anchor="middle" font-weight="normal" fill="#555"></text>
+<text x="1265.0" y="871" font-size="9.0" text-anchor="middle" font-weight="normal" fill="#555">if_power</text>
+<text x="1265.0" y="884" font-size="9.0" text-anchor="middle" font-weight="normal" fill="#555">NCO, mixer,</text>
+<text x="1265.0" y="897" font-size="9.0" text-anchor="middle" font-weight="normal" fill="#555">CIC, I^2+Q^2</text>
+<polyline points="1220,880 1165,880" fill="none" stroke="#222" stroke-width="1.5" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<text x="1193.0" y="874" font-size="8.5" text-anchor="middle" font-weight="normal" fill="#555">run/sum</text>
+<rect x="555" y="870" width="140" height="72" rx="4" fill="#fff" stroke="#2f7d32" stroke-width="1.4"/>
+<text x="625.0" y="887" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1a1a1a">ads1115_reader</text>
+<text x="625.0" y="902" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">I2C master, one single-</text>
+<text x="625.0" y="915" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">shot conversion per</text>
+<text x="625.0" y="928" font-size="10.0" text-anchor="middle" font-weight="normal" fill="#555">sample (ADC_* regs)</text>
+<polyline points="695,884 815,884" fill="none" stroke="#222" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="755.0" y="880" font-size="9" text-anchor="middle" font-weight="normal" fill="#555">valid, data</text>
+<polyline points="595,942 595,975" fill="none" stroke="#222" stroke-width="1.5" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<text x="601" y="962" font-size="9" text-anchor="start" font-weight="normal" fill="#555">scl, sda</text>
 <polyline points="885.0,902 885.0,892" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#ah)"/>
 <rect x="1055" y="640" width="110" height="300" rx="4" fill="#fff" stroke="#2f7d32" stroke-width="1.4"/>
 <text x="1110.0" y="657" font-size="12" text-anchor="middle" font-weight="bold" fill="#1a1a1a">sweep_seq</text>
@@ -166,7 +185,7 @@
 <rect x="555" y="975" width="785" height="100" rx="4" fill="#fff" stroke="#2f7d32" stroke-width="1.4"/>
 <text x="947.5" y="992" font-size="12" text-anchor="middle" font-weight="bold" fill="#1a1a1a">pin_mux</text>
 <text x="947.5" y="1007" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#555">CTRL.pin_owner: PS (bench mode, Linux drives the SPI0 / GPIO lines)  or  engine (sweep)</text>
-<text x="947.5" y="1020" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#555">PE4302 outputs are tri-stated until driven; default LE / CLK idle levels set here</text>
+<text x="947.5" y="1020" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#555">also here: CE (PS GPIO 6 or ADF_PINS.ce) and the I2C pins (PS I2C0, or the ADS1115 reader when DET_CFG.src = 3)</text>
 <polyline points="615,640 615,610 1085,610 1085,640" fill="none" stroke="#222" stroke-width="1.5" marker-start="url(#ah)" marker-end="url(#ah)"/>
 <text x="800" y="602" font-size="10" text-anchor="middle" font-weight="normal" fill="#555">start, abort, soft_reset, n_entries, timing, owner request  /  status, counters, error index, irq</text>
 <polyline points="695,665 815,665" fill="none" stroke="#222" stroke-width="1.5" marker-end="url(#ah)"/>
@@ -188,8 +207,8 @@
 <text x="1195.0" y="752" font-size="8.5" text-anchor="middle" font-weight="normal" fill="#555">load,val</text>
 <polyline points="1305,670 1318,670 1318,975" fill="none" stroke="#222" stroke-width="1.5" marker-end="url(#ah)"/>
 <polyline points="1305,760 1334,760 1334,975" fill="none" stroke="#222" stroke-width="1.5" marker-end="url(#ah)"/>
-<text x="1310" y="870" font-size="9" text-anchor="end" font-weight="normal" fill="#555">left rail: adf clk/dat/le</text>
-<text x="1310" y="883" font-size="9" text-anchor="end" font-weight="normal" fill="#555">right rail: pe_v[5:0]</text>
+<text x="1310" y="780" font-size="9" text-anchor="end" font-weight="normal" fill="#555">left rail: adf clk/dat/le</text>
+<text x="1310" y="793" font-size="9" text-anchor="end" font-weight="normal" fill="#555">right rail: pe_v[5:0]</text>
 <polyline points="1140,535 1140,640" fill="none" stroke="#222" stroke-width="1.5" marker-end="url(#ah)"/>
 <circle cx="1140" cy="535" r="3" fill="#222"/>
 <text x="1146" y="556" font-size="9.5" text-anchor="start" font-weight="normal" fill="#555" font-style="italic">adf4351_ld to the sequencer</text>
@@ -211,5 +230,5 @@
 <text x="556" y="1125" font-size="11" text-anchor="start" font-weight="normal" fill="#1a1a1a">pad cells (no logic)</text>
 <rect x="780" y="1114" width="18" height="12" fill="#fdebd3" stroke="#b8651b"/>
 <text x="806" y="1125" font-size="11" text-anchor="start" font-weight="normal" fill="#1a1a1a">devices outside the FPGA</text>
-<text x="1000" y="1125" font-size="11" text-anchor="start" font-weight="normal" fill="#555">not built yet: det_ext (PL ADC reader), PL access to keys / LEDs</text>
+<text x="1000" y="1125" font-size="11" text-anchor="start" font-weight="normal" fill="#555">not built yet: an ADC adapter on det_ext, FFT, PL access to keys / LEDs</text>
 </svg>

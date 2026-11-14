@@ -41,6 +41,11 @@ Rules that must survive every change:
 | `rtl/src/adf4351_spi.sv` | 32-bit SPI writer | yes |
 | `rtl/src/pe4302_mbb.sv` | make-before-break pin driver | yes |
 | `rtl/src/det_sampler.sv` | sample source select and accumulator | yes |
+| `rtl/src/ads1115_reader.sv` | I2C master that reads the ADS1115 (detector source 3) | yes |
+| `rtl/src/sample_gen.sv` | sample generator: pattern RAM played as a sample stream, in place of an ADC | yes |
+| `rtl/src/if_power.sv` | IF path: NCO, mixer, CIC, power detector | yes |
+| `rtl/src/nco_rom.sv` | sine table of the NCO | no: `gen_vectors.py` |
+| `sw/sadiy_ebaz/ifpath.py` | bit-exact Python reference of the IF path, test patterns, result decoding | yes |
 | `rtl/src/pin_mux.sv` | PS / engine pin owner | yes |
 | `rtl/src/sdp_ram.sv` | inferred simple dual port RAM | yes |
 | `rtl/sim/tb_*.sv` | self-checking testbenches | yes |
@@ -78,15 +83,22 @@ module sadiy_top #(
   input  logic        emio_adf_clk, emio_adf_dat, emio_adf_le,
   input  logic [5:0]  emio_pe_o,      // level the PS drives
   input  logic [5:0]  emio_pe_t,      // 1 = PS line is an input (not driven)
+  input  logic        emio_ce_o, emio_ce_t,                 // EMIO GPIO 6 (CE)
+  input  logic        emio_scl_o, emio_scl_t, emio_sda_o, emio_sda_t,   // PS I2C0
+  output logic        emio_scl_i, emio_sda_i,
   // pins (pads and IOBUFs are in rtl/fpga/ebaz_sadiy_top.sv)
   output logic        adf4351_clk, adf4351_dat, adf4351_le,
   input  logic        adf4351_ld,
   output logic [5:0]  pe4302_v_o,     // level to drive
   output logic [5:0]  pe4302_v_t,     // 1 = do not drive
   input  logic [5:0]  pe4302_v_i,     // pad level
-  // detector sample stream of a PL ADC reader (S10); tie valid to 0 until it exists
+  output logic        adf4351_ce_o, adf4351_ce_t,  input logic adf4351_ce_i,
+  output logic        i2c_scl_o, i2c_scl_t,        input logic i2c_scl_i,   // ADS1115 bus (open drain)
+  output logic        i2c_sda_o, i2c_sda_t,        input logic i2c_sda_i,
+  // sample stream of an ADC adapter (section 8b); tie valid to 0 until one exists
   input  logic        det_ext_valid,
-  input  logic [15:0] det_ext_data
+  input  logic [15:0] det_ext_data,   // two's complement
+  input  logic        det_ext_ovr
 );
 ```
 
@@ -101,9 +113,9 @@ wants them must take them from the PS. The LCD (ST7789) is Linux's, with no PL l
 (`lcd_scl`, `lcd_sda`, `lcd_cs`) plus EMIO GPIO 8 (`lcd_dc`) and 9 (`lcd_res`); see `lcd-st7789.md`. They share DATA1 balls with the planned AD9226
 (see `pinmap.md`); never constrain both.
 
-Not routed through `sadiy_top` (the board top wires them straight between EMIO and the pads): `adf4351_ce`
-(EMIO GPIO 6, tri-stated until software drives it), lock detect to the PS (EMIO GPIO 7, in parallel to
-`adf4351_ld`), I2C0, Ethernet. EMIO GPIO 0..5 are the PE4302 lines; their read-back (`emio_tri_i[5:0]`) is the
+Not routed through `sadiy_top` (the board top wires them straight between EMIO and the pads): lock detect to
+the PS (EMIO GPIO 7, in parallel to `adf4351_ld`), Ethernet, the adapter's LCD, keys and LEDs. Since register
+map 1.1 `adf4351_ce` (EMIO GPIO 6) and I2C0 go through the pin mux of `sadiy_top` (section 9). EMIO GPIO 0..5 are the PE4302 lines; their read-back (`emio_tri_i[5:0]`) is the
 pad level `pe4302_v_i`. This is the same EMIO line map as the Phase 1 design of session L.
 
 ## 4. Registers
@@ -156,8 +168,9 @@ Result word, 32 bit, one per `measure` entry, index = order of the `measure` ent
 
 | Bits | Name | Meaning |
 |---|---|---|
-| 27:0 | sum | sum of N_AVG unsigned 16-bit samples |
-| 30:28 | 0 | reserved (30 is planned for ADC over-range) |
+| 27:0 | sum | video path: sum of N_AVG unsigned 16-bit samples. IF path: `{exp[5:0], mant[21:0]}` of the power sum (section 8c) |
+| 29:28 | 0 | reserved |
+| 30 | ovr | IF path only: over-range of the stream or saturation in this point |
 | 31 | unlocked | lock detect timed out; the sum was still taken |
 
 Read back: write `RESULT_ADDR`, then read `RESULT_DATA` repeatedly (auto-increment).
@@ -236,10 +249,96 @@ A sample is a 16-bit unsigned code with a valid strobe. Source per `DET_CFG.src`
 |---|---|---|
 | 0 | each write of `DET_PUSH` | Phase 2 on hardware: the PS reads the ADS1115 and pushes; also unit tests |
 | 1 | test generator: `(DET_TEST.base + (result_index & 0xFF)) & 0xFFFF`, one sample every microsecond | simulation and HIL timing tests without an ADC |
-| 2 | `det_ext_valid` / `det_ext_data` | the SPI ADC reader of S10 |
-| 3 | nothing | |
+| 2 | the sample stream selected by `DET_CFG.stream` (section 8b); a negative sample counts as 0 | a fast detector ADC on the `det_ext` port, or the generator in its place |
+| 3 | ADS1115 reader in the PL (section 8a) | normal operation: no software in the measurement loop |
 
 Samples count only in SAMPLE; anything arriving in another state is dropped. `N_AVG = 0` is treated as 1.
+
+## 8a. ADS1115 reader (`ads1115_reader`, source 3, register map 1.1)
+
+An I2C master that takes one single-shot conversion per sample while the sampler wants samples (SAMPLE state,
+`DET_CFG.src = 3`, engine owns the I2C pins). Per sample:
+
+```
+S addr+W 01 cfg_hi cfg_lo P      config write: starts the conversion (ADC_CFG.config, OS = 1, single shot)
+wait ADC_T_CONV_US               must exceed the conversion time of the data rate (+10 % tolerance)
+S addr+W 00 P                    pointer to the conversion register
+S addr+R hi(ACK) lo(NACK) P      the result, two's complement
+```
+
+- Sample given to the sampler: the code as unsigned 16 bit; a negative code (input below GND) counts as 0.
+  `ADC_STAT.last` shows the conversion register as read. Software converts with the full scale of the PGA
+  bits it wrote to `ADC_CFG.config` (volts = code x full scale / 32768).
+- The conversion starts only after SETTLE, so every sample is taken at the settled level. Nothing is
+  converted outside SAMPLE (checked in `tb_adc`). The reader waits 3 clocks after a sample before it looks
+  at `run` again, because the sampler needs that long to drop it after the last sample.
+- Timing: a bit is four quarters of `H = max(ADC_I2C_DIV, 4)` clocks (SCL low, high, high, low; SDA changes
+  at the start of the first quarter, sampled at the end of the second). Reset 70 = 357 kHz: t_low = t_high =
+  1.4 us, start hold and stop setup 0.7 us, bus free 2.1 us (fast mode limits 1.3 / 0.6 / 0.6 / 1.3 us).
+  A sample costs about 90 bit times plus the wait: 1.65 ms at the reset values (860 SPS), so about 600
+  samples per second. No clock stretching, no arbitration (the ADS1115 does neither).
+- No acknowledge (ADC missing, wrong address): the transaction ends with a STOP, the sample is delivered as 0
+  and `ADC_STAT.err_nack` is set (sticky until `start` or `soft_reset`). So a sweep never hangs on a missing
+  ADC; software must check `err_nack` after the sweep (`RegOffload.run` raises).
+- `abort` or the end of SAMPLE during a sample: the bus transaction in progress ends with its STOP, the
+  conversion wait is cut short, nothing is delivered.
+- The PS-push source (0) stays for bring-up and comparison: with `src = 0` the PS keeps the I2C bus and
+  reads the ADS1115 itself.
+
+## 8b. Sample stream format and the generator (`sample_gen`, register map 1.2)
+
+One format for every fast ADC, so that the signal path does not depend on the ADC that is fitted later:
+
+```
+valid        one clock per sample, any rate up to one sample per clk (100 MSPS)
+data[15:0]   two's complement, left justified: full scale = +/-32767
+ovr          the ADC reports over-range for this sample
+```
+
+An ADC adapter is a small module in the board top that converts to this and drives `det_ext_*`:
+
+| ADC | Conversion |
+|---|---|
+| AD9226 (12 bit parallel, offset binary) | `data = (code - 2048) << 4`, `ovr = OTR`; its sample clock must be derived from `clk` (or cross with a FIFO) |
+| SPI SAR ADC (16 bit, unipolar) | `data = code >> 1` (0 .. 32767) |
+| ADS1115 (16 bit two's complement) | `data = code`. The reader of section 8a keeps its own source (3); this row is for completeness |
+
+`DET_CFG.stream` selects the stream: 0 = `det_ext_*`, 1 = the generator. `DET_CFG.mode` selects what is done
+with it: 0 = video path (`src = 2`: sum of N_AVG samples, for a detector ADC), 1 = IF path (section 8c).
+
+Generator: a RAM of 4096 samples that software fills (`GEN_ADDR`, `GEN_DATA`) and the PL plays cyclically,
+one sample every `GEN_CFG.div` clocks, from index 0 to `len_m1`. No waveform logic in the PL: software
+computes tones, noise or a recorded signal (`ifpath.make_pattern`; whole cycles per pattern make the wrap
+continuous). With `GEN_CFG.sync = 1` the playback restarts at sample 0 in the first clock of every SAMPLE
+state, so results repeat exactly and equal the Python reference; with 0 it free-runs like an ADC.
+
+## 8c. IF path (`if_power`, `DET_CFG.mode = 1`, register map 1.2)
+
+Per measured point, in SAMPLE:
+
+```
+stream -> x * cos, x * sin (NCO, 2048-entry sine table, phase starts at 0)       >> 15
+       -> 3 integrators at the sample rate -> take every R-th -> 3 combs           (CIC, gain R^3, 64 bit)
+       -> >> IF_CIC.shift, saturate to 18 bit signed
+       -> I^2 + Q^2
+       -> drop the first IF_CIC.skip outputs, sum the next N_AVG
+       -> result word: bits 21:0 mantissa, 27:22 exponent (sum = mantissa << exponent, truncated),
+          bit 30 = over-range (stream `ovr` or saturation after the shift), bit 31 = unlocked
+```
+
+- NCO increment: `IF_NCO.inc` for the first point of a sweep, plus `IF_NCO_STEP.step` for every further
+  point. Step 0 = a fixed IF for all points (normal swept operation: the LO moves). A non-zero step sweeps
+  digitally inside the IF window without moving the LO.
+- Resolution bandwidth: the CIC response, first null at `fs / R`, noise bandwidth about `fs / R`. R = 1 ..
+  65535. Software converts the sum to power: `sum / N_AVG`, then dB; a tone of peak amplitude A at the
+  filter centre gives `(A / 2 * R^3 / 2^shift)^2` (`ifpath.tone_power`). Choose `shift` about
+  `3 log2(R) - 1` (`ifpath.shift_for`), so a full-scale tone uses a quarter of the 18-bit range.
+- Time per point: `(skip + N_AVG) * R` samples. The filter is cleared and the NCO phase set to 0 at the start
+  of every point, so `skip` must be at least 3 (the CIC needs 3 outputs to fill).
+- Fully pipelined, one sample per clock. Arithmetic is exactly `ifpath.if_power_ref` (Python): `tb_if` and the
+  bring-up stage `if` compare result words bit for bit.
+- Not built: FFT, FIR shaping after the CIC (the CIC has a sinc^3 shape, not a flat RBW filter), log in the PL
+  (done in software), DC removal. The log and the calibration to dBm belong to software.
 
 ## 9. PE4302 (`pe4302_mbb`) and pin owner (`pin_mux`)
 
@@ -261,6 +360,13 @@ or attenuator change is running.
 |---|---|---|
 | `adf4351_clk/dat/le` | `emio_adf_*` | SPI writer |
 | `pe4302_v_o`, `pe4302_v_t` | `emio_pe_o`, `emio_pe_t` | engine value, `t = 0` |
+| `adf4351_ce` | EMIO GPIO 6 (`emio_ce_o / _t`) | `ADF_PINS.ce`, driven |
+| `i2c_scl`, `i2c_sda` | PS I2C0 | PS I2C0, or the ADS1115 reader when `DET_CFG.src = 3` |
+
+The I2C pins have their own select, `PIN_STATE.i2c_pl` = engine owns the pins AND `DET_CFG.src = 3`. It changes
+only while the reader is idle. While the reader has the bus the PS controller sees both lines high (an idle
+bus); a PS transfer in that time fails with no acknowledge and does not reach the pads. Software must not
+switch while a PS transfer runs. `PIN_STATE` also shows the pad levels of CE, SCL and SDA.
 
 A `CTRL.pin_owner` write during a sweep is remembered and takes effect when the sweep has ended.
 The outputs of the mux are registered (one clock of delay on the PS path, irrelevant at 10 MHz SPI). Both
@@ -279,11 +385,17 @@ Hand the pins back only when the PS GPIO lines already drive the wanted levels.
 | `tb_axil_regs` | reset values, rw / ro / const / w1p / ext behaviour, bus handshakes |
 | `tb_adf4351_spi` | bit stream of every word in `spi_words.hex` decoded as an ADF4351 would; frame shape; divider values |
 | `tb_pe4302_mbb` | all 64 x 64 transitions against `mbb_high.hex` / `mbb_low.hex`, gap length |
+| `tb_adc` | `sadiy_top` with a behavioural ADS1115 on the pads: sums of a sweep with source 3 (negative code = 0), bytes on the bus, conversion wait, SCL period, no conversion outside SAMPLE, missing ADC (sample 0, `err_nack`), abort during the wait, I2C hand-over PS / reader, CE through `ADF_PINS` |
+| `tb_if` | generator and IF path through `sadiy_top`: three NCO sweeps against `if<k>_result.hex` from the Python reference, bit for bit (one sample per clock and slower, saturation and the over-range bit, repeatability); video path from the generator; the `det_ext` port as the stream |
 | `tb_sweep` | `sadiy_top` through AXI: table upload, full sweep with a behavioural lock model, SPI words and results against `sweep_*.hex`; lock timeout with and without stop_on_err; abort; PS push source; pin owner; refused start |
 
 The testbenches were checked by breaking the RTL on purpose (lost lock flag, ignored stop_on_err / abort,
 table write while busy, wrong sample count, break-before-make, lost SPI bit, owner change during a sweep):
 each of these makes a testbench fail. Repeat such a check when you add a feature and its test.
+For the ADS1115 reader: no clamp of negative codes, no conversion wait, no gap after a sample, no ACK of the
+first read byte; each makes `tb_adc` fail. For the IF path: wrong cosine offset, mixer shift, comb delay,
+skip count, NCO step; each makes `tb_if` fail (a phase increment error of 1 LSB does not: it is below the
+resolution of the sine table in these runs).
 
 RTL files carry no `timescale`; `sim.sh` passes `-timescale 1ns/1ps` to xelab.
 
@@ -307,6 +419,13 @@ RTL are checked against each other.
   `PE4302.active_high`, `CTRL.stop_on_err`, `CTRL.irq_ack`.
 - `sadiy_top` has `_o / _t / _i` triples for the PE4302 pins instead of plain outputs, so the tri-state
   boot default of Phase 1 survives; CE, I2C and LD-to-PS bypass it.
+- Register map 1.1 (2026-11-14, user request "no software in the measurement loop"): the ADS1115 reader in the
+  PL as source 3 (the plan's S10 named an SPI ADC that does not exist on the board; source 2 stays free for it),
+  `ADC_*` registers, `ADF_PINS.ce`, CE and I2C through the pin mux, more `PIN_STATE` bits. With these a
+  platform needs only the registers: `sw/sadiy_ebaz/platforms/ebaz_pl.py` (no spidev, GPIO or I2C device).
+- Register map 1.2 (2026-11-15, user request: build the fast path before an ADC adapter exists): one sample
+  stream format for every ADC (8b), a software-filled generator in place of the ADC, and the IF path (8c) as
+  a second detector mode. The plan's Stage B FFT and FIR filters are not part of it.
 - Session R also owns the Vivado project for the engine (`rtl/fpga/`, user decision 2026-11-14). Session L's
   `rtl/vivado/` (Phase 1, `pins.toml`) is untouched and stays the master for pin locations.
 
@@ -320,8 +439,8 @@ the change must go to hardware, then add a dated entry to `zynq-ebaz/log_rtl.md`
   behaviour in `ebaz_pl_model.py`, describe it in this file, extend `tb_sweep` or `tb_axil_regs`.
 - **New sequencer step**: add the state at the end of the encoding (do not renumber), describe it in
   section 6 first, mirror in the model, regenerate vectors (`gen.sh`), extend `tb_sweep`.
-- **New sample source (S10)**: write the reader as its own module with a `valid / data[15:0]` output,
-  instantiate it in `ebaz_sadiy_top.sv` and connect it to `det_ext_*`; add its pins to session L's
+- **New ADC**: write an adapter module that outputs the sample stream of section 8b (`valid`, signed
+  `data[15:0]`, `ovr`), instantiate it in `ebaz_sadiy_top.sv` and connect it to `det_ext_*`; add its pins to session L's
   `pins.toml` (ask L, via the log). `sadiy_top` does not change.
 - The SPI and PE4302 pads are false paths in `rtl/fpga/constraints/timing.xdc` (slow signals, DAT changes
   half a bit away from the sampling edge). If the SPI is ever run faster than 10 MHz, put the three output
