@@ -195,7 +195,8 @@ def pack_r5() -> int:
 
 
 # --- Reading the words back -----------------------------------------------------------------------
-# The ADF4351 is write-only on this wiring (MUXOUT is not connected, R2 sets it to three-state), so a
+# The ADF4351 is write-only on this wiring (the MUX header pin is not wired on the adapter and R2 sets MUXOUT to
+# three-state; the datasheet's MUXOUT options are not checked here), so a
 # "readback" is what the last words written say, decoded with the inverse of the pack_* functions
 # above, plus the live LD pin. It shows what the chip was told, not what it does.
 _POWER_OF_CODE = {code: dbm for dbm, code in POWER_CODE.items()}
