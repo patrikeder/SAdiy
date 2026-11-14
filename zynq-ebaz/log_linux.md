@@ -3,7 +3,7 @@
 Read by session R to check Linux status. Session R logs in `log_rtl.md`.
 Format: `## <date time> <topic>`, then facts. Keep entries short. Details live in `docs/STATUS-linux.md`.
 
-Current state in one line (update at each entry): **S8 runtime-load parts prepared (via /dev/mem, no UIO), untested. Phase 1 XSA built, PetaLinux image built (BOOT.BIN, image.ub, wic); nothing tested on the board yet. Waiting for the user to write the SD card and give the board IP.**
+Current state in one line (update at each entry): **Board boots the Phase 1 image, baseline captured. S8 runtime-load parts prepared (via /dev/mem, no UIO), untested. Phase 1 XSA built, PetaLinux image built (BOOT.BIN, image.ub, wic); nothing tested on the board yet. Waiting for the user to write the SD card and give the board IP.**
 
 ---
 
@@ -39,8 +39,28 @@ Current state in one line (update at each entry): **S8 runtime-load parts prepar
 ## 2026-11-14 S8 runtime part (after R's first bitstream)
 - Seen: R's `build/fpga/ebaz_sadiy.bit.bin` (WNS +3.36 ns, 992 LUT, 8.5 BRAM). Header and sync word of the .bit.bin look right for fpga_manager.
 - **User decision: register access through /dev/mem, no UIO** (handover-F1/F2 and `reg_offload.py` mention UIO; R: please treat that as outdated, no overlay or interrupt). Kernel has `CONFIG_DEVMEM=y`, no STRICT_DEVMEM. Completion is polled. I tried UIO first and reverted it (kernel fragment, bootargs, overlay); the image has no UIO changes.
-- Written: `sw/sadiy_ebaz/devmem.py` (`DevMemRegs`, the `reg_read` / `reg_write` pair for `RegOffload`; base 0x43C00000 from handover-F2), 4 tests on a file backing, `sw/deploy/sadiy_pl_load.sh`, `make_engine_package.sh`, `deploy_to_board.sh` (Python code goes to /opt/sadiy over ssh; it is not in the rootfs).
+- Written: `sw/sadiy_ebaz/devmem.py` (`DevMemRegs`, the `reg_read` / `reg_write` pair for `RegOffload`; base 0x43C00000 from handover-F2), 4 tests on a file backing, `sw/deploy/sadiy_pl_load.sh`, `make_engine_package.sh`, `deploy_to_board.sh` (Python code goes to ~/sadiy over ssh as user petalinux; it is not in the rootfs).
 - Rootfs facts: sysvinit (no systemd), python3 3.12 + tomllib + pyzmq + numpy + spidev, root mounted `ro` on the cmdline (remount rw to deploy).
 - Risk: runtime reconfiguration interrupts the Ethernet PHY clock and MII (they run through the PL). The script bounces eth0; fallback is a BOOT.BIN with the engine bitstream baked in.
 - Still needs the SD card, the board IP and the user. R's checks 1 to 7 in handover-F2 are the S9 list; S9 needs the board and DSLogic.
 - Fallback boot file built: `images/linux/BOOT_engine.BIN` (engine bitstream baked in; copy to the SD FAT partition as BOOT.BIN). Image rebuilt without UIO: wic/BOOT.BIN/image.ub current.
+
+## 2026-11-14 merged to main
+- `linux` merged into `main` (8a21902) at the user's request: Phase 1 flow, pins.toml, deploy scripts, devmem.py, logs. Session R: `git merge main` to get `pins.toml`/`gen_xdc.py` (your `check_pins.sh` then uses the master file). Session L continues on `linux`.
+
+## 2026-11-14 image review before the first boot
+- Logins: root locked (`*`, try root/root on UART), user `petalinux` with empty expiring password: first login on the UART, then ssh; sudo present. Deploy scripts now use user petalinux and ~/sadiy.
+- Not in the image: SAdiy code (deploy_to_board.sh), init script for sweepd (S5, sysvinit), python gpiod bindings (C lib and tools only; sysfs GPIO is on), engine bitstream (runtime load or BOOT_engine.BIN).
+
+## 2026-11-14 first boot, baseline captured (S1)
+- Board boots the Phase 1 image from SD; baseline in `docs/ebaz-baseline.md` (run by the user, L has no ssh key yet). PL operating, Ethernet up (192.168.88.244, interface enx000a35001e53), spidev0.0, i2c-0, gpiochip0 (base 512, 118 lines) present, Python modules zmq/numpy/spidev/tomllib ok.
+- Findings: dev nodes are root-only; no python gpiod/smbus; root fs `ro`; eth0 is renamed by udev (load script fixed). Next: read-only GPIO/I2C checks, then S4 at the bench.
+
+## 2026-11-14 ssh key access, code deployed
+- L has key access (petalinux, key ~/.ssh/id_ebaz on the dev PC). `sudo` asks for a password, so L cannot use the root-only /dev nodes, /dev/mem or fpga_manager yet.
+- Deployed `src/sadiy` and `config/` to ~/sadiy on the board (rootfs is rw after all). `sweepd --sim` runs there (zmq, numpy ok): 401 points, 0.60 s per sweep, ports 5556/5557. `sadiy_ebaz` not deployed yet (it is on the rtl branch).
+- Next: S4 read-only checks (gpioinfo, i2cdetect) need root.
+
+## 2026-11-14 S4 part 1 results
+- EMIO readback test ALL PASS (n = 0..6, offsets 54 + n, sysfs 512 + 54 + n); all EMIO lines are inputs after boot; LD reads 0. I2C scan inconclusive (nothing wired, Quick Write unsupported). Details in `docs/ebaz-bringup.md`.
+- Pin location on the DATA2 header, SPI frames on the DSLogic and everything with the adapter still need the user at the bench.

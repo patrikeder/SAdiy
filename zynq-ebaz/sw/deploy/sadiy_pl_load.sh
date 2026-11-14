@@ -22,10 +22,13 @@ echo "fpga state: $state"
 [ "$state" = "operating" ] || { echo "PL not operating" >&2; exit 1; }
 
 # The Ethernet PHY clock and MII go through the PL: they were interrupted. Restart the link.
-if [ -d /sys/class/net/eth0 ]; then
-  ip link set eth0 down; sleep 1; ip link set eth0 up
-  echo "eth0 restarted (re-run udhcpc if there is no address)"
-fi
+# The interface is renamed by udev (enx<mac>), so do not assume eth0.
+for n in /sys/class/net/*; do
+  ifc=$(basename "$n")
+  [ "$ifc" = lo ] && continue
+  ip link set "$ifc" down; sleep 1; ip link set "$ifc" up
+  echo "$ifc restarted (re-run udhcpc -i $ifc if there is no address)"
+done
 
 # 2. ID / VERSION through /dev/mem (only now: reading an unconfigured PL range would stall the CPU)
 python3 - "$BASE" <<'PY'

@@ -87,8 +87,8 @@ PL range stalls the CPU.
 
 ```
 sh zynq-ebaz/sw/deploy/make_engine_package.sh [path/to/ebaz_sadiy.bit.bin]   # -> zynq-ebaz/build/engine-pkg/
-scp -r zynq-ebaz/build/engine-pkg root@<ebaz-ip>:/tmp/
-ssh root@<ebaz-ip> /tmp/engine-pkg/sadiy_pl_load.sh
+scp -r zynq-ebaz/build/engine-pkg petalinux@<ebaz-ip>:~/
+ssh petalinux@<ebaz-ip> sudo ~/engine-pkg/sadiy_pl_load.sh
 ```
 The script loads the bitstream through `/sys/class/fpga_manager/fpga0` (the rootfs may be read-only, so it points
 `firmware_class.path` at the package directory instead of copying to `/lib/firmware`), restarts `eth0` (the PHY clock
@@ -105,12 +105,19 @@ The rootfs has the interpreter and the modules (python3 3.12, tomllib, pyzmq, nu
 of the SAdiy code. Init system is sysvinit, so the BBB `sweepd.service` does not apply (S5 writes an init script).
 
 ```
-sh zynq-ebaz/sw/deploy/deploy_to_board.sh <ebaz-ip>        # tar over ssh into /opt/sadiy
-ssh root@<ebaz-ip>
-export PYTHONPATH=/opt/sadiy/src:/opt/sadiy/zynq-ebaz/sw
+sh zynq-ebaz/sw/deploy/deploy_to_board.sh <ebaz-ip>        # tar over ssh into ~/sadiy of user petalinux
+ssh petalinux@<ebaz-ip>
+export PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw
 python3 -m sadiy.server.sweepd --sim                        # smoke test without hardware
 ```
 `deploy_to_board.sh` leaves the Qt GUI out (it runs on the PC) and includes `sadiy_ebaz` and `regmap.toml` only when
 they exist in the checkout (they come from the `rtl` branch after the merge). The kernel boots the rootfs with `ro`
-on the command line; if `/opt` is not writable, run `mount -o remount,rw /` first (check with
-`touch /opt/x`). A permanent `rw` would be an image change; say if you want it.
+on the command line; if the home directory is not writable, run `sudo mount -o remount,rw /` first (check with
+`touch ~/x`). A permanent `rw` would be an image change; say if you want it.
+
+## Logins in this image (read from rootfs.tar.gz, not yet tried)
+
+`root` has no usable password hash (`*`), `ADD_EXTRA_USERS` also asks for `root:root`; try it on the UART (J7, 115200).
+User `petalinux` has an empty password that expires at the first login, so the first login must be on the UART console,
+where you set a new password; ssh refuses empty passwords. `sudo` is in the image (`/etc/sudoers.d/99-petalinux`).
+Network: `eth0` by DHCP (`/etc/network/interfaces`), hostname `ebaz4205_sadiy`, sshd starts at runlevel 5.
