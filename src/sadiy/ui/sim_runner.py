@@ -49,6 +49,7 @@ class SimRunner:
         self._log: Deque[str] = collections.deque(maxlen=log_lines)
         self._lock = threading.Lock()
         self._reader: Optional[threading.Thread] = None
+        self.platform: Optional[str] = None     # `--platform` for the simulated sweepd; None = its default
 
     @property
     def running(self) -> bool:
@@ -63,10 +64,13 @@ class SimRunner:
         return None if self._proc is None else self._proc.poll()
 
     def build_command(self, cfg_path: str, period_s: float) -> List[str]:
-        return [
+        argv = [
             sys.executable, "-u", "-m", "sadiy.server.sweepd",
             "--sim", "--period", f"{period_s:g}", "--config", cfg_path,
         ]
+        if self.platform:
+            argv += ["--platform", self.platform]
+        return argv
 
     def start(
         self,

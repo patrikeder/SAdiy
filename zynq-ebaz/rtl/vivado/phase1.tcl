@@ -1,9 +1,9 @@
 # Phase 1 build: PS7 (settings of the working EBAZ4205 design) with EMIO SPI0,
-# I2C0 and GPIO, FCLK0 = 100 MHz, M_AXI_GP0 and IRQ_F2P enabled for Phase 2.
+# I2C0, SPI1 (unwired) and GPIO, FCLK0 = 100 MHz, M_AXI_GP0 and IRQ_F2P enabled for Phase 2.
 # No custom RTL except the pin wiring in phase1_top.v.
 #
-# STATUS: written 2026-11-14 on a machine without Vivado. NOT RUN YET. Expect to
-# fix small things (BD pin names) on the first run; see docs/STATUS-linux.md.
+# STATUS: runs with Vivado 2025.2 (see docs/STATUS-linux.md). 2026-11-14: PS7 brought in line with the engine
+# design (SPI1 on EMIO, 18 EMIO GPIO lines); the LCD / key / LED pads are not wired in this Phase 1 design.
 #
 # Usage (from zynq-ebaz/):
 #   source <Vivado install>/settings64.sh
@@ -29,8 +29,10 @@ set_property -dict $ps7_base $ps
 
 set_property -dict [list \
   CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {100} \
-  CONFIG.PCW_GPIO_EMIO_GPIO_WIDTH {16} \
-  CONFIG.PCW_GPIO_EMIO_GPIO_IO {16} \
+  CONFIG.PCW_GPIO_EMIO_GPIO_WIDTH {18} \
+  CONFIG.PCW_GPIO_EMIO_GPIO_IO {18} \
+  CONFIG.PCW_SPI1_PERIPHERAL_ENABLE {1} \
+  CONFIG.PCW_SPI1_SPI1_IO {EMIO} \
   CONFIG.PCW_CAN0_PERIPHERAL_ENABLE {0} \
   CONFIG.PCW_CAN1_PERIPHERAL_ENABLE {0} \
   CONFIG.PCW_UART0_PERIPHERAL_ENABLE {0} \
@@ -68,6 +70,10 @@ set c1 [create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 const1]
 set_property -dict [list CONFIG.CONST_VAL {1} CONFIG.CONST_WIDTH {1}] $c1
 connect_bd_net [get_bd_pins const0/dout] [get_bd_pins $ps/SPI0_MISO_I]
 connect_bd_net [get_bd_pins const1/dout] [get_bd_pins $ps/SPI0_SS_I]
+# SPI1 (adapter LCD, session R's engine design wires it to the pads): same tie-offs, outputs left open here, so
+# this PS7 matches the engine XSA (rtl/scripts/check_ps7.sh in the rtl branch) and Linux gets /dev/spi1.
+connect_bd_net [get_bd_pins const0/dout] [get_bd_pins $ps/SPI1_MISO_I]
+connect_bd_net [get_bd_pins const1/dout] [get_bd_pins $ps/SPI1_SS_I]
 
 # I2C0 (ADS1115): split open-drain signals, IOBUFs are in phase1_top.v
 ext_in  processing_system7_0/I2C0_SCL_I i2c0_scl_i

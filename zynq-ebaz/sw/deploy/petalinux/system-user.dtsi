@@ -1,5 +1,7 @@
-/* SAdiy Phase 1 (session L). Base: ebaz4205_CANI2C, with the display and CAN
- * nodes removed (CAN0/CAN1/UART0 EMIO are disabled in phase1.tcl).
+/* SAdiy (session L). Base: ebaz4205_CANI2C, with the display and CAN nodes removed
+ * (CAN0/CAN1/UART0 EMIO are disabled). Hardware description: session R's engine XSA
+ * (zynq-ebaz/build/fpga/ebaz_sadiy.xsa): PS SPI0/SPI1, I2C0 and 18 EMIO GPIO lines.
+ * The adapter's LCD (ST7789 on SPI1), LEDs and keys are at the end of this file.
  * Copy of the file in the PetaLinux project
  *   project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
  * UNTESTED on hardware (written 2026-11-14).
@@ -54,7 +56,54 @@
     clock-frequency = <100000>;
 };
 
-/* EMIO GPIO (PE4302 V1..V6 = lines 54..59, ADF4351 CE = 60, LD = 61) is in the
- * Zynq gpio node and needs no entry here; see rtl/vivado/phase1_top.v. */
+/* EMIO GPIO (PE4302 V1..V6 = lines 54..59, ADF4351 CE = 60, LD = 61, LCD DC/RES = 62/63,
+ * LEDs 64..66, keys 67..71) is in the Zynq gpio node and needs no entry here. */
+
+/* ---- adapter board (HelloFPGA EBAZ4205_ZJB05): LCD, LEDs, keys. Lines are 54 + EMIO n.
+ * Details and the pin table: zynq-ebaz/docs/lcd-st7789.md (session R). UNTESTED on hardware. */
+/* No #include of dt-bindings here: this recipe does not preprocess them (dtc failed on GPIO_ACTIVE_HIGH).
+ * Numbers used: GPIO_ACTIVE_HIGH = 0, GPIO_ACTIVE_LOW = 1, KEY_1..KEY_5 = 2..6. */
+
+/* ST7789 on PS SPI1 (EMIO): SCL R19, SDA P20, CS T20; DC = EMIO 8, RES = EMIO 9 (active low); no backlight pin.
+ * fbtft (staging) makes a framebuffer: /dev/fb0 (fb1 if another framebuffer exists). The panel size is NOT KNOWN:
+ * 240x240 is a guess. 240x240 modules in rotation 0 need no RAM offset; other rotations or 135x240 panels may. */
+&spi1 {
+    status = "okay";
+    num-cs = <1>;
+
+    display@0 {
+        compatible = "sitronix,st7789v";
+        reg = <0>;
+        spi-max-frequency = <10000000>;
+        buswidth = <8>;
+        dc-gpios    = <&gpio0 62 0>;
+        reset-gpios = <&gpio0 63 1>;
+        width = <240>;
+        height = <240>;
+        rotate = <0>;
+        fps = <20>;
+        debug = <0>;
+    };
+};
+
+/ {
+    /* LED1..LED3 = EMIO 10..12. Polarity is not verified: if an LED is on at boot or inverted, change the last cell of the three lines to 1 (active low). */
+    leds {
+        compatible = "gpio-leds";
+        adapter-led1 { label = "adapter:led1"; gpios = <&gpio0 64 0>; };
+        adapter-led2 { label = "adapter:led2"; gpios = <&gpio0 65 0>; };
+        adapter-led3 { label = "adapter:led3"; gpios = <&gpio0 66 0>; };
+    };
+
+    /* KEY1..KEY5 = EMIO 13..17, pad pull-up, pressed = 0. Events on /dev/input/eventN (evtest, or cat). */
+    keys {
+        compatible = "gpio-keys";
+        key1 { label = "KEY1"; linux,code = <2>; gpios = <&gpio0 67 1>; };
+        key2 { label = "KEY2"; linux,code = <3>; gpios = <&gpio0 68 1>; };
+        key3 { label = "KEY3"; linux,code = <4>; gpios = <&gpio0 69 1>; };
+        key4 { label = "KEY4"; linux,code = <5>; gpios = <&gpio0 70 1>; };
+        key5 { label = "KEY5"; linux,code = <6>; gpios = <&gpio0 71 1>; };
+    };
+};
 
 #include "system-conf.dtsi"

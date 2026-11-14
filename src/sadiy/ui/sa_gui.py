@@ -21,6 +21,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from .. import config as config_mod
+from .. import platforms
 from ..core.sweep import FLAGS_UNRELIABLE, flag_names
 from ..logs import format_entry
 from . import log_core
@@ -196,7 +197,10 @@ class SpectrumView(pg.PlotWidget):
 # ---------------------------------------------------------------- main window
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, host: str = "127.0.0.1", pub_port: int = 5556, rep_port: int = 5557) -> None:
+    def __init__(self, host: str = "127.0.0.1", pub_port: int = 5556, rep_port: int = 5557,
+                 platform: Optional[str] = None) -> None:
+        """`platform` None: the Pins tab offers a selector (bbb or ebaz) that follows sweepd. A name fixes it
+        (command line `--platform`) and the other platform is not shown."""
         super().__init__()
         self.setWindowTitle("SAdiy spectrum analyzer")
         self.limits = core.Limits()
@@ -235,7 +239,9 @@ class MainWindow(QtWidgets.QMainWindow):
         tabs = QtWidgets.QTabWidget()
         self.tabs = tabs
         attenuator = config_mod.load()["attenuator"]
-        self.pins = PinsTab(self.client.request, self._stop, self._msg, attenuator["weights_db"], attenuator["active_high"])
+        self.pins = PinsTab(self.client.request, self._stop, self._msg, attenuator["weights_db"], attenuator["active_high"],
+                            platform=platform or platforms.DEFAULT, fixed=platform is not None)
+        self.runner.platform = platform
         tabs.addTab(self._build_spectrum_tab(host), "Spectrum")
         tabs.addTab(self.pins, "Pins")
         self.synth_tab = SynthTab(self.pins, self._msg)
@@ -684,6 +690,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not r or not r.get("ok"):
             return False
         self.limits.apply_server(r.get("limits", {}))
+        self.pins.follow_server(r.get("platform"))
         info = synth_core.LoInfo.from_status(r)
         if info != self._synth_info:
             self._synth_info = info
@@ -1019,6 +1026,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             if on:
                 tones.append((f * 1e6, p))
+        self.runner.platform = self.pins.platform()      # the simulator runs the board that is shown
         try:
             self.runner.start(
                 self.pub_sb.value(), self.rep_sb.value(), self.period_sb.value(), tones,
@@ -1105,10 +1113,13 @@ def main(argv=None) -> None:
     ap.add_argument("--rep-port", type=int, default=5557)
     ap.add_argument("--connect", action="store_true", help="connect to sweepd at start")
     ap.add_argument("--sim", action="store_true", help="start simulated hardware at start and connect to it")
+    ap.add_argument("--platform", choices=platforms.NAMES,
+                    help="fix the board: bbb or ebaz. Only that board is shown in the Pins tab and a simulated sweepd "
+                         "is started for it. Without it the Pins tab has a selector that follows sweepd")
     args = ap.parse_args(argv)
 
     app = pg.mkQApp("SAdiy")
-    win = MainWindow(args.host, args.pub_port, args.rep_port)
+    win = MainWindow(args.host, args.pub_port, args.rep_port, platform=args.platform)
     win.show()
     if args.sim:
         QtCore.QTimer.singleShot(0, win.start_sim)

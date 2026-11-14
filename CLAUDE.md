@@ -25,6 +25,9 @@ python -m sadiy.server.sweepd --bench-only       # on the BBB: only bench mode, 
 python -m sadiy.server.sweepd -v ...              # log level: -q warning, default info, -v debug, -vv trace (ssh only); or [log] level in the config
 python -m sadiy.ui.cli_client --log-level warning # terminal client: sweepd's log history, then live
 python -m sadiy.ui.sa_gui --host <bbb-ip> --connect   # GUI against a real sweepd
+python -m sadiy.ui.sa_gui --platform ebaz --sim       # fixed platform (bbb|ebaz): the other board is not shown; without it the Pins tab has a selector
+python -m sadiy.server.sweepd --sim --platform ebaz   # simulated EBAZ4205 pin map (bench, status.platform); real EBAZ backends: plan S5/S7
+python tools/gen_diagrams.py [--platform bbb|ebaz]    # figures and netlist; with --platform only that platform, netlist-<p>.md
 python tools/bringup.py pe4302-pattern --db 16 --from-db 15.5
 python tools/make_bbb_package.py         # BBB package in dist/ (git-ignored); update it whenever code the BBB runs changes
 ```
@@ -54,6 +57,10 @@ GUI tests run offscreen (`QT_QPA_PLATFORM=offscreen`). PyQt5, pyqtgraph and pyzm
 | DET_ADC | P9.39 AIN0 | cross-check, via divider, 1.8 V max |
 
 Free on a stock image: P8.7-P8.19 and P8.26 as GPIO. Not usable: P8.3-6 and P8.20-25 (eMMC), P8.27-46 (HDMI/LCD), power and ground pins. 220 ohm series resistors sit at the BBB header on every signal on the adapter.
+
+## Platforms
+
+`src/sadiy/platforms.py` picks a `pinmap.PinMap`: `pinmap.BBB` (the BBB map above) or `pinmap_ebaz.EBAZ` (EBAZ4205 DATA1/2/3, from `zynq-ebaz/rtl/vivado/pins.toml`, checked by `tests/test_platforms.py`). `sweepd --platform` / `[platform] name` chooses it (default bbb); `status` and `bench_open` return it, and the bench, GUI Pins tab and `tools/gen_diagrams.py` all read the same map. The `NETS` table in `pinmap.py` has a column per platform (`bbb`, `rpi`, `ebaz`); a note that differs per platform is `note_bbb` / `note_ebaz`. The BBB-only rule above still holds for the adapter board; the EBAZ is a second SBC for the same adapter.
 
 ## Architecture in one paragraph
 

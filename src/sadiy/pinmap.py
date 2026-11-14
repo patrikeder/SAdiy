@@ -14,38 +14,44 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
 # One entry per SBC-to-board signal. bbb is a P9 pin number or a string like "P8.7"; rpi is the physical
-# pin (None = not used there). mux is the `config-pin` mode of a bus pin, restored when it stops being a GPIO.
+# pin (None = not used there); ebaz is a pin id on the EBAZ4205 DATA connectors, "DATA2.5" (None = not used there;
+# the balls are in zynq-ebaz/rtl/vivado/pins.toml, see pinmap_ebaz.py). mux is the `config-pin` mode of a bus pin, restored when it stops being a GPIO.
 NETS = [
-    dict(id="SYN_CLK", dev="ADF4351", dpin="CLK", kind="spi", dir="SBC to board", bbb=22, rpi=23, mux="spi_sclk",
+    dict(id="SYN_CLK", dev="ADF4351", dpin="CLK", kind="spi", dir="SBC to board", bbb=22, rpi=23, mux="spi_sclk", ebaz="DATA2.5",
          note="SPI mode 0, MSB first"),
-    dict(id="SYN_DATA", dev="ADF4351", dpin="DAT", kind="spi", dir="SBC to board", bbb=18, rpi=19, mux="spi",
+    dict(id="SYN_DATA", dev="ADF4351", dpin="DAT", kind="spi", dir="SBC to board", bbb=18, rpi=19, mux="spi", ebaz="DATA2.7",
          note="32-bit words"),
-    dict(id="SYN_LE", dev="ADF4351", dpin="LE", kind="spi", dir="SBC to board", bbb=17, rpi=24, mux="spi_cs",
-         note="SPI0 CS0, which is /dev/spidevN.0 (N = bus number, spi_device = 0); used as SPI chip select; data latches on the rising edge at the end of a transfer"),
-    dict(id="SYN_LD", dev="ADF4351", dpin="LD", kind="gpio", dir="board to SBC", bbb=23, rpi=35,
+    dict(id="SYN_LE", dev="ADF4351", dpin="LE", kind="spi", dir="SBC to board", bbb=17, rpi=24, mux="spi_cs", ebaz="DATA2.8",
+         note="SPI0 CS0, which is /dev/spidevN.0 (N = bus number, spi_device = 0); used as SPI chip select; data latches on the rising edge at the end of a transfer",
+         note_ebaz="PS SPI0 chip select 0 through EMIO, /dev/spidev0.0; used as SPI chip select; data latches on the rising edge at the end of a transfer"),
+    dict(id="SYN_LD", dev="ADF4351", dpin="LD", kind="gpio", dir="board to SBC", bbb=23, rpi=35, ebaz="DATA2.9",
          note="digital lock detect output (Lock_Flag LED on the board), GPIO input; the MUX pin stays unused"),
-    dict(id="SYN_CE", dev="ADF4351", dpin="CE", kind="reserved", dir="SBC to board", bbb=27, rpi=36,
+    dict(id="SYN_CE", dev="ADF4351", dpin="CE", kind="reserved", dir="SBC to board", bbb=27, rpi=36, ebaz="DATA2.13",
          note="optional; tie the CE header pin to 3V3 until needed"),
-    dict(id="ATT_V1", dev="PE4302", dpin="V1 (0.5 dB)", kind="gpio", dir="SBC to board", bbb="P8.7", rpi=29,
+    dict(id="ATT_V1", dev="PE4302", dpin="V1 (0.5 dB)", kind="gpio", dir="SBC to board", bbb="P8.7", rpi=29, ebaz="DATA2.14",
          note="assumed weight; verify order and polarity with pe4302-walk"),
-    dict(id="ATT_V2", dev="PE4302", dpin="V2 (1 dB)", kind="gpio", dir="SBC to board", bbb="P8.8", rpi=31,
+    dict(id="ATT_V2", dev="PE4302", dpin="V2 (1 dB)", kind="gpio", dir="SBC to board", bbb="P8.8", rpi=31, ebaz="DATA2.15",
          note="assumed 1 dB stage"),
-    dict(id="ATT_V3", dev="PE4302", dpin="V3 (2 dB)", kind="gpio", dir="SBC to board", bbb="P8.9", rpi=32,
+    dict(id="ATT_V3", dev="PE4302", dpin="V3 (2 dB)", kind="gpio", dir="SBC to board", bbb="P8.9", rpi=32, ebaz="DATA2.16",
          note="assumed 2 dB stage"),
-    dict(id="ATT_V4", dev="PE4302", dpin="V4 (4 dB)", kind="gpio", dir="SBC to board", bbb="P8.10", rpi=33,
+    dict(id="ATT_V4", dev="PE4302", dpin="V4 (4 dB)", kind="gpio", dir="SBC to board", bbb="P8.10", rpi=33, ebaz="DATA2.17",
          note="assumed 4 dB stage"),
-    dict(id="ATT_V5", dev="PE4302", dpin="V5 (8 dB)", kind="gpio", dir="SBC to board", bbb="P8.11", rpi=38,
+    dict(id="ATT_V5", dev="PE4302", dpin="V5 (8 dB)", kind="gpio", dir="SBC to board", bbb="P8.11", rpi=38, ebaz="DATA2.18",
          note="assumed 8 dB stage"),
-    dict(id="ATT_V6", dev="PE4302", dpin="V6 (16 dB)", kind="gpio", dir="SBC to board", bbb="P8.12", rpi=40,
+    dict(id="ATT_V6", dev="PE4302", dpin="V6 (16 dB)", kind="gpio", dir="SBC to board", bbb="P8.12", rpi=40, ebaz="DATA2.19",
          note="assumed 16 dB stage"),
     dict(id="DET_ADC", dev="Detector", dpin="VOUT via divider", kind="analog", dir="board to SBC", bbb=39,
-         rpi=None, note="BBB: AIN0 through the divider, a cross-check only (the ADS1115 is the main ADC); 0 to 1.8 V absolute maximum. RPi: ADS1115 only"),
-    dict(id="ADC_GND", dev="Detector", dpin="GND", kind="gnd", dir="return", bbb=34, rpi=None,
+         rpi=None, ebaz=None, note="BBB: AIN0 through the divider, a cross-check only (the ADS1115 is the main ADC); 0 to 1.8 V absolute maximum. RPi: ADS1115 only",
+         note_bbb="AIN0 through the divider, a cross-check only (the ADS1115 is the main ADC); 0 to 1.8 V absolute maximum"),
+    dict(id="ADC_GND", dev="Detector", dpin="GND", kind="gnd", dir="return", bbb=34, rpi=None, ebaz=None,
          note="optional, AIN0 cross-check only"),
-    dict(id="I2C_SDA", dev="ADS1115", dpin="SDA", kind="i2c", dir="bidirectional", bbb=20, rpi=3, mux="i2c",
-         note="main ADC on both platforms. BBB: I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted)"),
-    dict(id="I2C_SCL", dev="ADS1115", dpin="SCL", kind="i2c", dir="SBC to board", bbb=19, rpi=5, mux="i2c",
-         note="main ADC on both platforms. BBB: I2C2 on the adapter board"),
+    dict(id="I2C_SDA", dev="ADS1115", dpin="SDA", kind="i2c", dir="bidirectional", bbb=20, rpi=3, mux="i2c", ebaz="DATA2.11",
+         note="main ADC on both platforms. BBB: I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted)",
+         note_bbb="main ADC. I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted)",
+         note_ebaz="main ADC. PS I2C0 through EMIO (/dev/i2c-0), pulled up inside the FPGA"),
+    dict(id="I2C_SCL", dev="ADS1115", dpin="SCL", kind="i2c", dir="SBC to board", bbb=19, rpi=5, mux="i2c", ebaz="DATA2.20",
+         note="main ADC on both platforms. BBB: I2C2 on the adapter board",
+         note_bbb="main ADC. I2C2 on the adapter board", note_ebaz="main ADC. PS I2C0 through EMIO (/dev/i2c-0), pulled up inside the FPGA"),
 ]
 
 BBB_P9 = {
@@ -201,7 +207,7 @@ def _build() -> Dict[str, Pin]:
                 net=net["id"] if net else None, board=net["dev"] if net else None,
                 board_pin=net["dpin"] if net else None, direction=net["dir"] if net else None,
                 mux=net.get("mux") if net else None,
-                note=" ".join(x for x in (net["note"] if net else "", PIN_NOTES.get(pid, "")) if x),
+                note=" ".join(x for x in ((net.get("note_bbb", net["note"]) if net else ""), PIN_NOTES.get(pid, "")) if x),
             )
     return out
 
@@ -243,4 +249,65 @@ BOARDS: Tuple[BoardBlock, ...] = (
                ("A0 from detector; GND: board GND",)),
     BoardBlock("AIN0", "optional on-chip cross-check", ("ADC_GND", "DET_ADC"),
                ("Detector via divider 0.751",)),
+)
+
+
+# ----------------------------------------------------------------------------- platform maps
+@dataclass(frozen=True)
+class Layout:
+    """Where the clickable board puts things, in canvas units (see ui/bench_core.py)."""
+
+    headers: Tuple[Tuple[str, float, float], ...]       # header id, x of the pin-1 column, y of pin 1
+    rows: int                                           # pin rows per header
+    board_rect: Tuple[float, float, float, float]       # the drawn SBC outline
+    board_title: str
+    canvas: Tuple[float, float]
+    blocks: Tuple[Tuple[str, float, float, float, bool], ...]   # board title, x, y, width, wire leaves on the right edge
+    legend: Tuple[Tuple[str, str], ...]                 # category key, label
+
+
+@dataclass(frozen=True)
+class PinMap:
+    """Everything platform specific about the pins: which pin does what, what may be driven, how it is drawn.
+
+    `pinmap.BBB` is the BeagleBone Black map (also the module-level PINS, BY_NET, ... above), `pinmap_ebaz.EBAZ`
+    the EBAZ4205 DATA connectors; `platforms.get(name)` picks one."""
+
+    name: str                                           # "bbb", "ebaz"
+    label: str                                          # "BeagleBone Black"
+    pins: Dict[str, Pin]
+    by_net: Dict[str, Pin]
+    boards: Tuple[BoardBlock, ...]
+    layout: Layout
+    att_nets: Tuple[str, ...] = ATT_NETS
+    spi_nets: Tuple[str, ...] = SPI_NETS
+    i2c_nets: Tuple[str, ...] = I2C_NETS
+    lock_net: str = LOCK_NET
+    ce_net: str = CE_NET
+
+    def find(self, name: str) -> Pin:
+        pin = self.pins.get(name) or self.by_net.get(name)
+        if pin is None:
+            raise KeyError(f"no pin or net called {name!r} on {self.label}")
+        return pin
+
+    def ids(self, nets: Tuple[str, ...]) -> Tuple[str, ...]:
+        return tuple(self.by_net[n].id for n in nets)
+
+
+_BBB_LEGEND = (
+    ("spi", "SPI"), ("pe4302", "PE4302"), ("lock", "Lock detect"), ("synth", "ADF4351 CE"), ("i2c", "I2C (ADS1115)"),
+    ("adc", "ADC input"), ("power", "Power"), ("gnd", "Ground"), ("reserved", "eMMC / HDMI / reserved"), ("free", "Free"),
+)
+
+BBB = PinMap(
+    name="bbb", label="BeagleBone Black", pins=PINS, by_net=BY_NET, boards=BOARDS,
+    layout=Layout(
+        headers=(("P8", 280.0, 58.0), ("P9", 470.0, 58.0)), rows=23,
+        board_rect=(212.0, 8.0, 410.0, 58.0 + 23 * 23.0 - 2), board_title="BeagleBone Black",
+        canvas=(930.0, 640.0),
+        blocks=(("PE4302", 8, 60, 186, True), ("ADF4351", 680, 60, 242, False),
+                ("ADS1115", 680, 285, 242, False), ("AIN0", 680, 410, 242, False)),
+        legend=_BBB_LEGEND,
+    ),
 )

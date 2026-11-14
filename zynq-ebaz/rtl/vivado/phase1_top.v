@@ -7,7 +7,7 @@
 //                              so the adapter's pull-ups give 31.5 dB at boot)
 //   6     adf4351_ce      out (IOBUF, tri-stated until driven)
 //   7     adf4351_ld      in
-//   8..15 unused (driven by the PS, not connected to a pin)
+//   8..17 unused here (LCD DC/RES, LEDs, keys are wired in the engine design only)
 // The names follow plan appendix D; the pin assignment is in pins.toml.
 `timescale 1 ps / 1 ps
 
@@ -57,7 +57,7 @@ module phase1_top (
     output        enet0_phy_clk
 );
 
-  wire [15:0] emio_tri_i, emio_tri_o, emio_tri_t;
+  wire [17:0] emio_tri_i, emio_tri_o, emio_tri_t;
   wire i2c0_scl_i, i2c0_scl_o, i2c0_scl_t;
   wire i2c0_sda_i, i2c0_sda_o, i2c0_sda_t;
   wire mdio_i, mdio_o, mdio_t;
@@ -98,7 +98,7 @@ module phase1_top (
   endgenerate
   IOBUF u_ce (.I(emio_tri_o[6]), .IO(adf4351_ce), .O(emio_tri_i[6]), .T(emio_tri_t[6]));
   assign emio_tri_i[7]     = adf4351_ld;
-  assign emio_tri_i[15:8]  = 8'h00;
+  assign emio_tri_i[17:8]  = 10'h000;
 
   // I2C0 and MDIO
   IOBUF u_scl (.I(i2c0_scl_o), .IO(i2c_scl), .O(i2c0_scl_i), .T(i2c0_scl_t));

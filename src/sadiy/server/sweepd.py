@@ -17,7 +17,7 @@ import time
 from typing import Optional
 
 from .. import config as config_mod
-from .. import logs
+from .. import logs, platforms
 from ..core.cal import Cal
 from ..core.detector import Detector
 from ..core.freqplan import build_opposite_sweep, build_sweep
@@ -188,6 +188,7 @@ class Sweepd:
                 "seq": self.seq,
                 "settings": self.settings,
                 "bench": {"active": self.bench_active},
+                "platform": self.bench.pm.name if self.bench is not None else platforms.DEFAULT,
                 "last_error": self.last_error,
                 "last_sweep": dataclasses.asdict(self.engine.last_stats) if self.engine is not None else None,
                 "log_seq": self.ring.last_seq if self.ring is not None else 0,
@@ -343,6 +344,8 @@ def main(argv=None) -> None:
     ap.add_argument("--sim", action="store_true", help="use the simulated RF chain")
     ap.add_argument("--bench-only", action="store_true",
                     help="no sweeps, only bench mode (real SPI / GPIO / ADCs unless --sim); works before build_hw_engine exists")
+    ap.add_argument("--platform", choices=platforms.NAMES,
+                    help="the board this runs on: bbb (default) or ebaz (EBAZ4205); default from [platform] name of the config")
     ap.add_argument("--rt", action="store_true", help="request SCHED_FIFO priority")
     ap.add_argument("--sweeps", type=int, default=0, help="stop after N sweeps (0 = run forever)")
     ap.add_argument(
@@ -358,6 +361,9 @@ def main(argv=None) -> None:
     period = args.period if args.period is not None else (0.1 if args.sim else 0.0)
 
     cfg = config_mod.load(args.config)
+    if args.platform:
+        cfg.setdefault("platform", {})["name"] = args.platform
+    pm = platforms.from_config(cfg)
     log_cfg = cfg.get("log", {})
     if args.log_level:
         level = logs.parse_level(args.log_level)
@@ -366,12 +372,14 @@ def main(argv=None) -> None:
     ring = logs.setup(level, ring=logs.RingLog(int(log_cfg.get("ring_lines", 500)),
                                                float(log_cfg.get("dedup_s", 5.0))))
     mode = "bench-only" if args.bench_only else "simulated chain" if args.sim else "hardware"
-    log.info("sweepd starting: %s, log level %s", mode, logs.level_name(level))
+    log.info("sweepd starting: %s on %s, log level %s", mode, pm.label, logs.level_name(level))
+    if pm.name != "bbb" and not args.sim:
+        sys.exit(f"sweepd: no hardware backend for {pm.label} yet (only --sim); see zynq-ebaz/docs/ebaz4205-zynq-plan.md S5")
     if args.bench_only:
         engine = None
     else:
         engine = build_sim_engine(cfg) if args.sim else build_hw_engine(cfg)
-    bench = Bench(fake_backend() if args.sim else linux_backend(cfg), cfg)
+    bench = Bench(fake_backend(pm) if args.sim else linux_backend(cfg), cfg, platform=pm)
     daemon = Sweepd(cfg, engine, bench, ring)
     if args.rt:
         _try_realtime()

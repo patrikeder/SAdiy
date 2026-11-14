@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence
 
-from .. import logs, patterns, pinmap
+from .. import logs, patterns, pinmap, platforms
 from ..drivers.adc import Ads1115
 from ..core.freqplan import LO_MAX_HZ
 from ..drivers.adf4351 import (POWER_CODE, Adf4351, Output, Outputs, decode_registers, r4_enables_output,
@@ -64,9 +64,11 @@ class NeedsRfConfirm(NeedsConfirm):
     kind = "rf"
 
 
-def fake_backend() -> FakeBackend:
-    """The simulated board used by `sweepd --sim`."""
-    return FakeBackend(lock_gpio=pinmap.BY_NET[pinmap.LOCK_NET].gpio)
+def fake_backend(platform=None) -> FakeBackend:
+    """The simulated board used by `sweepd --sim`. `platform`: a name from `platforms` or a PinMap (default BBB).
+    On the EBAZ4205 the SPI and I2C pins are fixed in the bitstream: no pin mux, as on the real board."""
+    pm = platform if isinstance(platform, pinmap.PinMap) else platforms.get(platform)
+    return FakeBackend(lock_gpio=pm.by_net[pm.lock_net].gpio, can_mux=pm.name == "bbb")
 
 
 def linux_backend(cfg: dict) -> BenchBackend:
@@ -123,8 +125,17 @@ class _Run:
 
 class Bench:
     def __init__(self, backend: BenchBackend, cfg: dict, clock: Callable[[], float] = time.monotonic,
-                 sleep: Callable[[float], None] = time.sleep) -> None:
+                 sleep: Callable[[float], None] = time.sleep, platform=None) -> None:
+        """`platform`: a name from `platforms` or a PinMap; default is `[platform] name` of the config (bbb)."""
         self.backend = backend
+        self.pm = platform if isinstance(platform, pinmap.PinMap) else (
+            platforms.get(platform) if platform else platforms.from_config(cfg))
+        self.spi_pins = self.pm.ids(self.pm.spi_nets)
+        self.i2c_pins = self.pm.ids(self.pm.i2c_nets)
+        self.att_pins = self.pm.ids(self.pm.att_nets)
+        self.ld_pin = self.pm.by_net[self.pm.lock_net].id
+        self.ce_pin = self.pm.by_net[self.pm.ce_net].id
+        self.bus_pins = self.spi_pins + self.i2c_pins
         att = cfg["attenuator"]
         self.weights_db = tuple(att["weights_db"])
         self.active_high = bool(att["active_high"])
@@ -226,20 +237,20 @@ class Bench:
         safe = 1 if self.active_high else 0
         try:                                    # the attenuator first: it protects the chain
             lines = []
-            for pid in ATT_PINS:
-                pin = pinmap.PINS[pid]
+            for pid in self.att_pins:
+                pin = self.pm.pins[pid]
                 self._lines[pid] = self.backend.gpio(pin.gpio, output=True, initial=safe)
                 self._dir[pid] = "out"
                 lines.append(_LoggedLine(self._lines[pid], pin.net, self._att_log))
             self._att = PE4302(lines, self.weights_db, self.active_high)
         except OSError as exc:
             warnings.append(f"PE4302 lines not available: {exc}")
-        for pid in (LD_PIN, CE_PIN):
+        for pid in (self.ld_pin, self.ce_pin):
             try:
-                self._lines[pid] = self.backend.gpio(pinmap.PINS[pid].gpio, output=False)
+                self._lines[pid] = self.backend.gpio(self.pm.pins[pid].gpio, output=False)
                 self._dir[pid] = "in"
             except OSError as exc:
-                warnings.append(f"{pinmap.PINS[pid].net} not available: {exc}")
+                warnings.append(f"{self.pm.pins[pid].net} not available: {exc}")
         try:
             self._spi_bus = self.backend.spi()
             self._adf = Adf4351(self._spi_bus, self.pfd_hz, self.mod_max)        # writes outputs-off R4
@@ -265,7 +276,7 @@ class Bench:
             log.warning("bench open: %s", w)
         reply = self._status({})
         reply.update(
-            token=self.token, warnings=warnings,
+            token=self.token, warnings=warnings, platform=self.pm.name,
             limits={
                 "backend": self.backend.name, "simulated": self.backend.simulated,
                 "max_writes_per_s": self.backend.max_writes_per_s,
@@ -289,9 +300,9 @@ class Bench:
         self._stop_run()
         attempt(self._att_safe)
         for pid in list(self._lines):
-            if pid in BUS_PINS:
+            if pid in self.bus_pins:
                 attempt(self._restore_bus, pid)
-            elif pid not in ATT_PINS and pid != LD_PIN:
+            elif pid not in self.att_pins and pid != self.ld_pin:
                 attempt(self._release, pid)
         attempt(self._rf_off)
         return errors
@@ -322,7 +333,7 @@ class Bench:
         if self._att is None:
             return
         safe = 1 if self.active_high else 0
-        for pid in ATT_PINS:
+        for pid in self.att_pins:
             if self._dir.get(pid) != "out":
                 self._lines[pid].set_direction(True, safe)
                 self._dir[pid] = "out"
@@ -331,20 +342,20 @@ class Bench:
     def _release(self, pid: str) -> None:
         self._lines[pid].set_direction(False)
         self._dir[pid] = "in"
-        if pinmap.PINS[pid].access == pinmap.EXPERT:
+        if self.pm.pins[pid].access == pinmap.EXPERT:
             del self._lines[pid]
             del self._dir[pid]
 
     def _restore_bus(self, pid: str) -> None:
         """Back from GPIO to the bus function. SPI: the chip may have latched junk, so R4 off again."""
-        pin = pinmap.PINS[pid]
+        pin = self.pm.pins[pid]
         line = self._lines.pop(pid, None)
         self._dir.pop(pid, None)
         if line is not None:
             line.set_direction(False)
         self.backend.set_mux(pin.config_pin_name, pin.mux)
         self._gpio_mode.discard(pid)
-        if pid in SPI_PINS and not self._gpio_mode.intersection(SPI_PINS):
+        if pid in self.spi_pins and not self._gpio_mode.intersection(self.spi_pins):
             self._rf_off()
 
     def _ensure_bus(self, pins: Sequence[str]) -> None:
@@ -353,7 +364,7 @@ class Bench:
                 self._restore_bus(pid)
 
     def _rf_off(self) -> None:
-        if self._adf is None or self._gpio_mode.intersection(SPI_PINS):
+        if self._adf is None or self._gpio_mode.intersection(self.spi_pins):
             return
         self._outputs = Outputs()
         self._adf.outputs = self._outputs
@@ -380,7 +391,7 @@ class Bench:
                 raise Refused(f"{pin.id} is not in the pin map: tick Expert to use it")
             if pin.access == pinmap.WIRED:
                 wired.append(pin)
-            if as_gpio and pin.id in SPI_PINS:
+            if as_gpio and pin.id in self.spi_pins:
                 self._require_rf_off(f"{pin.id} ({pin.net}) as a GPIO")
             if as_gpio:
                 self._require_mux(pin)
@@ -393,7 +404,7 @@ class Bench:
             raise Refused(f"an RF output is on: turn it off before using {what}")
 
     def _require_mux(self, pin: pinmap.Pin) -> None:
-        if pin.id in BUS_PINS and pin.id not in self._gpio_mode and not self.backend.can_mux:
+        if pin.id in self.bus_pins and pin.id not in self._gpio_mode and not self.backend.can_mux:
             raise Refused(f"{pin.id} ({pin.net}) stays on its bus: this image has no config-pin to make it a GPIO")
 
     def _require_no_pattern(self) -> None:
@@ -402,7 +413,7 @@ class Bench:
 
     def _as_gpio(self, pin: pinmap.Pin, output: bool, level: int) -> GpioLine:
         """The line of a pin, with the direction and level asked for, opening or re-muxing it if needed."""
-        if pin.id in BUS_PINS and pin.id not in self._gpio_mode:
+        if pin.id in self.bus_pins and pin.id not in self._gpio_mode:
             self.backend.set_mux(pin.config_pin_name, "gpio")
             self._gpio_mode.add(pin.id)
         line = self._lines.get(pin.id)
@@ -418,7 +429,7 @@ class Bench:
         out: Dict[str, dict] = {}
         for pid, line in self._lines.items():
             out[pid] = {"level": line.read(), "dir": self._dir.get(pid)}
-        for pid in BUS_PINS:
+        for pid in self.bus_pins:
             if pid not in self._gpio_mode:
                 out[pid] = {"level": None, "dir": "bus"}
         return out
@@ -426,11 +437,11 @@ class Bench:
     def _att_db(self) -> Optional[float]:
         if self._att is None:
             return None
-        levels = {f"V{i + 1}": self._lines[pid].read() for i, pid in enumerate(ATT_PINS)}
+        levels = {f"V{i + 1}": self._lines[pid].read() for i, pid in enumerate(self.att_pins)}
         return patterns.ParallelModel(levels, self.weights_db, self.active_high).attenuation_db
 
     def _ld(self) -> Optional[int]:
-        line = self._lines.get(LD_PIN)
+        line = self._lines.get(self.ld_pin)
         return None if line is None else line.read()
 
     def synth_state(self) -> Optional[dict]:
@@ -466,14 +477,14 @@ class Bench:
     # ------------------------------------------------------------ pins
     def _pin(self, cmd: dict) -> dict:
         self._require_no_pattern()
-        pin = pinmap.find(str(cmd["pin"]))
+        pin = self.pm.find(str(cmd["pin"]))
         action = cmd.get("action", "read")
         if action == "read":
             return self._pin_read(pin, cmd)
         if action == "input":
             return self._pin_input(pin, cmd)
         if action == "bus":
-            if pin.id not in BUS_PINS:
+            if pin.id not in self.bus_pins:
                 raise Refused(f"{pin.id} has no bus function")
             self._ensure_bus([pin.id])
         elif action == "write":
@@ -482,7 +493,7 @@ class Bench:
             if value not in (0, 1):
                 raise Refused("value must be 0 or 1")
             line = self._as_gpio(pin, True, value)
-            if pin.id in ATT_PINS and self._att is not None:
+            if pin.id in self.att_pins and self._att is not None:
                 self._att.sync_from_lines()
             return {"ok": True, "pin": pin.id, "level": line.read(), "dir": "out", "attenuation_db": self._att_db()}
         else:
@@ -494,7 +505,7 @@ class Bench:
             raise Refused(f"{pin.id} ({pin.name}) is display-only")
         if pin.access == pinmap.ANALOG:
             raise Refused(f"{pin.id} ({pin.name}) is analog: read it with bench_adc")
-        if pin.id in BUS_PINS and pin.id not in self._gpio_mode:
+        if pin.id in self.bus_pins and pin.id not in self._gpio_mode:
             return {"ok": True, "pin": pin.id, "level": None, "dir": "bus"}
         if pin.access == pinmap.EXPERT and pin.id not in self._lines and not cmd.get("expert"):
             raise Refused(f"{pin.id} is not in the pin map: tick Expert to use it")
@@ -508,7 +519,7 @@ class Bench:
             raise Refused(f"{pin.id} ({pin.name}) can not be used as a GPIO")
         if pin.access == pinmap.EXPERT and not cmd.get("expert"):
             raise Refused(f"{pin.id} is not in the pin map: tick Expert to use it")
-        if pin.id in SPI_PINS:
+        if pin.id in self.spi_pins:
             self._require_rf_off(f"{pin.id} ({pin.net}) as a GPIO")
         self._require_mux(pin)
         line = self._as_gpio(pin, False, 0)
@@ -519,9 +530,9 @@ class Bench:
         self._require_no_pattern()
         if self._att is None:
             raise Refused("the PE4302 lines are not available")
-        pins = [pinmap.PINS[p] for p in ATT_PINS]
+        pins = [self.pm.pins[p] for p in self.att_pins]
         self._check_drive(pins, cmd)
-        for pid in ATT_PINS:                      # a line left as an input must be driven again
+        for pid in self.att_pins:                      # a line left as an input must be driven again
             if self._dir.get(pid) != "out":
                 self._lines[pid].set_direction(True, self._lines[pid].read())
                 self._dir[pid] = "out"
@@ -529,13 +540,13 @@ class Bench:
         del self._att_log[:]
         if "levels" in cmd:
             levels = [int(v) for v in cmd["levels"]]
-            if len(levels) != len(ATT_PINS) or any(v not in (0, 1) for v in levels):
+            if len(levels) != len(self.att_pins) or any(v not in (0, 1) for v in levels):
                 raise Refused("levels must be six values of 0 or 1 (V1..V6)")
             if cmd.get("raw"):                    # wiring test: V1 to V6 in order, no make-before-break
-                for pid, level in zip(ATT_PINS, levels):
+                for pid, level in zip(self.att_pins, levels):
                     line = self._lines[pid]
                     line.write(level)
-                    self._att_log.append([pinmap.PINS[pid].net, level])
+                    self._att_log.append([self.pm.pins[pid].net, level])
                 self._att.sync_from_lines()
             else:
                 model = {f"V{i + 1}": v for i, v in enumerate(levels)}
@@ -576,8 +587,8 @@ class Bench:
         self._require_no_pattern()
         words = cmd["words"] if "words" in cmd else [cmd["word"]]
         self._check_words(words)
-        self._check_drive([pinmap.PINS[p] for p in SPI_PINS], cmd, as_gpio=False)
-        self._ensure_bus(SPI_PINS)
+        self._check_drive([self.pm.pins[p] for p in self.spi_pins], cmd, as_gpio=False)
+        self._ensure_bus(self.spi_pins)
         for w in words:
             self._send_word(w)
         return {"ok": True, "sent": [f"0x{w:08X}" for w in words], "ld": self._ld()}
@@ -595,7 +606,7 @@ class Bench:
                 raise Refused("the PLL is not locked (LD is low): RF outputs stay off")
             if not cmd.get("confirm"):
                 raise NeedsConfirm("This turns an ADF4351 RF output on. The other output of the pair must be terminated.")
-        self._ensure_bus(SPI_PINS)
+        self._ensure_bus(self.spi_pins)
         self._set_outputs(main, aux, power)
         return {"ok": True, "rf": {"main": main, "aux": aux}, "sent": f"0x{self._last_r4:08X}", "ld": self._ld()}
 
@@ -629,11 +640,11 @@ class Bench:
                               "the output stays off (program it without the output to look at it elsewhere)")
         self._adf.outputs = Outputs()
         words = self._adf.registers(pll)                # ValueError: INT outside the prescaler's range -> refused
-        self._check_drive([pinmap.PINS[p] for p in SPI_PINS], cmd, as_gpio=False)
+        self._check_drive([self.pm.pins[p] for p in self.spi_pins], cmd, as_gpio=False)
         if (main or aux) and not cmd.get("confirm_rf"):
             raise NeedsRfConfirm("This turns an ADF4351 RF output on once the PLL is locked. "
                                  "The other output of the pair must be terminated.")
-        self._ensure_bus(SPI_PINS)
+        self._ensure_bus(self.spi_pins)
         self._rf_off()                                  # nothing unlocked reaches the mixer while the PLL moves
         for w in words:
             self._send_word(w)
@@ -682,7 +693,7 @@ class Bench:
             raise Refused(f"unknown ADC source {source!r}")
         if self._ads is None:
             raise Refused("the ADS1115 is not available")
-        self._ensure_bus(I2C_PINS)
+        self._ensure_bus(self.i2c_pins)
         reply = {"ok": True, "source": "ads1115", "channel": channel, "full_scale_v": self.ads_full_scale_v}
         if cmd.get("read", "single") == "single":
             code = self._ads.convert(channel)
@@ -704,15 +715,15 @@ class Bench:
         if rate <= 0:
             raise Refused("the rate must be above 0")
         spec = cmd["spec"]
-        pat = patterns.from_spec(spec, pinmap.ATT_NETS, self.weights_db, self.active_high)
+        pat = patterns.from_spec(spec, self.pm.att_nets, self.weights_db, self.active_high)
         run = _Run(pat, 1.0 / rate, bool(cmd.get("loop")), rate, [])
         if pat.spi_words is not None:
             self._check_words(pat.spi_words)
-            self._check_drive([pinmap.PINS[p] for p in SPI_PINS], cmd, as_gpio=False)
-            self._ensure_bus(SPI_PINS)
+            self._check_drive([self.pm.pins[p] for p in self.spi_pins], cmd, as_gpio=False)
+            self._ensure_bus(self.spi_pins)
             run.words = pat.spi_words
         else:
-            pins = [pinmap.find(s) for s in pat.idle]
+            pins = [self.pm.find(s) for s in pat.idle]
             self._check_drive(pins, cmd)
             run.groups = patterns.step_groups(pat)
             run.pins = [p.id for p in pins]
@@ -785,10 +796,10 @@ class Bench:
         if run.measured_hz and run.measured_hz < 0.9 * run.rate_hz:
             log.warning("pattern %s ran at %.0f Hz instead of %g Hz: the backend can not keep up",
                         run.pattern.name, run.measured_hz, run.rate_hz)
-        if any(p in ATT_PINS for p in run.pins):
+        if any(p in self.att_pins for p in run.pins):
             self._att_safe()
         for pid in run.pins:
-            if pid in BUS_PINS:
+            if pid in self.bus_pins:
                 self._restore_bus(pid)
-            elif pid not in ATT_PINS:
+            elif pid not in self.att_pins:
                 self._release(pid)
