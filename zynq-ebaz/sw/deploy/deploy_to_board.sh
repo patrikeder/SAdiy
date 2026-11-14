@@ -6,6 +6,8 @@
 #   ~/sadiy/zynq-ebaz/sw/sadiy_ebaz/ EBAZ backends and the PL register layer
 #   ~/sadiy/zynq-ebaz/rtl/regmap/regmap.toml
 #   ~/sadiy/config/                  default.toml
+#   ~/sadiy/tools/bringup.py         gpio-map, synth-ce, pe4302-walk ... (run from ~/sadiy)
+#   ~/sadiy/zynq-ebaz/sw/tools/      pl_bringup.py, ebaz_lcd_test.py, ebaz_s4_*.sh, ebaz_baseline.sh
 # Run on the board with:  PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw python3 -m sadiy.server.sweepd ...
 # (root is locked in the image, work as petalinux and use sudo for /dev/mem, GPIO and fpga_manager access).
 # Needs a writable home on the board (see README: sudo mount -o remount,rw / if the rootfs is read-only).
@@ -19,6 +21,8 @@ paths="src/sadiy config/default.toml"
 [ -d zynq-ebaz/sw/sadiy_ebaz ] && paths="$paths zynq-ebaz/sw/sadiy_ebaz"
 [ -f zynq-ebaz/rtl/regmap/regmap.toml ] && paths="$paths zynq-ebaz/rtl/regmap/regmap.toml"
 [ -d zynq-ebaz/sw/config ] && paths="$paths zynq-ebaz/sw/config"
+[ -f tools/bringup.py ] && paths="$paths tools/bringup.py"
+[ -d zynq-ebaz/sw/tools ] && paths="$paths zynq-ebaz/sw/tools"
 echo "deploying: $paths"
 ex=""
 for f in src/sadiy/ui/*.py; do

@@ -30,6 +30,10 @@ class GpioLine(ABC):
         """Make the line an output at level `initial` (in one step, no glitch) or an input."""
         raise NotImplementedError
 
+    def direction(self) -> "str | None":
+        """"out", "in", or None when the backend can not tell."""
+        return None
+
 
 class I2cBus(ABC):
     """One device on an I2C bus."""

@@ -12,6 +12,10 @@
                            SPI frame for ADF4351 register words (MSB first, 32 clocks each)
   gpio-map                 run ON THE SBC, read-only: pin map number and sysfs number of every pin we use
                            (--platform ebaz before the command: EMIO offsets 54 + n of the EBAZ4205)
+  synth-ce on|off|release|read [--dry-run] [--gpio N] [--pl-owner]
+                           run ON THE SBC: ADF4351 chip enable (BBB and EBAZ4205). off powers the chip down
+                           (registers are lost: write R5..R0 again after on), release lets the adapter's
+                           jumper / pull-up decide. EBAZ: --pl-owner reads whether the PL engine owns CE
   pll --mhz 110.7          divider / INT / FRAC / MOD, the real output frequency and the six register words
   sim-sweep                one simulated sweep, prints the strongest points
 """
@@ -21,6 +25,7 @@ from sadiy import config, patterns, pinmap, platforms
 from sadiy.bringup import walk_lines
 from sadiy.core.freqplan import build_sweep, plan_pll
 from sadiy.drivers.adf4351 import Adf4351
+from sadiy.drivers.synth_ce import SynthCe
 from sadiy.hal.fake import FakeGpio, FakeSpi, PinLog
 from sadiy.server.sweepd import Sweepd, build_sim_engine
 
@@ -93,6 +98,62 @@ def cmd_gpio_map(args):
             print(f"{pin.id:<6} {name:<9} GPIO{pin.gpio // 32}_{pin.gpio % 32:<3} {pin.gpio:>4}  {sysfs_number(pin.gpio, bases)}")
 
 
+def _ce_line(args, pm):
+    """The GPIO line of CE and a note about how it was opened. It is opened without changing its direction, so
+    `read` never releases a CE that an earlier `on` / `off` still drives."""
+    ce = pm.by_net[pm.ce_net]
+    number = ce.gpio if args.gpio is None else args.gpio
+    if args.dry_run:
+        line = FakeGpio("CE", PinLog(), output=False)
+        line.external = 1                                   # the adapter pulls CE high while it is released
+        return line
+    from sadiy.hal.linux import SysfsGpio, gpio_bank_bases, sysfs_number, zynq_gpio_base
+
+    if pm.name == "bbb":
+        return SysfsGpio(sysfs_number(number, gpio_bank_bases()), output=None)
+    base = zynq_gpio_base()
+    if base is None:
+        raise SystemExit("no Zynq PS GPIO chip (118 lines) in /sys/class/gpio: run this on the EBAZ4205 (or use --dry-run)")
+    return SysfsGpio(base + number, output=None)
+
+
+def _ce_owner(args, pm):
+    """EBAZ: a probe of STATUS.ce_engine through /dev/mem, or None."""
+    if not args.pl_owner:
+        return None
+    if pm.name != "ebaz":
+        raise SystemExit("--pl-owner only applies to --platform ebaz")
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "zynq-ebaz" / "sw"))   # or PYTHONPATH on the board
+    from sadiy_ebaz.ce_owner import ce_owner_probe, has_ce_mux
+    from sadiy_ebaz.devmem import DevMemRegs
+
+    if not has_ce_mux():
+        print("this register map has no STATUS.ce_engine: CE is driven by Linux only (no PL mux in this bitstream)")
+        return None
+    return ce_owner_probe(DevMemRegs(args.pl_base).read)
+
+
+def cmd_ce(args):
+    pm = platforms.get(args.platform)
+    ce = SynthCe(_ce_line(args, pm), _ce_owner(args, pm))
+    if args.action != "read":
+        applied = {"on": ce.enable, "off": ce.disable, "release": ce.release}[args.action]()
+        if not applied:
+            print("the PL engine owns CE: the request is remembered but the pin ignores Linux until the engine lets go")
+    st = ce.status()
+    print(f"CE ({pm.by_net[pm.ce_net].id}, {pm.name}): owner {st['owner']}, this run asked {st['requested']}, "
+          f"direction {st['direction']}, pad {st['pad']}")
+    if args.action == "on" and ce.needs_reprogram:
+        print("CE was low: the ADF4351 lost its registers, write R5..R0 again (RF outputs stay off until you enable them)")
+    if args.action == "off":
+        print("ADF4351 is powered down; its registers are gone")
+    if args.dry_run:
+        print("(dry run: no hardware was touched)")
+
+
 def cmd_adf(args):
     words = [int(w, 0) for w in args.word]
     print("\n".join(patterns.describe(patterns.adf4351_words(words))))
@@ -134,6 +195,13 @@ def main():
     w.set_defaults(fn=cmd_walk)
     g = sub.add_parser("gpio-map")
     g.set_defaults(fn=cmd_gpio_map)
+    e = sub.add_parser("synth-ce")
+    e.add_argument("action", choices=("on", "off", "release", "read"))
+    e.add_argument("--gpio", type=int, default=None, help="pin map number of CE instead of the one in the pin map")
+    e.add_argument("--dry-run", action="store_true", help="no hardware: a fake line (CE pulled high while released)")
+    e.add_argument("--pl-owner", action="store_true", help="ebaz: ask the PL (/dev/mem) whether the engine owns CE")
+    e.add_argument("--pl-base", type=lambda x: int(x, 0), default=0x43C00000)
+    e.set_defaults(fn=cmd_ce)
     f = sub.add_parser("adf4351-pattern")
     f.add_argument("--word", action="append", required=True, help="register word, e.g. 0x00580005")
     f.set_defaults(fn=cmd_adf)

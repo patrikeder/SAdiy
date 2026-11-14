@@ -29,6 +29,7 @@ python -m sadiy.ui.sa_gui --platform ebaz --sim       # fixed platform (bbb|ebaz
 python -m sadiy.server.sweepd --sim --platform ebaz   # simulated EBAZ4205 pin map (bench, status.platform); real EBAZ backends: plan S5/S7
 python tools/gen_diagrams.py [--platform bbb|ebaz]    # figures and netlist; with --platform only that platform, netlist-<p>.md
 python tools/bringup.py pe4302-pattern --db 16 --from-db 15.5
+python tools/bringup.py --platform ebaz synth-ce off --dry-run   # ADF4351 CE: on|off|release|read, on the board without --dry-run
 python tools/make_bbb_package.py         # BBB package in dist/ (git-ignored); update it whenever code the BBB runs changes
 ```
 
