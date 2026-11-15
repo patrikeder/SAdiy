@@ -13,6 +13,7 @@ Output: docs/pinmap.md, docs/pinmap.svg (connectors), docs/pinmap-fpga.svg (ball
 Usage: python3 gen_pinmap.py [--check]
 """
 import csv
+import os
 import re
 import sys
 import tomllib
@@ -26,6 +27,9 @@ OUT_ADAPTER = EBAZ / "docs/pinmap-adapter.svg"
 
 
 def find_pins_toml():
+    """PINS_TOML=<file> overrides (e.g. L's worktree while its pins.toml is not merged)."""
+    if os.environ.get("PINS_TOML"):
+        return Path(os.environ["PINS_TOML"])
     for p in (RTL / "vivado/pins.toml", EBAZ.parent.parent / "SAdiy-linux/zynq-ebaz/rtl/vivado/pins.toml"):
         if p.exists():
             return p
@@ -98,7 +102,7 @@ def adapter_balls():
 
 
 # Right-hand 2x10 connector of the adapter (photo docs/20261114_134742.heic), silk text, row 1 at the top.
-# Row 3 reads "U20" on the silk but must be J20 (U20 is KEY3, J20 is DATA2-14): verify on the board.
+# Row 3 left reads "U20" on the silk but is J20 (U20 is KEY3, J20 is DATA2-14; confirmed on the board 2026-11-15).
 RIGHT_CONN = [("K18", "J18"), ("G19", "G20"), ("J20", "H20"), ("K19", "J19"), ("L20", "L19"), ("L17", "L16"),
               ("M20", "M18"), ("M19", "N20"), ("P18", "M17"), ("GND", "3V3")]
 # HDMI port of the adapter: TMDS pairs as P/N balls (P/N from the package: D19/D20 = L4P/N etc.). The silk gives
@@ -112,7 +116,8 @@ ADC_PROPOSAL = [("adc_d[0]", "A20", "HDMI DAT2 N"), ("adc_d[1]", "B19", "HDMI DA
                 ("adc_d[8]", "M19", "right connector row 8"), ("adc_d[9]", "F19", "HDMI CLK P"),
                 ("adc_d[10]", "N20", "right connector row 8"), ("adc_d[11]", "P18", "right connector row 9"),
                 ("adc_clk", "M17", "right connector row 9"), ("adc_otr", "H16", "UART header (remove its jumper)")]
-# Adapter functions that share a DATA1 ball with the planned AD9226 pins.
+# Adapter functions that share a DATA1 ball with the planned AD9226 pins. H18, K17, E19 (LEDs) stay on the adapter
+# (user decision 2026-11-15): pins.toml lists them as led[n], so adc_d[8], adc_d[10], adc_clk have no DATA1 ball.
 DATA1_ON_ADAPTER = {"H18": "LED1", "K17": "LED2", "E19": "LED3", "H16": "UART header RX", "H17": "UART header TX",
                     "D19": "HDMI DAT0", "C20": "HDMI DAT1", "B19": "HDMI DAT2", "F19": "HDMI CLK", "D18": "buzzer"}
 FIXED = [  # board-fixed functions: (group, signal, ball or MIO, note)
@@ -144,7 +149,7 @@ def md(rows):
                  f"`{r['name']}` | {r['dir']} | {func_of(r['name'])[0]} | "
                  f"{'in use' if r['used'] else 'planned' if r['planned'] else 'NOT constrained'} | {r['note']} |")
     L += ["", "Supply / ground per the plan: pins 1-2 of every connector are supply (5..12 V, never wire to a "
-          "peripheral), 3-4 and 12 GND, 10 NC. DATA3 is not mapped yet.", "",
+          "peripheral), 3-4 and 12 GND, 10 NC. DATA3 only carries the adapter's keys and display (see below).", "",
           "## Board-fixed pins, one line each", "",
           "| FPGA ball / pin | Bank | I/O name | Signal | Group |", "|---|---|---|---|---|"]
     for ball, port in fixed_balls():
@@ -184,13 +189,17 @@ def md(rows):
           "### Conflict with the planned AD9226 on DATA1", "",
           "With this adapter the following planned `adc_*` balls are also wired to adapter functions: " +
           ", ".join(f"{b} ({f})" for b, f in DATA1_ON_ADAPTER.items() if b in {r['ball'] for r in rows}) +
-          ". The right-hand connector carries no DATA1 signals, so the AD9226 cannot use DATA1 with this adapter.",
+          ". The right-hand connector carries no DATA1 signals, so the AD9226 cannot use DATA1 with this adapter. "
+          "The LEDs H18 / K17 / E19 stay as they are (user decision 2026-11-15; `pins.toml` lists them as `led[n]`), "
+          "so `adc_d[8]`, `adc_d[10]` and `adc_clk` have no DATA1 ball on this adapter; only a different adapter PCB "
+          "(planned for a later stage) would free them.",
           "",
           "### Proposal: AD9226 through the HDMI port", "",
           "The HDMI port carries four differential pairs (DAT0, DAT1, DAT2, CLK) = 8 FPGA balls, exactly 8 of the "
           "14 planned AD9226 balls. With the 5 free balls of the right connector that makes 13: 12 data bits and "
           "the clock; OTR needs one more (the UART header H16 once its jumper is removed, or leave it out). "
-          "Used as single-ended LVCMOS33. NOT in `pins.toml`; the Linux lane owns that file.", "",
+          "Used as single-ended LVCMOS33. A proposal only: NOT in `pins.toml` (the Linux lane owns that file) and not "
+          "constrained; the adapter PCB will probably be replaced later, then the pins are chosen again.", "",
           "| AD9226 signal | Ball | Where | Bank | I/O name |", "|---|---|---|---|---|"]
     for sig_, ball, where in ADC_PROPOSAL:
         L.append(f"| `{sig_}` | {ball} | {where} | {pk[ball][0]} | {pk[ball][1]} |")
