@@ -1,7 +1,9 @@
 """Register offsets and field positions, read straight from regmap.toml (the single source).
 
-The file is found relative to this package (`zynq-ebaz/rtl/regmap/regmap.toml`); set the environment variable
-SADIY_REGMAP_TOML to use another copy (the deployed case, where only `sadiy_ebaz` is copied to the target).
+The file is found without any setting in the two layouts that exist:
+  repository / `deploy_to_board.sh`: `<zynq-ebaz>/rtl/regmap/regmap.toml` (two levels above this package),
+  bring-up package (`make_bringup_pkg.sh`): `regmap.toml` next to the `sadiy_ebaz` folder.
+The environment variable SADIY_REGMAP_TOML overrides both (`run.sh` / `sweepd.sh` of the package set it).
 """
 from __future__ import annotations
 
@@ -15,7 +17,10 @@ try:  # Python 3.11+
 except ModuleNotFoundError:  # pragma: no cover - older Pythons
     import tomli as tomllib
 
-DEFAULT_PATH = Path(__file__).resolve().parents[2] / "rtl" / "regmap" / "regmap.toml"
+_HERE = Path(__file__).resolve()
+CANDIDATES = (_HERE.parents[2] / "rtl" / "regmap" / "regmap.toml",     # repository layout
+              _HERE.parents[1] / "regmap.toml")                        # bring-up package layout
+DEFAULT_PATH = next((c for c in CANDIDATES if c.is_file()), CANDIDATES[0])
 
 
 @dataclass(frozen=True)
@@ -60,8 +65,12 @@ def _bits(text: str):
 def load(path: Optional[str] = None) -> Dict[str, Reg]:
     """Parse regmap.toml into {register name: Reg}. `path` defaults to $SADIY_REGMAP_TOML, then DEFAULT_PATH."""
     chosen = path or os.environ.get("SADIY_REGMAP_TOML") or DEFAULT_PATH
-    with open(chosen, "rb") as fh:
-        doc = tomllib.load(fh)
+    try:
+        with open(chosen, "rb") as fh:
+            doc = tomllib.load(fh)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"regmap.toml not found at {chosen} (also looked at: "
+                                f"{', '.join(str(c) for c in CANDIDATES)}); set SADIY_REGMAP_TOML=<file>") from None
     regs: Dict[str, Reg] = {}
     for r in doc["reg"]:
         fields = {}

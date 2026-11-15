@@ -21,15 +21,19 @@
   sim-sweep                one simulated sweep, prints the strongest points
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
 for _p in (_ROOT / "src", _ROOT / "zynq-ebaz" / "sw"):      # run from a checkout or from ~/sadiy on a board without PYTHONPATH
     if _p.is_dir() and str(_p) not in sys.path:
-        sys.path.append(str(_p))                             # appended: an explicit PYTHONPATH still wins
+        if os.environ.get("PYTHONPATH"):
+            sys.path.append(str(_p))                         # an explicit PYTHONPATH wins
+        else:
+            sys.path.insert(0, str(_p))                      # else this checkout, not an installed copy (pip install -e of another one)
 
-from sadiy import config, patterns, pinmap, platforms
+from sadiy import buildinfo, config, patterns, pinmap, platforms
 from sadiy.bringup import walk_lines
 from sadiy.core.freqplan import build_sweep, plan_pll
 from sadiy.drivers.adf4351 import Adf4351
@@ -225,6 +229,7 @@ def main():
     c = sub.add_parser("sim-sweep")
     c.set_defaults(fn=cmd_sim)
     args = ap.parse_args()
+    print(f"bringup: {buildinfo.describe()}", file=sys.stderr)
     args.fn(args)
 
 

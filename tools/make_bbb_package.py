@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import shutil
 import subprocess
 import tarfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +80,9 @@ def build(out: Path) -> Path:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / source, dest)
         dest.chmod(0o755 if is_executable(target) else 0o644)
+    info = {"version": version(), "commit": short.removesuffix("-dirty"), "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
+            "dirty": short.endswith("-dirty"), "built": time.strftime("%Y-%m-%d %H:%M")}
+    (stage / "opt/sadiy/BUILD_INFO").write_text(json.dumps(info) + "\n")        # printed by sweepd and the tools at start
 
     def owned_by_root(info: tarfile.TarInfo) -> tarfile.TarInfo:
         info.uid = info.gid = 0

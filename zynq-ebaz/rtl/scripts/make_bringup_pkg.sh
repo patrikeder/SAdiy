@@ -15,6 +15,7 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 cp -r "$ROOT/src/sadiy" "$OUT/sadiy"
 cp -r "$EBAZ_DIR/sw/sadiy_ebaz" "$OUT/sadiy_ebaz"
 cp "$EBAZ_DIR/sw/tools/pl_bringup.py" "$OUT/pl_bringup.py"
+(cd "$ROOT" && PYTHONPATH=src python3 -m sadiy.buildinfo write "$OUT/BUILD_INFO") || echo "make_bringup_pkg: no BUILD_INFO (not a git checkout)"
 cp "$EBAZ_DIR/rtl/regmap/regmap.toml" "$OUT/regmap.toml"
 mkdir -p "$OUT/config" && cp "$ROOT/config/default.toml" "$OUT/config/default.toml"
 find "$OUT" -name __pycache__ -type d -prune -exec rm -rf {} +
