@@ -17,6 +17,24 @@ can use it.
 | `pinmap-keeper` | constraints, PS7 settings check, pin map documents and figures | sonnet |
 | `docs-auditor` | are the documents current? finds stale statements, fixes them | sonnet |
 
+## Linux lane (session L), added 2026-11-15
+
+Written from what worked in the Linux lane: platform selection, bench mode on the real board, image builds, deployment,
+documentation sweeps. Worktree `/media/patrik/Workspaces/uC/SAdiy-linux` (branch `linux`).
+
+| Agent | Use it for | Model |
+|---|---|---|
+| `linux-sw-maintainer` | sweepd, hal, drivers, bench mode, platform backends, `tools/bringup.py`, with tests | sonnet |
+| `sbc-pinmap-keeper` | BBB / EBAZ pin maps, `platforms.py`, generated netlist and wiring figures | sonnet |
+| `ebaz-image-builder` | PetaLinux rebuild (XSA, device tree, kernel fragment), SD card file list | sonnet |
+| `target-deployer` | deploy to BBB or EBAZ, how to start server and GUI, "No module named sadiy" | sonnet |
+| `gui-tester` | offscreen GUI tests, dry runs of `sweepd --sim`, Qt aborts in the full run | sonnet |
+| `repo-docs-auditor` | repo-wide documents against code and hardware state (mechanical checks first) | sonnet |
+| `ebaz-linux-bench` | Linux-side board checks: baseline, EMIO readback, LCD, LEDs, keys, top on the LCD, CE | sonnet |
+
+The RTL-lane agents above work in the other worktree; the pairs `pinmap-keeper` / `sbc-pinmap-keeper` and `docs-auditor` /
+`repo-docs-auditor` split the same job by lane.
+
 Rules that hold for all of them (from `CLAUDE.md`): install nothing without asking, commit only when asked, the
-RTL lane works in the worktree `/media/patrik/Workspaces/uC/SAdiy-rtl` (branch `rtl`), session L owns
+RTL lane works in the worktree `/media/patrik/Workspaces/uC/SAdiy-rtl` (branch `rtl`), the Linux lane in `/media/patrik/Workspaces/uC/SAdiy-linux` (branch `linux`); session L owns
 `zynq-ebaz/rtl/vivado`, `zynq-ebaz/sw/deploy` and its own documents. Report what was verified and what was not.
