@@ -3,19 +3,19 @@
 
 ## DATA1
 #set_property -dict {PACKAGE_PIN A20 IOSTANDARD LVCMOS33} [get_ports {adc_d[0]}]  ; # DATA1-5 in
-#set_property -dict {PACKAGE_PIN H16 IOSTANDARD LVCMOS33} [get_ports adc_otr]  ; # DATA1-6 in
-#set_property -dict {PACKAGE_PIN B19 IOSTANDARD LVCMOS33} [get_ports {adc_d[1]}]  ; # DATA1-7 in
+#set_property -dict {PACKAGE_PIN H16 IOSTANDARD LVCMOS33} [get_ports adc_otr]  ; # DATA1-6 in, on this adapter: H16 is the adapter's UART header RX; not constrained
+#set_property -dict {PACKAGE_PIN B19 IOSTANDARD LVCMOS33} [get_ports {adc_d[1]}]  ; # DATA1-7 in, on this adapter: B19 is the adapter's HDMI DAT2; not constrained
 #set_property -dict {PACKAGE_PIN B20 IOSTANDARD LVCMOS33} [get_ports {adc_d[2]}]  ; # DATA1-8 in
-#set_property -dict {PACKAGE_PIN C20 IOSTANDARD LVCMOS33} [get_ports {adc_d[3]}]  ; # DATA1-9 in
-#set_property -dict {PACKAGE_PIN H17 IOSTANDARD LVCMOS33} [get_ports {adc_d[11]}]  ; # DATA1-11 in
+#set_property -dict {PACKAGE_PIN C20 IOSTANDARD LVCMOS33} [get_ports {adc_d[3]}]  ; # DATA1-9 in, on this adapter: C20 is the adapter's HDMI DAT1; not constrained
+#set_property -dict {PACKAGE_PIN H17 IOSTANDARD LVCMOS33} [get_ports {adc_d[11]}]  ; # DATA1-11 in, on this adapter: H17 is the adapter's UART header TX; not constrained
 #set_property -dict {PACKAGE_PIN D20 IOSTANDARD LVCMOS33} [get_ports {adc_d[4]}]  ; # DATA1-13 in, schematic text says D19, see header
-#set_property -dict {PACKAGE_PIN D18 IOSTANDARD LVCMOS33} [get_ports {adc_d[5]}]  ; # DATA1-14 in
-#set_property -dict {PACKAGE_PIN H18 IOSTANDARD LVCMOS33} [get_ports {adc_d[10]}]  ; # DATA1-15 in
-#set_property -dict {PACKAGE_PIN D19 IOSTANDARD LVCMOS33} [get_ports {adc_d[6]}]  ; # DATA1-16 in
+#set_property -dict {PACKAGE_PIN D18 IOSTANDARD LVCMOS33} [get_ports {adc_d[5]}]  ; # DATA1-14 in, on this adapter: D18 is the adapter's buzzer; not constrained
+#set_property -dict {PACKAGE_PIN H18 IOSTANDARD LVCMOS33} [get_ports {led[0]}]  ; # DATA1-15 out, adapter LED1 (EMIO GPIO 10, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc
+#set_property -dict {PACKAGE_PIN D19 IOSTANDARD LVCMOS33} [get_ports {adc_d[6]}]  ; # DATA1-16 in, on this adapter: D19 is the adapter's HDMI DAT0; not constrained
 #set_property -dict {PACKAGE_PIN F20 IOSTANDARD LVCMOS33} [get_ports {adc_d[7]}]  ; # DATA1-17 in
-#set_property -dict {PACKAGE_PIN E19 IOSTANDARD LVCMOS33} [get_ports {adc_d[8]}]  ; # DATA1-18 in
-#set_property -dict {PACKAGE_PIN F19 IOSTANDARD LVCMOS33} [get_ports {adc_d[9]}]  ; # DATA1-19 in
-#set_property -dict {PACKAGE_PIN K17 IOSTANDARD LVCMOS33} [get_ports adc_clk]  ; # DATA1-20 out
+#set_property -dict {PACKAGE_PIN E19 IOSTANDARD LVCMOS33} [get_ports {led[2]}]  ; # DATA1-18 out, adapter LED3 (EMIO GPIO 12, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc
+#set_property -dict {PACKAGE_PIN F19 IOSTANDARD LVCMOS33} [get_ports {adc_d[9]}]  ; # DATA1-19 in, on this adapter: F19 is the adapter's HDMI CLK; not constrained
+#set_property -dict {PACKAGE_PIN K17 IOSTANDARD LVCMOS33} [get_ports {led[1]}]  ; # DATA1-20 out, adapter LED2 (EMIO GPIO 11, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc
 
 ## DATA2
 set_property -dict {PACKAGE_PIN G20 IOSTANDARD LVCMOS33} [get_ports adf4351_clk]  ; # DATA2-5 out, PS SPI0 SCLK via EMIO
@@ -35,4 +35,16 @@ set_property -dict {PACKAGE_PIN L20 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[4]
 set_property -dict {PACKAGE_PIN M20 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[5]}]  ; # DATA2-19 out, V6 = 16 dB
 set_property -dict {PACKAGE_PIN L17 IOSTANDARD LVCMOS33} [get_ports i2c_scl]  ; # DATA2-20 inout, PS I2C0 SCL via EMIO (ADS1115, address 0x48)
 set_property PULLTYPE PULLUP [get_ports i2c_scl]
+
+## DATA3
+#set_property -dict {PACKAGE_PIN N17 IOSTANDARD LVCMOS33} [get_ports lcd_res]  ; # DATA3-9 out, ST7789 RES = EMIO GPIO 9
+#set_property -dict {PACKAGE_PIN P20 IOSTANDARD LVCMOS33} [get_ports lcd_sda]  ; # DATA3-11 out, ST7789 SDA = PS SPI1 MOSI via EMIO
+#set_property -dict {PACKAGE_PIN R18 IOSTANDARD LVCMOS33} [get_ports lcd_dc]  ; # DATA3-13 out, ST7789 DC = EMIO GPIO 8
+#set_property -dict {PACKAGE_PIN R19 IOSTANDARD LVCMOS33} [get_ports lcd_scl]  ; # DATA3-14 out, ST7789 SCL = PS SPI1 SCLK via EMIO
+#set_property -dict {PACKAGE_PIN P19 IOSTANDARD LVCMOS33} [get_ports {keys[1]}]  ; # DATA3-15 in, adapter KEY2 (EMIO GPIO 14)
+#set_property -dict {PACKAGE_PIN T20 IOSTANDARD LVCMOS33} [get_ports lcd_cs]  ; # DATA3-16 out, ST7789 CS = PS SPI1 SS0 via EMIO
+#set_property -dict {PACKAGE_PIN U20 IOSTANDARD LVCMOS33} [get_ports {keys[2]}]  ; # DATA3-17 in, adapter KEY3 (EMIO GPIO 15)
+#set_property -dict {PACKAGE_PIN T19 IOSTANDARD LVCMOS33} [get_ports {keys[0]}]  ; # DATA3-18 in, adapter KEY1 (EMIO GPIO 13, Linux, active low)
+#set_property -dict {PACKAGE_PIN V20 IOSTANDARD LVCMOS33} [get_ports {keys[4]}]  ; # DATA3-19 in, adapter KEY5 (EMIO GPIO 17)
+#set_property -dict {PACKAGE_PIN U19 IOSTANDARD LVCMOS33} [get_ports {keys[3]}]  ; # DATA3-20 in, adapter KEY4 (EMIO GPIO 16)
 

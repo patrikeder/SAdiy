@@ -20,10 +20,10 @@ from typing import Callable, List, Optional
 from sadiy.hal.base import AnalogInput, BenchBackend, I2cBus, SpiBus
 from sadiy.hal.linux import LinuxI2c, SpidevBus, SysfsGpio, zynq_gpio_base
 
+from .devmem import FPGA_STATE, pl_not_ready
 from .regmap_toml import REGS
 
 log = logging.getLogger("sadiy.ebaz_ps")
-FPGA_STATE = Path("/sys/class/fpga_manager/fpga0/state")
 
 
 def release_pl_pins(regs, *, timeout_s: float = 0.5, sleep: Callable[[float], None] = time.sleep,
@@ -91,12 +91,9 @@ class EbazPsBackend(BenchBackend):
 
     def prepare(self) -> List[str]:
         """Called when bench mode opens: hand the pins to the PS if the PL engine holds them."""
-        try:
-            state = self._state_path.read_text().strip()
-        except OSError:
-            state = None
-        if state is not None and state != "operating":
-            return [f"PL is {state}: pin ownership not checked"]
+        why = pl_not_ready(self._state_path)
+        if why:
+            return [f"{why}: pin ownership not checked"]
         try:
             if self._open_regs is None:
                 from .devmem import DEFAULT_BASE, DevMemRegs
