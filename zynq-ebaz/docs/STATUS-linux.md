@@ -23,7 +23,7 @@ Branch `linux`, worktree `../SAdiy-linux`; everything below is committed on `mai
 - Superseded by the 2026-11-15 updates below: R's PL backend sweeps on the real board and `--bench-only` gives Linux the pins; neither has run on the board.
 
 ## Update 2026-11-14 (evening): image for R's new hardware
-- Image rebuilt from R's engine XSA (SPI1 EMIO, 18 EMIO GPIO), with ST7789 LCD, 3 LEDs and 5 keys in the device tree and the framebuffer console in the kernel. BOOT.BIN holds the engine bitstream. Not booted yet. Details in `log_linux.md` and `docs/ebaz-bringup.md`.
+- Image rebuilt from R's engine XSA (SPI1 EMIO, 18 EMIO GPIO), with ST7789 LCD, 3 LEDs and 5 keys in the device tree and the framebuffer console in the kernel. BOOT.BIN (rebuilt 2026-11-15 14:53 from R's XSA of 2026-11-15 00:03) holds the engine bitstream of register map 1.2; the card of 2026-11-14 had map 1.0 (no ADS1115 reader, no CE / I2C mux), with which only `--bench-only` and detector `ps` / `test` work. Not booted yet. Details in `log_linux.md` and `docs/ebaz-bringup.md`.
 
 ## Update 2026-11-15: bench mode on the real board
 - `sweepd --platform ebaz --bench-only` now works on the board (Pins tab, raw ADF4351 / PE4302 / ADS1115 access, patterns) with Linux owning the pins: `sw/sadiy_ebaz/ps_backend.py`. It hands the pins back from the PL engine if needed. No RTL change required. Not run on the board yet. While `sweepd` sweeps (`--platform ebaz` without `--bench-only`) there is still no bench mode.
