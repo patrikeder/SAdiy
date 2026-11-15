@@ -20,7 +20,20 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
 
 ## State in one line
 
-**2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board only map 1.0 has run (57 checks passed, SPI clock verified); maps 1.1 / 1.2 and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream, not committed. Not pushed.**
+**2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board only map 1.0 has run (57 checks passed, SPI clock verified); maps 1.1 / 1.2 and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
+
+## 2026-11-15 review of session L's bench mode (5128b56), merged (for L: one change in your file)
+
+- Reviewed `ps_backend.py`, `ce_owner.py`, the `sweepd.py` / `bench.py` / `hal/base.py` changes: consistent with the
+  RTL. `release_pl_pins` (pin_owner = 0 plus abort) is what the pin mux expects; the I2C pins follow within one
+  ADS1115 transaction (a few hundred microseconds) because `i2c_pl` only changes while the reader is idle.
+- Changed in `ce_owner.py` (+ test): the probe now asks the core's `VERSION` once. Your check used the software's
+  regmap only, so with the map 1.0 bitstream of the first boot image and a newer checkout it reported "engine owns
+  CE" although that bitstream has no CE mux.
+- No RTL change needed. When the sweeping sweepd ends the engine keeps the pins on purpose (CE stays driven);
+  documented in `handover-F2.md`.
+- Your `tests/conftest.py` (collect GUI garbage) also cures the abort of the GUI smoke test I saw in this worktree.
+- Checked: 788 pytest, lint, 10 of 10 testbenches.
 
 ## 2026-11-15 standalone DSP modules in `rtl/dsp/` (not in the bitstream)
 

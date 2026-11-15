@@ -56,7 +56,13 @@ Write the results to `docs/ebaz-pl-measurements.md`.
 - `sw/sadiy_ebaz/platforms/ebaz_pl.py` is a platform that uses only the registers (/dev/mem): SPI words, PE4302,
   CE, lock detect, detector. `sweepd --platform ebaz` (or `[platform] name = "ebaz-pl"`) starts it; in the
   bring-up package: `./sweepd.sh`. `[platform] detector = "pl" | "ps" | "test"` picks the sample source.
-  The RF outputs are enabled only after the PLL locked once with them off. No bench mode on the hardware yet.
+  The RF outputs are enabled only after the PLL locked once with them off.
+- Bench mode on the board is a separate run: `sweepd --platform ebaz --bench-only` (session L,
+  `sw/sadiy_ebaz/ps_backend.py`) gives the pins to Linux; its `prepare()` takes them back from the engine. While
+  sweepd sweeps there is no bench mode, because the engine owns the pins.
+- When the sweeping sweepd ends, the engine keeps the pins (RF outputs off, maximum attenuation, CE driven
+  high): a floating CE would be worse than a driven one. Linux tools on SPI0, the PE4302 lines, CE or I2C0 reach
+  the pads again after `CTRL.pin_owner = 0` (bench mode does it; `./run.sh owner` leaves it at 0 too).
 - **The bitstream must be the new one** (VERSION 0x00010001): load `ebaz_sadiy.bit.bin` at runtime or rebuild
   BOOT.BIN from the new XSA. PS7 settings did not change (no FSBL / device tree change needed).
 - Check first: `./run.sh adc` (I2C acknowledge, codes, hand-over of the bus), optional `./run.sh ce`.
