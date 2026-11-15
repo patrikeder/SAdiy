@@ -16,7 +16,7 @@
 ```
 
 - The GPIO / SPI control and the ADC reads run in `sweepd`, a separate process from any UI. This is the "secondary thread" requirement done with a process, because Python's GIL would otherwise couple plotting to SPI timing.
-- On the BBB the viewer runs on another machine (`--host <bbb-ip>`). On the RPi it can run locally on the monitor. Same code both ways.
+- On the BBB or the EBAZ4205 the viewer runs on another machine (`--host <board-ip>`). On the RPi it can run locally on the monitor. Same code every way.
 - Frames are ZeroMQ parts on topic `sweep`: a JSON header, float32 dBm values and one flag byte per point (`server/protocol.py`). The flag part is optional and additive, so older readers ignore it and `VERSION` stays 1.
 - Log records go out on the same PUB socket under topic `log`, one JSON part each (see Logging below).
 - Commands (REQ/REP, JSON): `set` (start_hz, stop_hz, points, atten_db, auto_atten, averages), `run`, `stop`, `status`, `log` (the records sweepd kept, after a given number), and the `bench_*` commands (below; full list in `server/protocol.py`). `set` is rejected when the range lies outside `[rf] rf_min_hz .. rf_max_hz`, because the LO plan would fail below the ADF4351 minimum. `status` returns the settings, the running state, the `limits` (rf_min_hz, rf_max_hz, points_max), which the GUI adopts on connect, `last_error`, `log_seq` and `last_sweep` (the counts of the last sweep: unlocked, overload, at floor, outlier points).
@@ -25,7 +25,7 @@
 ## Layering
 
 `hal` (pins, buses) <- `drivers` (PE4302, ADF4351, ADS1115, on-chip ADC) <- `core` (sweep, cal, plan) <- `server` <- `ui`.
-`pinmap.py` sits beside them: plain data with no dependencies, read by `server`, `ui` and `tools/gen_diagrams.py`. So does `logs.py` (levels, ring buffer, standard library only), used by `server` and `ui`.
+`pinmap.py` (the BBB map and the shared `NETS` table), `pinmap_ebaz.py` (EBAZ4205) and `platforms.py` (`get(name)`) sit beside them: plain data with no dependencies, read by `server`, `ui` and `tools/gen_diagrams.py`. `drivers/synth_ce.py` is the ADF4351 chip enable (see Bench mode). So does `logs.py` (levels, ring buffer, standard library only), used by `server` and `ui`.
 Only `hal` touches the OS. Everything above runs against fakes and the simulator on a PC.
 Inside `ui`, everything that is not drawing lives in `sa_core.py` and `log_core.py` (no Qt, unit-tested); `sa_gui.py` is the thin Qt layer, `sweep_client.py` the ZeroMQ side and `sim_runner.py` the simulator launcher.
 
@@ -54,7 +54,7 @@ What stays in the GUI: trace modes, markers, peak search, smoothing, dB/div. The
 
 ## Bench mode
 
-Direct pin control for wiring tests on the BBB (`server/bench.py`, GUI side in `gui.md`).
+Direct pin control for wiring tests on the BBB or the EBAZ4205 (`server/bench.py`, GUI side in `gui.md`). The platform (`--platform`, `[platform] name`, default bbb) selects the pin map; `status` and `bench_open` return it, and a pin of the other board is refused. The EBAZ4205 has no pin mux (SPI and I2C are wired to the PS in the bitstream, no AIN0). On its hardware `--bench-only` uses `sadiy_ebaz/ps_backend.py` (Linux owns the pins; when bench mode opens it hands them back from the PL engine if needed), while `sweepd` without `--bench-only` sweeps through the PL engine, which owns the pins, so there is no bench mode next to a sweep there.
 
 - **Where it runs:** inside `sweepd`, not in a separate daemon. `sweepd` must stay the only process that touches the hardware, and one process makes exclusivity with sweeping a plain check instead of a lock between daemons. `bench_*` commands are refused while a sweep runs and `run` is refused while bench mode is open. `sweepd --bench-only` runs it on the BBB before `build_hw_engine` exists; `--sim` gives it the fake backend.
 - **Rules live in the daemon, not the GUI**, so every client gets them. What a pin may do comes from `pinmap.py`:
@@ -104,7 +104,8 @@ The sweep samples the response of the IF filter, so the step must be no larger t
 | GUI as a client with its own simulator launcher | the same GUI runs on a PC against the simulator, on the RPi locally and on a PC against the BBB; sim parameters go through a temporary TOML override (`[sim]` section), so `sweepd` has no GUI-specific code |
 | ADS1115 as the main ADC on every platform | same code path and same calibration whichever SBC is used. 16 bits, but at most 860 SPS (1.2 ms per conversion, plus the I2C transfers, see below). BBB AIN0 stays wired on the adapter (through a 0.751 divider) as a cross-check, read from the bench mode |
 | Bench mode inside `sweepd` | one owner of the hardware; exclusivity with sweeping without any locking |
-| One pin map module (`pinmap.py`) | netlist, diagrams, daemon rules and the clickable board can not disagree |
+| One pin map source per platform (`pinmap.py` with the `NETS` table, `pinmap_ebaz.py`) | netlist, diagrams, daemon rules and the clickable board can not disagree; the EBAZ balls are checked against `zynq-ebaz/rtl/vivado/pins.toml` by a test |
+| ADF4351 CE is Linux's, not part of a sweep (`SynthCe`) | it is set once before the registers are written; low powers the chip down and loses the registers, so the driver flags `needs_reprogram`. On the EBAZ4205 CE goes through the PL pin mux (register map 1.1): while the engine owns the pins (`STATUS.pin_owner_act`) it drives CE (`ADF_PINS.ce`) and Linux writes are remembered but ignored |
 | Python first, native later | only if the measured per-point time says so (`native/`) |
 | Simulator in the repo | whole stack testable without the hardware |
 

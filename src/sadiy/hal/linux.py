@@ -12,7 +12,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from .base import AnalogInput, BenchBackend, GpioLine, I2cBus, SpiBus
 
@@ -39,17 +39,28 @@ AM335X_GPIO_BANKS = {"44e07000": 0, "4804c000": 1, "481ac000": 2, "481ae000": 3}
 
 
 class SysfsGpio(GpioLine):
-    """GPIO via /sys/class/gpio. `number` is the number sysfs uses, see `sysfs_number`."""
+    """GPIO via /sys/class/gpio. `number` is the number sysfs uses, see `sysfs_number`.
+
+    `output=None` only exports the line and leaves its direction and level alone: for looking at a line that
+    an earlier run may still be driving (opening it as an input would release it)."""
 
     ROOT = Path("/sys/class/gpio")
 
-    def __init__(self, number: int, output: bool = True, initial: int = 0) -> None:
+    def __init__(self, number: int, output: Optional[bool] = True, initial: int = 0) -> None:
         self._dir = self.ROOT / f"gpio{number}"
         if not self._dir.exists():
             (self.ROOT / "export").write_text(str(number))
+        if output is None:
+            return
         # "high" / "low" set the direction and the level in one step, so an output never glitches to 0
         direction = ("high" if initial else "low") if output else "in"
         (self._dir / "direction").write_text(direction)
+
+    def direction(self) -> Optional[str]:
+        try:
+            return (self._dir / "direction").read_text().strip()
+        except OSError:
+            return None
 
     def write(self, value: int) -> None:
         (self._dir / "value").write_text("1" if value else "0")
@@ -74,6 +85,22 @@ def gpio_bank_bases(root: Path = None) -> Dict[int, int]:
     if missing:
         raise OSError(f"could not identify GPIO banks {missing} in {root}: see tools/bringup.py gpio-map")
     return bases
+
+
+ZYNQ_PS_GPIO_LINES = 118          # 54 MIO + 64 EMIO: the one PS GPIO chip of the Zynq-7000
+ZYNQ_EMIO_FIRST = 54              # EMIO line n is offset 54 + n on that chip (and the pin map number on the EBAZ4205)
+
+
+def zynq_gpio_base(root: Path = None) -> Optional[int]:
+    """The sysfs base of the Zynq PS GPIO chip (the one with 118 lines), or None when there is none."""
+    root = SysfsGpio.ROOT if root is None else root
+    for chip in sorted(root.glob("gpiochip*")):
+        try:
+            if int((chip / "ngpio").read_text()) >= ZYNQ_PS_GPIO_LINES:
+                return int((chip / "base").read_text())
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def sysfs_number(number: int, bases: Dict[int, int] = None) -> int:

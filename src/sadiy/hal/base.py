@@ -30,6 +30,10 @@ class GpioLine(ABC):
         """Make the line an output at level `initial` (in one step, no glitch) or an input."""
         raise NotImplementedError
 
+    def direction(self) -> "str | None":
+        """"out", "in", or None when the backend can not tell."""
+        return None
+
 
 class I2cBus(ABC):
     """One device on an I2C bus."""
@@ -76,6 +80,11 @@ class BenchBackend(ABC):
     @abstractmethod
     def ain(self, channel: int) -> AnalogInput:
         """An on-chip ADC channel."""
+
+    def prepare(self) -> list:
+        """Called when bench mode opens. Returns warnings (strings) about the state of the board, for example
+        who owns the pins. Nothing by default."""
+        return []
 
     @abstractmethod
     def set_mux(self, config_pin_name: str, mode: str) -> None:

@@ -35,6 +35,9 @@ class FakeGpio(GpioLine):
     def read(self) -> int:
         return self.level if self.output else self.external
 
+    def direction(self) -> str:
+        return "out" if self.output else "in"
+
     def set_direction(self, output: bool, initial: int = 0) -> None:
         self.output = output
         self.log.directions.append((self.name, "out" if output else "in"))

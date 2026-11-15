@@ -1,6 +1,6 @@
 # EBAZ4205 Phase 1: boot image with EMIO SPI / I2C / GPIO
 
-Session L, written 2026-11-14. **Nothing here has been run on the board yet.**
+Session L, written 2026-11-14. Run on the board so far: the first boot of the Phase 1 image, the baseline and the S4 EMIO readback (`docs/ebaz-baseline.md`, `docs/ebaz-bringup.md`). **Not run yet:** the rebuilt image with LCD, LEDs and keys, the PL load, the Python deploy.
 
 ## Paths
 
@@ -66,9 +66,9 @@ Kernel 6.12.40 (PetaLinux 2025.2) already has spidev (built in), `I2C_CHARDEV`, 
 `GPIO_SYSFS`, `SPI_CADENCE`, `I2C_CADENCE`, `GPIO_ZYNQ`, UIO, FPGA manager, device-tree overlays
 (checked in the base build's `.config`).
 
-Needed by `sweepd` and **not in the rootfs yet** (rootfs packages, need the user's consent, see
-`docs/STATUS-linux.md`): `python3-pyzmq`, `python3-numpy`, `python3-spidev`, `libgpiod` (+ tools).
-Already in: `python3` (core, json), `i2c-tools`, `openssh-sshd`.
+Needed by `sweepd`, **in the rootfs now** (added with the user's consent, baseline 2026-11-14): `python3-pyzmq`,
+`python3-numpy`, `python3-spidev`, `libgpiod` tools (there is no Python gpiod or smbus module), plus `python3`,
+`i2c-tools`, `openssh-sshd`.
 
 ## Device names to expect (verify in S4)
 
@@ -83,7 +83,7 @@ Already in: `python3` (core, json), `i2c-tools`, `openssh-sshd`.
 ## Phase 2: load the engine bitstream (S8, runtime part)
 
 The RTL lane builds `ebaz_sadiy.bit.bin` (`../SAdiy-rtl/zynq-ebaz/build/fpga/`, see `docs/handover-F2.md`).
-Its PS7 settings equal Phase 1, so the Phase 1 boot image stays. Everything below is **untested on hardware**.
+Its PS7 settings equal the current boot image (SPI1 on EMIO, 18 EMIO GPIO), which is built from the same XSA. Everything below is **untested on hardware**.
 
 **Register access is `/dev/mem`, not UIO** (user decision 2026-11-14). The image already has `CONFIG_DEVMEM=y`
 and `STRICT_DEVMEM` unset, so no kernel or device-tree change is needed. `sw/sadiy_ebaz/devmem.py`
@@ -97,13 +97,12 @@ scp -r zynq-ebaz/build/engine-pkg petalinux@<ebaz-ip>:~/
 ssh petalinux@<ebaz-ip> sudo ~/engine-pkg/sadiy_pl_load.sh
 ```
 The script loads the bitstream through `/sys/class/fpga_manager/fpga0` (the rootfs may be read-only, so it points
-`firmware_class.path` at the package directory instead of copying to `/lib/firmware`), restarts `eth0` (the PHY clock
+`firmware_class.path` at the package directory instead of copying to `/lib/firmware`), restarts the network interface (udev renames it `enx<mac>`; the PHY clock
 and MII pass through the PL and are interrupted during reconfiguration) and prints ID / VERSION read via `/dev/mem`.
 
-Fallback if the Ethernet link does not come back after the runtime load: bake the engine bitstream into a
-second boot file (same FSBL and U-Boot) and boot with that; no runtime load is then needed. Already built:
-`images/linux/BOOT_engine.BIN` in the PetaLinux project (bitstream of R's 2026-11-14 build). Copy it to the SD card's FAT
-partition under the name `BOOT.BIN`, keeping the Phase 1 file as `BOOT_phase1.BIN`. Rebuild it when the bitstream changes.
+Fallback if the Ethernet link does not come back after the runtime load: boot with the bitstream baked into `BOOT.BIN`.
+The current `images/linux/BOOT.BIN` of the PetaLinux project already is that (R's 2026-11-14 engine XSA), so no runtime
+load is needed to get the engine; the Phase 1 files are in `images/phase1-backup/`. Rebuild when the bitstream changes.
 
 ## Python code is not in the image: deploy it
 
@@ -113,8 +112,10 @@ of the SAdiy code. Init system is sysvinit, so the BBB `sweepd.service` does not
 ```
 sh zynq-ebaz/sw/deploy/deploy_to_board.sh <ebaz-ip>        # tar over ssh into ~/sadiy of user petalinux
 ssh petalinux@<ebaz-ip>
-export PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw
-python3 -m sadiy.server.sweepd --sim                        # smoke test without hardware
+. ~/sadiy/env.sh          # written by the deploy script: PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw (needed for python -m sadiy...)
+python3 -m sadiy.server.sweepd --sim --platform ebaz &      # smoke test without hardware (no EBAZ hardware backend yet)
+python3 -m sadiy.ui.cli_client --count 5                    # a client of that server
+python3 tools/bringup.py pe4302-pattern --db 16 --from-db 15.5   # tools find ~/sadiy/src themselves
 ```
 `deploy_to_board.sh` leaves the Qt GUI out (it runs on the PC) and includes `sadiy_ebaz` and `regmap.toml` only when
 they exist in the checkout (they come from the `rtl` branch after the merge). The kernel boots the rootfs with `ro`
@@ -126,4 +127,4 @@ on the command line; if the home directory is not writable, run `sudo mount -o r
 `root` has no usable password hash (`*`), `ADD_EXTRA_USERS` also asks for `root:root`; try it on the UART (J7, 115200).
 User `petalinux` has an empty password that expires at the first login, so the first login must be on the UART console,
 where you set a new password; ssh refuses empty passwords. `sudo` is in the image (`/etc/sudoers.d/99-petalinux`).
-Network: `eth0` by DHCP (`/etc/network/interfaces`), hostname `ebaz4205_sadiy`, sshd starts at runlevel 5.
+Network: DHCP (`/etc/network/interfaces`; the interface shows up as `enx000a35001e53`, renamed from `eth0`), hostname `ebaz4205_sadiy`, sshd starts at runlevel 5.

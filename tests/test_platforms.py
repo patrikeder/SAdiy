@@ -202,3 +202,10 @@ def test_ebaz_connectors_do_not_overlap():
     for i, a in enumerate(rects):
         for b in rects[i + 1:]:
             assert a[0] + a[2] <= b[0] or b[0] + b[2] <= a[0] or a[1] + a[3] <= b[1] or b[1] + b[3] <= a[1]
+
+
+def test_pin_page_names_the_gpio_the_way_the_board_does():
+    assert "GPIO: EMIO 0 (Linux line 54)" in bench_core.describe_pin(pinmap_ebaz.EBAZ.pins["DATA2.14"])
+    assert "GPIO: EMIO 7 (Linux line 61)" in bench_core.describe_pin(pinmap_ebaz.EBAZ.pins["DATA2.9"])
+    assert "GPIO: none" in bench_core.describe_pin(pinmap_ebaz.EBAZ.pins["DATA2.5"])
+    assert "GPIO: GPIO2_2 (number 66)" in bench_core.describe_pin(pinmap.BBB.pins["P8.7"])

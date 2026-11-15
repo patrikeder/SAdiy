@@ -1,6 +1,6 @@
 # EBAZ4205 bring-up (S4)
 
-Status 2026-11-14: image boots (see `ebaz-baseline.md`); electrical checks not started, they need the user at the bench.
+Status 2026-11-14: Phase 1 image boots (see `ebaz-baseline.md`); the EMIO readback below passed; the rebuilt image (LCD, LEDs, keys) is not booted yet; the other electrical checks need the user at the bench.
 
 ## Known from the first boot (S1 baseline, 2026-11-14)
 - Kernel 6.12.40, Zynq PS7, PL state `operating` (Phase 1 bitstream from BOOT.BIN), Ethernet 100 Mbit/full, IP 192.168.88.244.
@@ -22,6 +22,7 @@ Do each step with the PE4302 at 31.5 dB (nothing driven) before any RF is connec
 4. DSLogic on CLK, DAT, LE: `adf4351-pattern` frames decode as in `patterns.py`.
 5. ADF4351 at 100 MHz on the MSO5354 (outputs off until enabled after lock).
 6. ADS1115 answers at 0x48 (`i2cdetect -y N`).
+7. CE from software: `python3 tools/bringup.py --platform ebaz synth-ce read` (then `off` / `on` / `release`, with sudo -E; DMM on DATA2.13 / the CE header pin, J12 1-2 holds it high). After `off` then `on` the ADF4351 needs its registers again. Deploy the tools first with `sw/deploy/deploy_to_board.sh`.
 
 Results go below (what was measured, instrument, date).
 
@@ -71,3 +72,24 @@ Checks after booting (user at the board, sudo needed for /dev and sysfs):
 2. `python3 ebaz_lcd_test.py info` then `sudo python3 ebaz_lcd_test.py bars`: border on all four sides, corners red / green / blue / yellow.
 3. `sudo python3 ebaz_lcd_test.py leds` and `keys`.
 4. The old checks still hold: eth0 up, `gpioinfo` now shows 118 lines with EMIO 0..17 (lines 54..71) in use by the leds / keys / display.
+
+### `top` on the LCD instead of a login prompt (2026-11-15)
+
+The image starts a login on tty1 (`1:12345:respawn:/sbin/getty 38400 tty1` in `/etc/inittab`), which is useless on the
+LCD: no keyboard, about 30 text columns. `sw/tools/ebaz_lcd_top.sh` replaces it with a continuously updated `top`
+(time and load, tasks, CPU, memory, then PID, %CPU, %MEM, COMMAND; the wrapper takes the last frame of `top -b` and
+shortens it to the console size, because plain `top` would cut off %CPU and the command at 30 columns).
+
+```
+sh ~/sadiy/zynq-ebaz/sw/deploy/deploy_to_board.sh <ebaz-ip>      # on the PC, copies the script (it is in sw/tools)
+sudo sh ~/sadiy/zynq-ebaz/sw/tools/ebaz_lcd_top.sh status         # console size, what is installed
+sudo sh ~/sadiy/zynq-ebaz/sw/tools/ebaz_lcd_top.sh install        # tty1 shows top from now on, also after reboots
+sudo sh ~/sadiy/zynq-ebaz/sw/tools/ebaz_lcd_top.sh remove         # login prompt back
+sh ~/sadiy/zynq-ebaz/sw/tools/ebaz_lcd_top.sh frame               # one frame on the terminal, to see the layout
+```
+`install` remounts `/` read-write for a moment (the inittab lives on the SD card, so no new image is needed), keeps the old
+file as `/etc/inittab.sadiy-orig` and leaves the serial console login on ttyPS0 alone. Number of rows follows the console
+font (15 rows with 8x16, 30 with 8x8): `status` prints it. Notes: `ebaz_lcd_test.py bars` draws on the same screen, so
+run `remove` first or the next `top` frame overwrites the bars; pressing KEY1..KEY5 types `1`..`5` into the console
+(harmless, top ignores them). Works on the board (user report 2026-11-15); also checked with the host's `top` and fake
+`top` output in `sw/tests/test_lcd_top.py`.

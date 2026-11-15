@@ -1,5 +1,7 @@
 # Spectrum analyzer GUI
 
+Steps to start the server and the GUI: [how-to-start.md](how-to-start.md).
+
 ```
 pip install -e .[ui]                      # PyQtGraph + PyQt5 (pyzmq is a core dependency)
 python -m sadiy.ui.sa_gui --sim           # start simulated hardware here and connect to it
@@ -37,29 +39,58 @@ The status bar warns when the step is larger than RBW/2 (narrow signals read low
 - Without `--platform` the tab has a **Platform** selector. It follows `sweepd` as soon as the GUI connects (`status` and `bench_open` name the platform, `sweepd --platform bbb|ebaz` or `[platform] name` in its config) and can be changed by hand while bench mode is off. A simulator started from the Advanced tab runs the platform that is shown.
 - With `--platform bbb` or `--platform ebaz` the selector is hidden and the other board does not appear anywhere (drawing, pin list, text). If that `sweepd` runs on the other platform, bench mode is refused with a message that says so.
 
-The EBAZ4205 has no pin mux: the SPI and I2C pins are wired to the PS in the bitstream and can not be switched to GPIO, and there is no on-chip ADC input, so the AIN0 row of the ADC box is not shown. `sweepd --platform ebaz` runs only with `--sim` until the EBAZ backends exist (plan S5, S7).
+For wiring tests on the BBB or the EBAZ4205. Everything goes through `sweepd`, so it works from a PC against a remote board. With `--sim` it drives a fake board; the top of the tab says SIMULATED. The tab behaves the same on both boards; what differs is below.
 
-For wiring tests on the BBB or the EBAZ4205. Everything goes through `sweepd`, so it works from a PC against a remote BBB. With `--sim` it drives a fake board; the top of the tab says SIMULATED.
+### Using it on the BeagleBone Black
 
 ```
 cd /opt/sadiy && sudo PYTHONPATH=src python3 -m sadiy.server.sweepd --bench-only --config /etc/sadiy/local.toml   # on the BBB, or the service, see deploy/bbb-setup.md
-python -m sadiy.ui.sa_gui --host <bbb-ip> --connect       # on the PC
+python -m sadiy.ui.sa_gui --platform bbb --host <bbb-ip> --connect       # on the PC (--platform optional)
 ```
+
+The board drawing shows P8 and P9 as in `hw/diagrams/bbb-p*-pinout.svg` (pin 1 at the top, odd pins on the left), with lines to PE4302, ADF4351, ADS1115 and the optional AIN0 cross-check. SPI and I2C pins can be driven as GPIO where the image has `config-pin` (this image has none, so they stay on their bus). Free GPIO (P8.7 to P8.19, P8.26 on a stock image) are locked until **Expert** is ticked.
+
+### Using it on the EBAZ4205
+
+Status: **the Pins tab works on the real EBAZ4205 only with `sweepd --platform ebaz --bench-only`** (Linux owns the pins: PS GPIO, `/dev/spidev0.0`, `/dev/i2c-0`; untested on the board). While `sweepd --platform ebaz` sweeps through the PL engine there is no bench mode, because the engine owns the pins: wiring tests and sweeping are two separate runs of `sweepd`. On the board (as root, `. ~/sadiy/env.sh` first):
+
+```
+sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz --bench-only      # on the board
+python -m sadiy.ui.sa_gui --platform ebaz --host <ebaz-ip> --connect                                # on the PC
+```
+
+Without the board:
+
+```
+python -m sadiy.ui.sa_gui --platform ebaz --sim                  # the EBAZ board drawing against a simulated sweepd (try the whole tab)
+python -m sadiy.server.sweepd --sim --platform ebaz &            # the same without a GUI, then
+python -m sadiy.ui.sa_gui --platform ebaz --host 127.0.0.1 --connect
+python tools/bringup.py --platform ebaz gpio-map                 # DATA2 pin, EMIO number and Linux GPIO number of every net
+```
+
+Other scripts that run on the board: `zynq-ebaz/sw/tools/ebaz_s4_readonly.sh` and `ebaz_s4_readback.sh` (EMIO and pad levels), `ebaz_lcd_test.py` (LCD, LEDs, keys) and the checklist in `zynq-ebaz/docs/ebaz-bringup.md`. Deployment to the board: `zynq-ebaz/sw/deploy/README.md`. The EBAZ's address is the one on its Ethernet port.
+
+Differences from the BBB, all visible in the tab:
+
+- The drawing shows DATA2 (the adapter's signals), DATA1 and DATA3 (display, keys and LEDs: shown only, they can not be driven here) with lines to PE4302, ADF4351 and ADS1115. There is no AIN0 and no on-chip ADC, so the ADC box has only the ADS1115.
+- No pin mux: SPI (DATA2.5, .7, .8) and I2C (DATA2.20, .11) are wired to the PS in the bitstream, so they can not be driven as GPIO and **Back to bus** is not needed. The six PE4302 lines (DATA2.14 to .19), SYN_CE (DATA2.13) and lock detect (DATA2.9, read only) are EMIO GPIO and work as on the BBB.
+- Pin ids are `DATA<n>.<pin>`; the pin page shows the FPGA ball in the name, `GPIO: EMIO n (Linux line 54 + n)` and the adapter pin it goes to.
+- Every other connector pin is display-only: there is no Expert mode on this board, because nothing else is a safe GPIO.
 
 **Enter bench mode** takes over the pins, after asking to stop a running sweep. All lines start safe: PE4302 at 31.5 dB, RF outputs off. **Leave bench mode** returns to the safe state, and so do disconnecting, closing the window, a hardware error, or 5 s without contact with the GUI. Press Run afterwards to sweep again; Run is refused while bench mode is on.
 
-**The board** shows P8 and P9 as in `hw/diagrams/bbb-p*-pinout.svg` (pin 1 at the top, odd pins on the left), coloured by function, with lines to PE4302, ADF4351, ADS1115 and the optional AIN0 cross-check. Dots show live levels (yellow = 1, dark = 0, grey = not known, for example a pin on its SPI bus). Click a pin or a board row to select it.
+**The board** is coloured by function. Dots show live levels (yellow = 1, dark = 0, grey = not known, for example a pin on its SPI bus). Click a pin or a board row to select it.
 
-**Pin page:** net, board pin, GPIO bank and bit, notes, and Drive 0 / Drive 1 / Input / Read / Back to bus.
+**Pin page:** net, board pin, GPIO (bank and bit on the BBB, EMIO number on the EBAZ), notes, and Drive 0 / Drive 1 / Input / Read / Back to bus.
 
 | Pin | What you can do |
 |---|---|
 | Wired to a board input | drive, after a confirm the first time per pin |
 | Lock detect, ADC inputs | read only |
 | Free GPIO | locked until **Expert** is ticked |
-| Power, ground, eMMC, HDMI | nothing, display only |
+| Power, ground, eMMC, HDMI (BBB); display, keys, LEDs, power, ground (EBAZ) | nothing, display only |
 
-SPI and I2C pins can be driven as GPIO for a wiring check where the image has `config-pin`; otherwise they stay on their bus and the request is refused (check them with hardware SPI frames and an I2C read instead). This switches their mux with `config-pin`, and they return to the bus when a raw command needs them or with **Back to bus**.
+On the BBB, SPI and I2C pins can be driven as GPIO for a wiring check where the image has `config-pin`; otherwise (and always on the EBAZ4205) they stay on their bus and the request is refused (check them with hardware SPI frames and an I2C read instead). This switches their mux with `config-pin`, and they return to the bus when a raw command needs them or with **Back to bus**.
 
 **Raw access page:**
 
@@ -72,9 +103,9 @@ SPI and I2C pins can be driven as GPIO for a wiring check where the image has `c
 - The preview updates as you change things and warns when the pattern takes the attenuator low. Keep RF off the input then.
 - **Run** once or in a loop, **Stop** at any time. Afterwards the lines go back to safe.
 - **Export CSV** writes the line levels after each edge, to compare with a DSLogic capture. It gives edge order, not timing.
-- **Rates:** Python on sysfs GPIO manages roughly a few kHz at best, fewer steps/s when a step changes several lines. The figure in the preview is an estimate, not measured on a BBB. While running, the page shows the measured rate. Expect jitter: Linux is not real time here. A square wave's frequency is half the step rate. For the ADF4351 frame the step rate is the word rate, and the SPI clock itself is much faster.
+- **Rates:** Python on sysfs GPIO (BBB; the EBAZ numbers will differ and are not measured) manages roughly a few kHz at best, fewer steps/s when a step changes several lines. The figure in the preview is an estimate, not measured on a BBB. While running, the page shows the measured rate. Expect jitter: Linux is not real time here. A square wave's frequency is half the step rate. For the ADF4351 frame the step rate is the word rate, and the SPI clock itself is much faster.
 
-**Tested only on the fake backend.** Unverified on a real BBB: the pin map, pin multiplexing and `config-pin` mode names, PE4302 weights and polarity, ADS1115 registers and bus number, SPI device number, and the rate estimates. See `bringup.md` stage 0.
+**Tested only on the fake backend.** Unverified on a real BBB or EBAZ4205 (the EBAZ pin locations and EMIO numbers are still to be probed at the bench): the pin map, pin multiplexing and `config-pin` mode names, PE4302 weights and polarity, ADS1115 registers and bus number, SPI device number, and the rate estimates. See `bringup.md` stage 0.
 
 ## Synth tab
 

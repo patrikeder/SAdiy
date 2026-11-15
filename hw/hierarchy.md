@@ -32,7 +32,7 @@ Frequency plan: IF = 10.7 MHz, LO = RF + 10.7 MHz, RF about 25 to 489 MHz by har
 
 | File | Content |
 |---|---|
-| `wiring-bbb.md`, `wiring-rpi.md` | pin tables, wiring order, checks for each SBC |
+| `wiring-bbb.md`, `wiring-rpi.md` | pin tables, wiring order, checks for each SBC (EBAZ4205: `../zynq-ebaz/docs/pinmap.md`, `diagrams/ebaz-*.svg`) |
 | `netlist.md` | generated net list and straps |
 | `wiring.md` | RF cabling between boards |
 | `boards/*.md` | per-board connector and test-point notes (fill in from the PCBs) |

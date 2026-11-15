@@ -18,7 +18,7 @@ Only one machine works on the project at a time; `origin` (GitHub) is the single
 
 ```
 . .venv/bin/activate
-pytest                                  # all passed at last check; GUI tests are skipped without the GUI deps
+pytest                                  # 728 passed at last check (2026-11-14); GUI tests are skipped without the GUI deps
 python -m sadiy.server.sweepd --sim &   # simulated chain, tcp 5556 (frames) / 5557 (commands)
 python -m sadiy.ui.sa_gui --sim         # GUI against its own simulator
 python -m sadiy.server.sweepd --bench-only       # on the BBB: only bench mode, real hardware (add --sim for the fake board)
@@ -29,6 +29,7 @@ python -m sadiy.ui.sa_gui --platform ebaz --sim       # fixed platform (bbb|ebaz
 python -m sadiy.server.sweepd --sim --platform ebaz   # simulated EBAZ4205 pin map (bench, status.platform); without --sim on the EBAZ: the PL sweep engine through /dev/mem (zynq-ebaz/sw/sadiy_ebaz/platforms/ebaz_pl.py, no bench mode there yet; state in zynq-ebaz/log_rtl.md)
 python tools/gen_diagrams.py [--platform bbb|ebaz]    # figures and netlist; with --platform only that platform, netlist-<p>.md
 python tools/bringup.py pe4302-pattern --db 16 --from-db 15.5
+python tools/bringup.py --platform ebaz synth-ce off --dry-run   # ADF4351 CE: on|off|release|read, on the board without --dry-run
 python tools/make_bbb_package.py         # BBB package in dist/ (git-ignored); update it whenever code the BBB runs changes
 ```
 
@@ -66,8 +67,12 @@ Free on a stock image: P8.7-P8.19 and P8.26 as GPIO. Not usable: P8.3-6 and P8.2
 
 `sweepd` is the only process that touches SPI, GPIO and the ADC; it publishes sweeps over ZeroMQ PUB (5556) and takes commands over REQ/REP JSON (5557). GUI and terminal clients never touch hardware and can run on another host. Layering: `hal` -> `drivers` -> `core` -> `server` -> `ui`. `hal/base.py` has the interfaces, `hal/linux.py` the real backends, `hal/fake.py` recording fakes. Bench mode (Pins tab, `docs/gui.md`) lives in `server/bench.py`, which enforces the safety rules, and is exclusive with sweeping. Per point the sweep engine waits for lock detect, takes the median of the ADC reads and flags points (unlocked, overload, at floor, outlier, image not suppressed) in an optional fourth frame part, and can sweep twice with the LO on both sides to remove the low-IF image (`image_reject`, off by default); trace modes, markers and peak search stay in the GUI. Logging (`logs.py`): levels error to trace, stderr/journald on the BBB, a numbered ring served by the `log` command and published on topic `log` for the GUI's Device log (Advanced tab); trace never leaves the BBB. `patterns.py` already makes PE4302 write sequences and ADF4351 SPI frames for logic analyzer comparison.
 
+## EBAZ4205 port
+
+`zynq-ebaz/` holds a second target for the same adapter board and the same `sweepd`: Linux on the PS (`zynq-ebaz/sw/`) and an optional PL sweep engine (`zynq-ebaz/rtl/`). Two sessions work on it in worktrees: session L (Linux, branch `linux`, `../SAdiy-linux`) and session R (RTL, branch `rtl`, `../SAdiy-rtl`); the plan, ownership rules and the `seam:` commit rule for edits outside `zynq-ebaz/` are in `zynq-ebaz/docs/ebaz4205-zynq-plan.md`, the state in `zynq-ebaz/docs/STATUS-linux.md`, `log_linux.md`, `log_rtl.md`. The PetaLinux project is outside the repo (`/media/patrik/Workspaces/HW/ZYNQLinux/ebaz4205_sadiy/`); the files that matter are mirrored in `zynq-ebaz/sw/deploy/petalinux/`. ADF4351 CE is Linux's (EMIO 6, line 60); since register map 1.1 CE goes through the PL pin mux: while `STATUS.pin_owner_act` is 1 the engine drives it (`ADF_PINS.ce`) and Linux's state is ignored. EBAZ code reaches the board with `zynq-ebaz/sw/deploy/deploy_to_board.sh`; nothing of it has run on a sweep yet.
+
 ## Not done yet
 
 - ADF4351 register words (`drivers/adf4351.py`, R0..R5, `Adf4351.registers()`) are written and unit-tested for field positions, but not checked against the datasheet text or ADI's software. `python tools/bringup.py pll --mhz 100` prints the six words for a first-light test.
-- `build_hw_engine` in `sweepd` (real SPI, GPIO, ADS1115 for the sweep, enabling the outputs after lock), libgpiod instead of sysfs.
+- `build_hw_engine` in `sweepd` (real SPI, GPIO, ADS1115 for the sweep, enabling the outputs after lock, CE via `SynthCe`), libgpiod instead of sysfs. EBAZ4205: `sweepd --platform ebaz` sweeps through the PL engine (R's `ebaz_pl` backend) and `--bench-only` gives Linux the pins (`sadiy_ebaz/ps_backend.py`); both untested on the board, and there is no bench mode while it sweeps.
 - Bench mode and the ADS1115 driver have only run on the fake backend. Pin map, `config-pin` modes, SPI and I2C device numbers, PE4302 weights and polarity are unverified on a real BBB.

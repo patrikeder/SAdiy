@@ -1,6 +1,6 @@
 # Wiring overview
 
-- SBC pin maps and wiring order: [wiring-bbb.md](wiring-bbb.md), [wiring-rpi.md](wiring-rpi.md). Net list: [netlist.md](netlist.md).
+- SBC pin maps and wiring order: [wiring-bbb.md](wiring-bbb.md), EBAZ4205: [../zynq-ebaz/docs/pinmap.md](../zynq-ebaz/docs/pinmap.md), [wiring-rpi.md](wiring-rpi.md) (no longer developed). Net list: [netlist.md](netlist.md).
 - Diagrams and board hierarchy: [hierarchy.md](hierarchy.md).
 - This page: RF cabling between the boards.
 

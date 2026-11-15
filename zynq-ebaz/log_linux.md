@@ -82,3 +82,18 @@ Current state in one line (update at each entry): **Image rebuilt 2026-11-14 18:
 - Phase 1 flow brought in line (`phase1.tcl`: SPI1 EMIO, 18 GPIO, tie-offs; `phase1_top.v`): LCD pads are not wired in Phase 1, so only the engine image shows anything on the panel.
 - SD card: copy `BOOT.BIN` and `image.ub` to the FAT partition (boot.scr unchanged); the rootfs (and `~/sadiy`) stays. The new wic is built too.
 - Open (needs the board): panel size, colour order (`bgr`), RAM offset, LED polarity. Nothing is tested on hardware.
+
+## 2026-11-14 ADF4351 CE control (BBB and EBAZ)
+- Requested by the user: CE support in the Python control scripts on both targets; the RTL may take CE over through an internal mux that ignores the Linux state.
+- `drivers/synth_ce.py`, `hal/linux.py` (R built the CE mux in map 1.1 with other names than requested: `ce_owner.py` now reads `STATUS.pin_owner_act` and needs `ADF_PINS.ce` in the map) (`SysfsGpio(output=None)` looks at a line without changing it, `direction()`, `zynq_gpio_base()`), `hal/fake.py`, `tools/bringup.py synth-ce`, `sadiy_ebaz/ce_owner.py` (reads `STATUS.ce_engine` if the regmap has it). Details and the request to R in `docs/STATUS-linux.md`.
+- Tests: `tests/test_synth_ce.py` (10), `zynq-ebaz/sw/tests/test_ce_owner.py` (2); full suite 728 passed.
+
+## 2026-11-15 top on the LCD
+- Requested by the user: the login shell on the LCD is unusable (no keyboard, ~30 columns); show `top` continuously instead.
+- `sw/tools/ebaz_lcd_top.sh` (install / remove / status / frame / run): swaps the tty1 getty line of `/etc/inittab` for a loop around `top -b -n2` that prints a compact frame (time+load, tasks, CPU, memory, PID %CPU %MEM COMMAND) sized to the console. Runtime change on the SD card's rootfs (no image rebuild); `remove` restores the line. Tests: `sw/tests/test_lcd_top.py` (8, fake `top` in KiB and MiB layouts, install/remove on a copy of inittab). Works on the board (user report 2026-11-15), so the rebuilt image's LCD text console works too.
+
+## 2026-11-15 bench mode on the real EBAZ4205 (PS path)
+- Requested by the user: `sweepd --platform ebaz --bench-only` refused to start ("no bench mode on EBAZ4205 hardware yet").
+- `sw/sadiy_ebaz/ps_backend.py` (`EbazPsBackend`): EMIO GPIO = sysfs number base+54+n (base found from the 118-line PS chip), `/dev/spidev0.0`, `/dev/i2c-0`, no pin mux, no AIN. `prepare()` runs when bench mode opens: if the FPGA manager says `operating` and the ID register answers, it hands the pins back to Linux (`CTRL.pin_owner = 0` with an abort pulse) when a killed `sweepd` left the engine owning them; otherwise it only warns. `platforms/ebaz.py: build_bench_backend`; `sweepd`: `hardware_backend(cfg, pm)`; `BenchBackend.prepare()` hook; bench refuses `source: ain` on a map without AIN.
+- Sweeping (`--platform ebaz` without `--bench-only`) still has no bench: the engine owns the pins while it sweeps. Wiring tests and sweeping are two separate runs of `sweepd`.
+- No RTL change is needed: after reset `pin_owner = 0` (PS owns SPI, PE4302, CE, I2C), and LD is read straight from EMIO 7. Tests: `sw/tests/test_ps_backend.py` (15, fake /sys tree and fake register file). Not run on the board.

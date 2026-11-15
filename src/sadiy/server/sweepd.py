@@ -68,15 +68,25 @@ def build_hw_engine(cfg: dict) -> SweepEngine:
             "Hardware wiring is not implemented yet: needs Adf4351.registers() and the pin map "
             "(src/sadiy/pinmap.py, hw/wiring-bbb.md). Use --sim until then."
         )
+    return _platform_module(name).build_engine(cfg)
+
+
+def _platform_module(name: str):
     module = f"sadiy_ebaz.platforms.{name.replace('-', '_')}"
     try:
-        mod = importlib.import_module(module)
+        return importlib.import_module(module)
     except ModuleNotFoundError as exc:
         if exc.name not in (module, "sadiy_ebaz", "sadiy_ebaz.platforms"):
             raise
         raise RuntimeError(f"unknown platform {name!r}: expected a module {module} "
                            f"(is zynq-ebaz/sw on PYTHONPATH?)") from exc
-    return mod.build_engine(cfg)
+
+
+def hardware_backend(cfg: dict, pm):
+    """The bench backend of the real board: Linux on the BBB, the PS path of `sadiy_ebaz` on the EBAZ4205."""
+    if pm.name == "bbb":
+        return linux_backend(cfg)
+    return _platform_module(pm.name).build_bench_backend(cfg)
 
 
 class Sweepd:
@@ -375,10 +385,9 @@ def main(argv=None) -> None:
     mode = "bench-only" if args.bench_only else "simulated chain" if args.sim else "hardware"
     log.info("sweepd starting: %s on %s, log level %s", mode, pm.label, logs.level_name(level))
     # EBAZ4205 hardware: the PL sweep engine does the sweeps through its registers (sadiy_ebaz.platforms.ebaz_pl)
-    # and owns the pins, so there is no bench mode there yet (plan S5).
-    pl_hardware = pm.name != "bbb" and not args.sim
-    if pl_hardware and args.bench_only:
-        sys.exit(f"sweepd: no bench mode on {pm.label} hardware yet (only with --sim); see zynq-ebaz/docs/ebaz4205-zynq-plan.md S5")
+    # and owns the pins while sweepd sweeps, so there is no bench mode next to it. `--bench-only` gives the pins
+    # to Linux instead (sadiy_ebaz.ps_backend): wiring tests, with no sweeping.
+    pl_hardware = pm.name != "bbb" and not args.sim and not args.bench_only
     if args.bench_only:
         engine = None
     elif pl_hardware:
@@ -389,10 +398,15 @@ def main(argv=None) -> None:
     else:
         engine = build_sim_engine(cfg) if args.sim else build_hw_engine(cfg)
     if pl_hardware:
-        log.warning("no bench mode on %s hardware: the PL engine owns the pins", pm.label)
+        log.warning("no bench mode on %s hardware while sweeping: the PL engine owns the pins "
+                    "(use --bench-only for wiring tests)", pm.label)
         bench = None
     else:
-        bench = Bench(fake_backend(pm) if args.sim else linux_backend(cfg), cfg, platform=pm)
+        try:
+            backend = fake_backend(pm) if args.sim else hardware_backend(cfg, pm)
+        except (RuntimeError, OSError, ImportError) as exc:
+            sys.exit(f"sweepd: cannot start the {pm.label} bench backend: {exc}")
+        bench = Bench(backend, cfg, platform=pm)
     daemon = Sweepd(cfg, engine, bench, ring)
     if args.rt:
         _try_realtime()

@@ -1,6 +1,6 @@
 # SAdiy: DIY swept spectrum analyzer
 
-A swept low-IF spectrum analyzer built from ready-made RF modules and controlled by a BeagleBone Black (BBB). The software runs on a PC today against a simulated RF chain. It has not run on the real hardware yet: see [Status](#status).
+A swept low-IF spectrum analyzer built from ready-made RF modules and controlled by a BeagleBone Black (BBB). A port to the EBAZ4205 (Zynq-7010, Linux on the PS, optional sweep engine in the PL) is under way in [zynq-ebaz/](zynq-ebaz/README.md); both boards use the same adapter board and the same `sweepd`. The software runs on a PC today against a simulated RF chain. It has not run on the real RF hardware yet: see [Status](#status).
 
 The code is Python. C++ or Rust comes in only if a measured time per point demands it (`native/`).
 
@@ -36,6 +36,8 @@ python3 -m venv --system-site-packages .venv && . .venv/bin/activate
 pip install -e . --no-deps
 ```
 
+Only the steps to start the server on a board and the GUI on the PC: [docs/how-to-start.md](docs/how-to-start.md).
+
 Run the spectrum analyzer GUI. It starts its own simulated hardware, and its Pins tab drives a fake board:
 
 ```bash
@@ -50,11 +52,14 @@ python -m sadiy.ui.cli_client --count 5    # prints the peak of each sweep
 python -m sadiy.ui.cli_client --log-level warning   # also what sweepd reports: its history, then live
 ```
 
+Both boards are selectable: `--platform bbb|ebaz` (or `[platform] name` in the config) on `sweepd`, the GUI and the tools. The GUI's Pins tab has a platform selector; with `--platform` the other board is not shown (see [docs/gui.md](docs/gui.md)).
+
 Bring-up helpers that need no hardware:
 
 ```bash
 python tools/bringup.py pe4302-pattern --db 16 --from-db 15.5   # V1..V6 write order, for a logic analyzer
 python tools/bringup.py pll --mhz 110.7                         # divider, INT, FRAC, MOD
+python tools/bringup.py --platform ebaz synth-ce off --dry-run  # ADF4351 CE (on|off|release|read); on a board without --dry-run
 ```
 
 Run from a project checkout: the config is read from `config/default.toml` next to `src/`.
@@ -98,9 +103,9 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 
 | Path | What |
 |---|---|
-| `src/sadiy/pinmap.py` | the BBB pin map: nets, GPIO numbers, what each pin may do. Read by the diagram generator, the daemon and the GUI |
+| `src/sadiy/pinmap.py`, `pinmap_ebaz.py`, `platforms.py` | the pin maps (BBB P8/P9, EBAZ4205 DATA1/2/3): nets, GPIO numbers, what each pin may do, and the layout of the drawn board; `platforms.get(name)` picks one. Read by the diagram generator, the daemon and the GUI |
 | `src/sadiy/hal/` | SPI, GPIO, I2C and ADC abstraction: Linux backends and recording fakes |
-| `src/sadiy/drivers/` | PE4302, ADF4351, ADS1115 and on-chip ADC drivers |
+| `src/sadiy/drivers/` | PE4302, ADF4351 (and its chip enable, `synth_ce.py`), ADS1115 and on-chip ADC drivers |
 | `src/sadiy/core/` | frequency plan, detector model, calibration, sweep engine with lock gating, median and flags (no hardware access) |
 | `src/sadiy/server/` | `sweepd` daemon, wire protocol, bench mode |
 | `src/sadiy/logs.py` | log levels, the numbered ring buffer the GUI fetches from, repeat folding; standard library only |
@@ -111,6 +116,7 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 | `hw/` | wiring, diagrams, netlist, per-board notes, test points, missing parts, adapter board (KiCad) |
 | `docs/` | architecture, bring-up plans, GUI manual, `handoff.md` (starting on another PC) |
 | `deploy/` | BBB setup notes, systemd units, install, update and pin mode scripts, example local config |
+| `zynq-ebaz/` | EBAZ4205 port: Linux side (`sw/`), FPGA sweep engine (`rtl/`), PetaLinux notes, plan and status files (`docs/`); start with its README |
 | `sna/` | second project: a scalar network analyzer reusing the same chain |
 | `tools/` | bring-up and calibration helpers, `gen_diagrams.py`, `make_bbb_package.py` |
 | `dist/` | BBB packages built by `make_bbb_package.py`; not in git |
@@ -124,12 +130,13 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 | Document | What |
 |---|---|
 | [hw/wiring-bbb.md](hw/wiring-bbb.md) | BBB wiring, wiring order, power-on checks |
+| [zynq-ebaz/docs/pinmap.md](zynq-ebaz/docs/pinmap.md) | EBAZ4205 connectors DATA1/2/3: what is wired where (figures: `hw/diagrams/ebaz-*.svg`) |
 | [hw/netlist.md](hw/netlist.md) | every signal, strap and supply pin |
 | [hw/boards/sbc-adapter/README.md](hw/boards/sbc-adapter/README.md) | adapter board that carries the modules on the BBB |
 | [hw/as-built.md](hw/as-built.md) | what is really on the bench |
 | [docs/bringup.md](docs/bringup.md) | staged bring-up plan with pass criteria |
 
-The adapter board is BBB only: its Raspberry Pi connector was removed. The Raspberry Pi wiring notes and software paths are still in the repo but are no longer developed.
+The adapter board has no Raspberry Pi connector any more; it carries the modules on the BBB or, for the port, on the EBAZ4205. The Raspberry Pi wiring notes and software paths are still in the repo but are no longer developed.
 
 ## Status
 
@@ -145,7 +152,10 @@ The adapter board is BBB only: its Raspberry Pi connector was removed. The Raspb
 | ADS1115 driver | done, tested against a register model only; sweeps do not use it yet |
 | Bench mode (Pins tab) | done, **tested on the fake backend only**; the Linux backend has never run on a BBB |
 | ADF4351 register packing | R0..R5 written and unit-tested for field positions; **not yet checked against the datasheet text or ADI's software** |
-| Sweeping on real hardware (`build_hw_engine`) | **not written** |
+| Sweeping on real hardware (`build_hw_engine`) | **not written** for the BBB; the EBAZ4205 has a PL-engine backend (`sadiy_ebaz.platforms.ebaz_pl`, register access) that is untested on the board |
+| Platform choice BBB / EBAZ4205 (`--platform`, GUI selector, pin maps, figures) | done, tested on the fake backend and the simulator; `sweepd --platform ebaz --bench-only` gives the Pins tab the real board (Linux owns the pins; untested on the board) |
+| EBAZ4205 port (`zynq-ebaz/`) | image boots, EMIO readback checked at the bench (2026-11-14); LCD, LEDs and keys image built but not booted; PL sweep engine written and simulated, not run on the board; see `zynq-ebaz/docs/STATUS-linux.md` and `log_rtl.md` |
+| ADF4351 chip enable from Linux (`drivers/synth_ce.py`, `bringup.py synth-ce`) | done, tested with fakes; never run on a board. A PL mux that takes CE over is only a request to the RTL lane so far |
 | GPIO backend | sysfs; moves to libgpiod once the image is fixed |
 
-Unverified on a real BBB: the pin map, pin multiplexing and `config-pin` modes, and the SPI and I2C device numbers.
+Unverified on a real BBB: the pin map, pin multiplexing and `config-pin` modes, and the SPI and I2C device numbers. Unverified on the EBAZ4205: which signal sits on which DATA2 pin (to be probed with a DMM or the logic analyzer), the adapter connected, SPI frames, I2C.
