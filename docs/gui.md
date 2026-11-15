@@ -52,7 +52,14 @@ The board drawing shows P8 and P9 as in `hw/diagrams/bbb-p*-pinout.svg` (pin 1 a
 
 ### Using it on the EBAZ4205
 
-Status: **`sweepd` has no hardware backend for the EBAZ4205 yet** (plan S5 for the PS, S7 for the PL path). `sweepd --platform ebaz` without `--sim` exits with a message, so the Pins tab can not drive the real board today. What works now:
+Status: **the Pins tab works on the real EBAZ4205 only with `sweepd --platform ebaz --bench-only`** (Linux owns the pins: PS GPIO, `/dev/spidev0.0`, `/dev/i2c-0`; untested on the board). While `sweepd --platform ebaz` sweeps through the PL engine there is no bench mode, because the engine owns the pins: wiring tests and sweeping are two separate runs of `sweepd`. On the board (as root, `. ~/sadiy/env.sh` first):
+
+```
+sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz --bench-only      # on the board
+python -m sadiy.ui.sa_gui --platform ebaz --host <ebaz-ip> --connect                                # on the PC
+```
+
+Without the board:
 
 ```
 python -m sadiy.ui.sa_gui --platform ebaz --sim                  # the EBAZ board drawing against a simulated sweepd (try the whole tab)
@@ -61,7 +68,7 @@ python -m sadiy.ui.sa_gui --platform ebaz --host 127.0.0.1 --connect
 python tools/bringup.py --platform ebaz gpio-map                 # DATA2 pin, EMIO number and Linux GPIO number of every net
 ```
 
-For the real board use the scripts that run on it until S5 exists: `zynq-ebaz/sw/tools/ebaz_s4_readonly.sh` and `ebaz_s4_readback.sh` (EMIO and pad levels), `ebaz_lcd_test.py` (LCD, LEDs, keys) and the checklist in `zynq-ebaz/docs/ebaz-bringup.md`. Deployment to the board: `zynq-ebaz/sw/deploy/README.md`. When the backend exists the commands will be the BBB ones with `--platform ebaz --host <ebaz-ip>`; the EBAZ's address is on the network of its Ethernet port.
+Other scripts that run on the board: `zynq-ebaz/sw/tools/ebaz_s4_readonly.sh` and `ebaz_s4_readback.sh` (EMIO and pad levels), `ebaz_lcd_test.py` (LCD, LEDs, keys) and the checklist in `zynq-ebaz/docs/ebaz-bringup.md`. Deployment to the board: `zynq-ebaz/sw/deploy/README.md`. The EBAZ's address is the one on its Ethernet port.
 
 Differences from the BBB, all visible in the tab:
 

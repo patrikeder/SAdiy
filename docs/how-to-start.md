@@ -33,10 +33,11 @@ ssh petalinux@<ebaz-ip>
 sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz      # the PL sweep engine, needs root for /dev/mem
 ```
 
+- Wiring tests (Pins tab, raw ADF4351 / PE4302 / ADS1115 access, patterns; no sweeping): `--platform ebaz --bench-only` instead; Linux owns the pins then and hands them back from the PL engine if a killed server left them. Sweeping and bench mode are separate runs.
 - Without the adapter and detector: `--sim --platform ebaz` instead (simulated chain, no root needed).
 - Stop with Ctrl-C. Messages: `-v` for more, `-q` for less.
 - The server listens on tcp 5556 (sweeps) and 5557 (commands).
-- Needs the engine bitstream: it is in `BOOT.BIN` of the current SD card image. The hardware path and the Pins tab (no bench mode on real EBAZ hardware yet) are untested on the board.
+- Needs the engine bitstream: it is in `BOOT.BIN` of the current SD card image. Both the sweep path and `--bench-only` are untested on the board.
 
 **3. Start the GUI** (PC):
 
@@ -45,7 +46,7 @@ sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz  
 python -m sadiy.ui.sa_gui --platform ebaz --host <ebaz-ip> --connect
 ```
 
-Press **Run** on the Spectrum tab. Without a GUI: `python -m sadiy.ui.cli_client --host <ebaz-ip> --count 5`.
+Press **Run** on the Spectrum tab (sweeping server), or open the **Pins** tab and **Enter bench mode** (`--bench-only` server). Without a GUI: `python -m sadiy.ui.cli_client --host <ebaz-ip> --count 5`.
 
 ## C. BeagleBone Black: server on the board, GUI on the PC
 

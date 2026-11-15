@@ -54,7 +54,7 @@ What stays in the GUI: trace modes, markers, peak search, smoothing, dB/div. The
 
 ## Bench mode
 
-Direct pin control for wiring tests on the BBB or the EBAZ4205 (`server/bench.py`, GUI side in `gui.md`). The platform (`--platform`, `[platform] name`, default bbb) selects the pin map; `status` and `bench_open` return it, and a pin of the other board is refused. The EBAZ4205 has no pin mux (SPI and I2C are wired to the PS in the bitstream, no AIN0) and its sweep backends do not exist yet, so `sweepd --platform ebaz` runs only with `--sim`.
+Direct pin control for wiring tests on the BBB or the EBAZ4205 (`server/bench.py`, GUI side in `gui.md`). The platform (`--platform`, `[platform] name`, default bbb) selects the pin map; `status` and `bench_open` return it, and a pin of the other board is refused. The EBAZ4205 has no pin mux (SPI and I2C are wired to the PS in the bitstream, no AIN0). On its hardware `--bench-only` uses `sadiy_ebaz/ps_backend.py` (Linux owns the pins; when bench mode opens it hands them back from the PL engine if needed), while `sweepd` without `--bench-only` sweeps through the PL engine, which owns the pins, so there is no bench mode next to a sweep there.
 
 - **Where it runs:** inside `sweepd`, not in a separate daemon. `sweepd` must stay the only process that touches the hardware, and one process makes exclusivity with sweeping a plain check instead of a lock between daemons. `bench_*` commands are refused while a sweep runs and `run` is refused while bench mode is open. `sweepd --bench-only` runs it on the BBB before `build_hw_engine` exists; `--sim` gives it the fake backend.
 - **Rules live in the daemon, not the GUI**, so every client gets them. What a pin may do comes from `pinmap.py`:
@@ -105,7 +105,7 @@ The sweep samples the response of the IF filter, so the step must be no larger t
 | ADS1115 as the main ADC on every platform | same code path and same calibration whichever SBC is used. 16 bits, but at most 860 SPS (1.2 ms per conversion, plus the I2C transfers, see below). BBB AIN0 stays wired on the adapter (through a 0.751 divider) as a cross-check, read from the bench mode |
 | Bench mode inside `sweepd` | one owner of the hardware; exclusivity with sweeping without any locking |
 | One pin map source per platform (`pinmap.py` with the `NETS` table, `pinmap_ebaz.py`) | netlist, diagrams, daemon rules and the clickable board can not disagree; the EBAZ balls are checked against `zynq-ebaz/rtl/vivado/pins.toml` by a test |
-| ADF4351 CE is Linux's, not part of a sweep (`SynthCe`) | it is set once before the registers are written; low powers the chip down and loses the registers, so the driver flags `needs_reprogram`. On the EBAZ4205 the PL may take CE over through a mux (`STATUS.ce_engine`, not in the RTL yet); Linux writes are then remembered but ignored |
+| ADF4351 CE is Linux's, not part of a sweep (`SynthCe`) | it is set once before the registers are written; low powers the chip down and loses the registers, so the driver flags `needs_reprogram`. On the EBAZ4205 CE goes through the PL pin mux (register map 1.1): while the engine owns the pins (`STATUS.pin_owner_act`) it drives CE (`ADF_PINS.ce`) and Linux writes are remembered but ignored |
 | Python first, native later | only if the measured per-point time says so (`native/`) |
 | Simulator in the repo | whole stack testable without the hardware |
 

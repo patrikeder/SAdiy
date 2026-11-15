@@ -81,6 +81,11 @@ class BenchBackend(ABC):
     def ain(self, channel: int) -> AnalogInput:
         """An on-chip ADC channel."""
 
+    def prepare(self) -> list:
+        """Called when bench mode opens. Returns warnings (strings) about the state of the board, for example
+        who owns the pins. Nothing by default."""
+        return []
+
     @abstractmethod
     def set_mux(self, config_pin_name: str, mode: str) -> None:
         """Switch a header pin between GPIO and its bus function, for example ("P9_22", "gpio")."""

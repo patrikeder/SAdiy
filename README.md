@@ -152,8 +152,8 @@ The adapter board has no Raspberry Pi connector any more; it carries the modules
 | ADS1115 driver | done, tested against a register model only; sweeps do not use it yet |
 | Bench mode (Pins tab) | done, **tested on the fake backend only**; the Linux backend has never run on a BBB |
 | ADF4351 register packing | R0..R5 written and unit-tested for field positions; **not yet checked against the datasheet text or ADI's software** |
-| Sweeping on real hardware (`build_hw_engine`) | **not written** for the BBB; for the EBAZ4205 the backends are plan steps S5 (PS) and S7 (PL), not written either |
-| Platform choice BBB / EBAZ4205 (`--platform`, GUI selector, pin maps, figures) | done, tested on the fake backend and the simulator; `sweepd --platform ebaz` runs only with `--sim` |
+| Sweeping on real hardware (`build_hw_engine`) | **not written** for the BBB; the EBAZ4205 has a PL-engine backend (`sadiy_ebaz.platforms.ebaz_pl`, register access) that is untested on the board |
+| Platform choice BBB / EBAZ4205 (`--platform`, GUI selector, pin maps, figures) | done, tested on the fake backend and the simulator; `sweepd --platform ebaz --bench-only` gives the Pins tab the real board (Linux owns the pins; untested on the board) |
 | EBAZ4205 port (`zynq-ebaz/`) | image boots, EMIO readback checked at the bench (2026-11-14); LCD, LEDs and keys image built but not booted; PL sweep engine written and simulated, not run on the board; see `zynq-ebaz/docs/STATUS-linux.md` and `log_rtl.md` |
 | ADF4351 chip enable from Linux (`drivers/synth_ce.py`, `bringup.py synth-ce`) | done, tested with fakes; never run on a board. A PL mux that takes CE over is only a request to the RTL lane so far |
 | GPIO backend | sysfs; moves to libgpiod once the image is fixed |

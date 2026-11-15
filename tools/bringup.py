@@ -125,7 +125,7 @@ def _ce_line(args, pm):
 
 
 def _ce_owner(args, pm):
-    """EBAZ: a probe of STATUS.ce_engine through /dev/mem, or None."""
+    """EBAZ: a probe of STATUS.pin_owner_act (the engine owns CE while it is 1) through /dev/mem, or None."""
     if not args.pl_owner:
         return None
     if pm.name != "ebaz":
@@ -138,7 +138,7 @@ def _ce_owner(args, pm):
     from sadiy_ebaz.devmem import DevMemRegs
 
     if not has_ce_mux():
-        print("this register map has no STATUS.ce_engine: CE is driven by Linux only (no PL mux in this bitstream)")
+        print("this register map has no CE mux (ADF_PINS.ce): CE is driven by Linux only")
         return None
     return ce_owner_probe(DevMemRegs(args.pl_base).read)
 

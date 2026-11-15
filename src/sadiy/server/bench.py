@@ -235,6 +235,10 @@ class Bench:
         self._renewed = self._clock()
         warnings: List[str] = []
         safe = 1 if self.active_high else 0
+        try:
+            warnings.extend(self.backend.prepare())
+        except OSError as exc:
+            warnings.append(f"board check failed: {exc}")
         try:                                    # the attenuator first: it protects the chain
             lines = []
             for pid in self.att_pins:
@@ -679,6 +683,8 @@ class Bench:
         source = cmd.get("source", "ads1115")
         channel = int(cmd.get("channel", 0))
         if source == "ain":
+            if not any(p.ain is not None for p in self.pm.pins.values()):
+                raise Refused(f"{self.pm.label} has no on-chip ADC input: use source ads1115")
             if not 0 <= channel < AIN_CHANNELS:
                 raise Refused(f"AIN channel must be 0..{AIN_CHANNELS - 1}")
             ain = self.backend.ain(channel)

@@ -1,30 +1,32 @@
 """Who drives ADF4351 CE on the EBAZ4205: Linux (EMIO GPIO 6) or the PL engine (lane L).
 
-Contract with the RTL (session R): when the PL has a mux in front of the CE pad, STATUS has a read-only bit
-`ce_engine`: 1 = the engine's CE value reaches the pad and the Linux EMIO state is ignored. A regmap without
-that bit (the current bitstreams) means CE is always Linux's, whatever `pin_owner` says.
+Since register map 1.1 `adf4351_ce` goes through the pin mux of `sadiy_top` like the SPI and PE4302 pins: while
+`STATUS.pin_owner_act` is 1 the engine drives CE (its level is `ADF_PINS.ce`) and the Linux EMIO state is
+ignored; with the PS as owner the pad follows EMIO GPIO 6. A regmap without `ADF_PINS.ce` (older bitstreams)
+has no mux: CE is always Linux's, whatever `pin_owner` says.
 """
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable
 
 from .regmap_toml import REGS
 
-REG, FIELD = "STATUS", "ce_engine"
+MUX_REG, MUX_FIELD = "ADF_PINS", "ce"      # present only in maps with the CE mux
+OWNER_REG, OWNER_FIELD = "STATUS", "pin_owner_act"
 
 
 def has_ce_mux(regs=None) -> bool:
     regs = REGS if regs is None else regs
-    reg = regs.get(REG)
-    return reg is not None and FIELD in reg.fields
+    mux, owner = regs.get(MUX_REG), regs.get(OWNER_REG)
+    return bool(mux and MUX_FIELD in mux.fields and owner and OWNER_FIELD in owner.fields)
 
 
 def ce_owner_probe(read: Callable[[int], int], regs=None) -> Callable[[], bool]:
-    """A callable for `SynthCe(owner_active=...)`. `read` is `DevMemRegs.read` (offset -> 32-bit word).
-    Always False when the register map has no CE mux bit."""
+    """A callable for `SynthCe(owner_active=...)`: True while the engine owns the pins (and so CE).
+    `read` is `DevMemRegs.read` (offset -> 32-bit word). Always False when the map has no CE mux."""
     regs = REGS if regs is None else regs
     if not has_ce_mux(regs):
         return lambda: False
-    reg: Optional[object] = regs[REG]
-    field = reg.fields[FIELD]
+    reg = regs[OWNER_REG]
+    field = reg.fields[OWNER_FIELD]
     return lambda: bool(field.get(read(reg.offset)))
