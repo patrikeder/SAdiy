@@ -25,8 +25,8 @@ The PetaLinux project is not in git. The files that matter are mirrored here:
 - `petalinux/kernel/user_lcd.cfg`: kernel fragment (framebuffer console for the adapter LCD), listed in the
   project's `linux-xlnx_%.bbappend`.
 - `petalinux/build_ebaz_sadiy.sh`: the build; it installs the two files above, imports the XSA and builds. Default XSA is
-  session R's engine XSA (snapshot `xsa/ebaz_sadiy_20261114_1709.xsa` in the project: PS7 with SPI1 and 18 EMIO GPIO, engine and
-  LCD pads), so BOOT.BIN carries the engine bitstream; `XSA=<file>` builds from another one (for example Phase 1).
+  session R's engine XSA (snapshot `xsa/ebaz_sadiy_20261115_0003.xsa` in the project: PS7 with SPI1 and 18 EMIO GPIO, engine and
+  LCD pads), so BOOT.BIN carries the engine bitstream of that snapshot (register map 1.2; the 2026-11-14 17:09 XSA, map 1.0, is kept next to it); `XSA=<file>` builds from another one (for example Phase 1).
 - To update an SD card that already runs: copy `images/linux/BOOT.BIN` and `image.ub` to its FAT partition; the rootfs stays.
 
 ## Steps
@@ -101,8 +101,8 @@ The script loads the bitstream through `/sys/class/fpga_manager/fpga0` (the root
 and MII pass through the PL and are interrupted during reconfiguration) and prints ID / VERSION read via `/dev/mem`.
 
 Fallback if the Ethernet link does not come back after the runtime load: boot with the bitstream baked into `BOOT.BIN`.
-The current `images/linux/BOOT.BIN` of the PetaLinux project already is that (R's 2026-11-14 engine XSA), so no runtime
-load is needed to get the engine; the Phase 1 files are in `images/phase1-backup/`. Rebuild when the bitstream changes.
+The current `images/linux/BOOT.BIN` of the PetaLinux project already is that (R's 2026-11-15 00:03 engine XSA), so no runtime
+load is needed to get the engine (map 1.2 since the rebuild of 2026-11-15; a card written before has map 1.0, enough for `--bench-only` only); the Phase 1 files are in `images/phase1-backup/`. Rebuild when the bitstream changes.
 
 ## Python code is not in the image: deploy it
 

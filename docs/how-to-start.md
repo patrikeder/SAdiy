@@ -37,7 +37,7 @@ sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz  
 - Without the adapter and detector: `--sim --platform ebaz` instead (simulated chain, no root needed).
 - Stop with Ctrl-C. Messages: `-v` for more, `-q` for less.
 - The server listens on tcp 5556 (sweeps) and 5557 (commands).
-- Needs the engine bitstream: it is in `BOOT.BIN` of the current SD card image. Both the sweep path and `--bench-only` are untested on the board.
+- Bitstream: the `BOOT.BIN` rebuilt on 2026-11-15 14:53 holds the engine of 2026-11-15 00:03 = **register map 1.2** (sweep path, ADS1115 reader, CE and I2C pin mux, IF path). An SD card written before that has map 1.0 (engine of 2026-11-14 17:09): `--bench-only` and detector `ps` / `test` still work with it, the default PL detector stops with "needs map >= 1.1". Update the card: copy `BOOT.BIN` and `image.ub` (see `zynq-ebaz/sw/deploy/README.md`), or load the newer bitstream for one run with `sadiy_pl_load.sh` from session R's bring-up package. Both the sweep path and `--bench-only` are untested on the board.
 
 **3. Start the GUI** (PC):
 

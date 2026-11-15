@@ -52,8 +52,8 @@ What this proves: line numbering 54 + n and the PL IOBUF path. What it does not 
 
 Session R's engine design changed the PS7 (SPI1 on EMIO, 18 EMIO GPIO lines) and wires the adapter's ST7789 LCD,
 three LEDs and five keys to Linux: see `docs/lcd-st7789.md`. The boot image is now built from R's XSA
-(`xsa/ebaz_sadiy_20261114_1709.xsa` in the PetaLinux project, a snapshot of `build/fpga/ebaz_sadiy.xsa`), so BOOT.BIN
-contains the engine bitstream (it was `BOOT_engine.BIN` before) and the PS7 and FSBL match. Phase 1 files: `BOOT.BIN`,
+(`xsa/ebaz_sadiy_20261115_0003.xsa` in the PetaLinux project, a snapshot of `build/fpga/ebaz_sadiy.xsa`; the earlier one of 2026-11-14 17:09 was register map 1.0, its boot files are in `images/map10-backup/`), so BOOT.BIN
+contains the engine bitstream of that snapshot, register map 1.2 (it was `BOOT_engine.BIN` before) and the PS7 and FSBL match. Phase 1 files: `BOOT.BIN`,
 `image.ub`, `boot.scr`, `system.dtb` are saved in `images/phase1-backup/` of the project.
 
 | What | Where |

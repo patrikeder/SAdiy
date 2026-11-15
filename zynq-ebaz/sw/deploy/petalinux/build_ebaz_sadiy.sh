@@ -5,7 +5,7 @@
 # Also installs system-user.dtsi and the kernel fragment from this directory into the project.
 HERE=$(cd "$(dirname "$0")" && pwd)
 cd "$HERE"
-XSA=${XSA:-$HERE/xsa/ebaz_sadiy_20261114_1709.xsa}
+XSA=${XSA:-$HERE/xsa/ebaz_sadiy_20261115_0003.xsa}
 DEPLOY=${DEPLOY:-/media/patrik/Workspaces/uC/SAdiy-linux/zynq-ebaz/sw/deploy/petalinux}
 source ../petalinux_2502/settings.sh
 if [ -d "$DEPLOY" ]; then
