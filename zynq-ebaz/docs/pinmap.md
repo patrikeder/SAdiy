@@ -7,19 +7,19 @@ Reference: EBAZ4205 (XC7Z010-CLG400), expansion connectors DATA1..3 (2.0 mm, 2x1
 | Connector pin | FPGA ball | Bank | I/O name | Signal | Dir | Function | Status | EMIO / note |
 |---|---|---|---|---|---|---|---|---|
 | DATA1-5 | A20 | 35 | IO_L2N_T0_AD8N_35 | `adc_d[0]` | in | AD9226 (planned) | planned |  |
-| DATA1-6 | H16 | 35 | IO_L13P_T2_MRCC_35 | `adc_otr` | in | AD9226 (planned) | planned |  |
-| DATA1-7 | B19 | 35 | IO_L2P_T0_AD8P_35 | `adc_d[1]` | in | AD9226 (planned) | planned |  |
+| DATA1-6 | H16 | 35 | IO_L13P_T2_MRCC_35 | `adc_otr` | in | AD9226 (planned) | planned | on this adapter: H16 is the adapter's UART header RX; not constrained |
+| DATA1-7 | B19 | 35 | IO_L2P_T0_AD8P_35 | `adc_d[1]` | in | AD9226 (planned) | planned | on this adapter: B19 is the adapter's HDMI DAT2; not constrained |
 | DATA1-8 | B20 | 35 | IO_L1N_T0_AD0N_35 | `adc_d[2]` | in | AD9226 (planned) | planned |  |
-| DATA1-9 | C20 | 35 | IO_L1P_T0_AD0P_35 | `adc_d[3]` | in | AD9226 (planned) | planned |  |
-| DATA1-11 | H17 | 35 | IO_L13N_T2_MRCC_35 | `adc_d[11]` | in | AD9226 (planned) | planned |  |
+| DATA1-9 | C20 | 35 | IO_L1P_T0_AD0P_35 | `adc_d[3]` | in | AD9226 (planned) | planned | on this adapter: C20 is the adapter's HDMI DAT1; not constrained |
+| DATA1-11 | H17 | 35 | IO_L13N_T2_MRCC_35 | `adc_d[11]` | in | AD9226 (planned) | planned | on this adapter: H17 is the adapter's UART header TX; not constrained |
 | DATA1-13 | D20 | 35 | IO_L4N_T0_35 | `adc_d[4]` | in | AD9226 (planned) | planned | schematic text says D19, see header |
-| DATA1-14 | D18 | 35 | IO_L3N_T0_DQS_AD1N_35 | `adc_d[5]` | in | AD9226 (planned) | planned |  |
-| DATA1-15 | H18 | 35 | IO_L14N_T2_AD4N_SRCC_35 | `adc_d[10]` | in | AD9226 (planned) | planned |  |
-| DATA1-16 | D19 | 35 | IO_L4P_T0_35 | `adc_d[6]` | in | AD9226 (planned) | planned |  |
+| DATA1-14 | D18 | 35 | IO_L3N_T0_DQS_AD1N_35 | `adc_d[5]` | in | AD9226 (planned) | planned | on this adapter: D18 is the adapter's buzzer; not constrained |
+| DATA1-15 | H18 | 35 | IO_L14N_T2_AD4N_SRCC_35 | `led[0]` | out | other | in use | adapter LED1 (EMIO GPIO 10, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc |
+| DATA1-16 | D19 | 35 | IO_L4P_T0_35 | `adc_d[6]` | in | AD9226 (planned) | planned | on this adapter: D19 is the adapter's HDMI DAT0; not constrained |
 | DATA1-17 | F20 | 35 | IO_L15N_T2_DQS_AD12N_35 | `adc_d[7]` | in | AD9226 (planned) | planned |  |
-| DATA1-18 | E19 | 35 | IO_L5N_T0_AD9N_35 | `adc_d[8]` | in | AD9226 (planned) | planned |  |
-| DATA1-19 | F19 | 35 | IO_L15P_T2_DQS_AD12P_35 | `adc_d[9]` | in | AD9226 (planned) | planned |  |
-| DATA1-20 | K17 | 35 | IO_L12P_T1_MRCC_35 | `adc_clk` | out | AD9226 (planned) | planned |  |
+| DATA1-18 | E19 | 35 | IO_L5N_T0_AD9N_35 | `led[2]` | out | other | in use | adapter LED3 (EMIO GPIO 12, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc |
+| DATA1-19 | F19 | 35 | IO_L15P_T2_DQS_AD12P_35 | `adc_d[9]` | in | AD9226 (planned) | planned | on this adapter: F19 is the adapter's HDMI CLK; not constrained |
+| DATA1-20 | K17 | 35 | IO_L12P_T1_MRCC_35 | `led[1]` | out | other | in use | adapter LED2 (EMIO GPIO 11, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc |
 | DATA2-5 | G20 | 35 | IO_L18N_T2_AD13N_35 | `adf4351_clk` | out | ADF4351 synthesiser | in use | PS SPI0 SCLK via EMIO |
 | DATA2-6 | J18 | 35 | IO_L14P_T2_AD4P_SRCC_35 | `spare_d2_6` | inout | spare | planned | spare |
 | DATA2-7 | G19 | 35 | IO_L18P_T2_AD13P_35 | `adf4351_dat` | out | ADF4351 synthesiser | in use | PS SPI0 MOSI via EMIO |
@@ -34,8 +34,18 @@ Reference: EBAZ4205 (XC7Z010-CLG400), expansion connectors DATA1..3 (2.0 mm, 2x1
 | DATA2-18 | L20 | 35 | IO_L9N_T1_DQS_AD3N_35 | `pe4302_v[4]` | out | PE4302 attenuator | in use | V5 = 8 dB |
 | DATA2-19 | M20 | 35 | IO_L7N_T1_AD2N_35 | `pe4302_v[5]` | out | PE4302 attenuator | in use | V6 = 16 dB |
 | DATA2-20 | L17 | 35 | IO_L11N_T1_SRCC_35 | `i2c_scl` | inout | I2C, ADS1115 | in use | PS I2C0 SCL via EMIO (ADS1115, address 0x48) |
+| DATA3-9 | N17 | 34 | IO_L23P_T3_34 | `lcd_res` | out | other | in use | ST7789 RES = EMIO GPIO 9 |
+| DATA3-11 | P20 | 34 | IO_L14N_T2_SRCC_34 | `lcd_sda` | out | other | in use | ST7789 SDA = PS SPI1 MOSI via EMIO |
+| DATA3-13 | R18 | 34 | IO_L20N_T3_34 | `lcd_dc` | out | other | in use | ST7789 DC = EMIO GPIO 8 |
+| DATA3-14 | R19 | 34 | IO_0_34 | `lcd_scl` | out | other | in use | ST7789 SCL = PS SPI1 SCLK via EMIO |
+| DATA3-15 | P19 | 34 | IO_L13N_T2_MRCC_34 | `keys[1]` | in | other | in use | adapter KEY2 (EMIO GPIO 14) |
+| DATA3-16 | T20 | 34 | IO_L15P_T2_DQS_34 | `lcd_cs` | out | other | in use | ST7789 CS = PS SPI1 SS0 via EMIO |
+| DATA3-17 | U20 | 34 | IO_L15N_T2_DQS_34 | `keys[2]` | in | other | in use | adapter KEY3 (EMIO GPIO 15) |
+| DATA3-18 | T19 | 34 | IO_25_34 | `keys[0]` | in | other | in use | adapter KEY1 (EMIO GPIO 13, Linux, active low) |
+| DATA3-19 | V20 | 34 | IO_L16P_T2_34 | `keys[4]` | in | other | in use | adapter KEY5 (EMIO GPIO 17) |
+| DATA3-20 | U19 | 34 | IO_L12N_T1_MRCC_34 | `keys[3]` | in | other | in use | adapter KEY4 (EMIO GPIO 16) |
 
-Supply / ground per the plan: pins 1-2 of every connector are supply (5..12 V, never wire to a peripheral), 3-4 and 12 GND, 10 NC. DATA3 is not mapped yet.
+Supply / ground per the plan: pins 1-2 of every connector are supply (5..12 V, never wire to a peripheral), 3-4 and 12 GND, 10 NC. DATA3 only carries the adapter's keys and display (see below).
 
 ## Board-fixed pins, one line each
 
@@ -110,11 +120,11 @@ All 14 DATA2 control balls are on this connector. Free for the PCBs: J18, M19, N
 
 ### Conflict with the planned AD9226 on DATA1
 
-With this adapter the following planned `adc_*` balls are also wired to adapter functions: H18 (LED1), K17 (LED2), E19 (LED3), H16 (UART header RX), H17 (UART header TX), D19 (HDMI DAT0), C20 (HDMI DAT1), B19 (HDMI DAT2), F19 (HDMI CLK), D18 (buzzer). The right-hand connector carries no DATA1 signals, so the AD9226 cannot use DATA1 with this adapter.
+With this adapter the following planned `adc_*` balls are also wired to adapter functions: H18 (LED1), K17 (LED2), E19 (LED3), H16 (UART header RX), H17 (UART header TX), D19 (HDMI DAT0), C20 (HDMI DAT1), B19 (HDMI DAT2), F19 (HDMI CLK), D18 (buzzer). The right-hand connector carries no DATA1 signals, so the AD9226 cannot use DATA1 with this adapter. The LEDs H18 / K17 / E19 stay as they are (user decision 2026-11-15; `pins.toml` lists them as `led[n]`), so `adc_d[8]`, `adc_d[10]` and `adc_clk` have no DATA1 ball on this adapter; only a different adapter PCB (planned for a later stage) would free them.
 
 ### Proposal: AD9226 through the HDMI port
 
-The HDMI port carries four differential pairs (DAT0, DAT1, DAT2, CLK) = 8 FPGA balls, exactly 8 of the 14 planned AD9226 balls. With the 5 free balls of the right connector that makes 13: 12 data bits and the clock; OTR needs one more (the UART header H16 once its jumper is removed, or leave it out). Used as single-ended LVCMOS33. NOT in `pins.toml`; the Linux lane owns that file.
+The HDMI port carries four differential pairs (DAT0, DAT1, DAT2, CLK) = 8 FPGA balls, exactly 8 of the 14 planned AD9226 balls. With the 5 free balls of the right connector that makes 13: 12 data bits and the clock; OTR needs one more (the UART header H16 once its jumper is removed, or leave it out). Used as single-ended LVCMOS33. A proposal only: NOT in `pins.toml` (the Linux lane owns that file) and not constrained; the adapter PCB will probably be replaced later, then the pins are chosen again.
 
 | AD9226 signal | Ball | Where | Bank | I/O name |
 |---|---|---|---|---|

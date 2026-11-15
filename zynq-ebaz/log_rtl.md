@@ -22,6 +22,21 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
 
 **2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board only map 1.0 has run (57 checks passed, SPI clock verified); maps 1.1 / 1.2 and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
 
+## 2026-11-15 adapter pins from L's pins.toml (not merged yet), AD9226 pins stay a proposal
+
+- L's `pins.toml` (worktree `SAdiy-linux`, uncommitted when read) lists the adapter LEDs as `led[0..2]` (H18, K17,
+  E19), keys and display as DATA3 entries, and notes the AD9226 balls shared with the adapter. User decision: the
+  LEDs stay, so `adc_d[8]`, `adc_d[10]` and `adc_clk` have no DATA1 ball on this adapter. The user will probably
+  replace the adapter later; **ADC_PROPOSAL in `gen_pinmap.py` stays a proposal**, nothing about the LED/key/HDMI
+  assignment is hard-wired beyond `adapter_ui.xdc` and the PS7/EMIO settings.
+- Confirmed by the user: right connector row 3 left is **J20** (not U20; U20 is KEY3). The "verify" notes are gone from
+  `gen_pinmap.py`; the older entries below still show them (history).
+- `gen_pinmap.py` got `PINS_TOML=<file>` to read a pins.toml other than the worktree's (used with L's file until it is
+  merged); text updated (DATA3 now mapped, LED decision, proposal not final). Regenerated `docs/pinmap.md` and
+  `docs/pinmap.svg` (`--check`: current with L's file). The snapshot `rtl/fpga/constraints/data2_pins.xdc` is now a copy
+  of L's generated `ebaz4205.xdc` (`check_pins.sh`: identical). `pinmap-fpga.svg` and `pinmap-adapter.svg` did not change.
+- After L merges: run `gen_pinmap.py` without `PINS_TOML` (same output expected). Nothing committed.
+
 ## 2026-11-15 review of session L's bench mode (5128b56), merged (for L: one change in your file)
 
 - Reviewed `ps_backend.py`, `ce_owner.py`, the `sweepd.py` / `bench.py` / `hal/base.py` changes: consistent with the
