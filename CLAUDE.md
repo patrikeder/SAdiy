@@ -18,7 +18,7 @@ Only one machine works on the project at a time; `origin` (GitHub) is the single
 
 ```
 . .venv/bin/activate
-pytest                                  # 728 passed at last check (2026-11-14); GUI tests are skipped without the GUI deps
+pytest                                  # 791 passed at last check (2026-11-15); GUI tests are skipped without the GUI deps
 python -m sadiy.server.sweepd --sim &   # simulated chain, tcp 5556 (frames) / 5557 (commands)
 python -m sadiy.ui.sa_gui --sim         # GUI against its own simulator
 python -m sadiy.server.sweepd --bench-only       # on the BBB: only bench mode, real hardware (add --sim for the fake board)

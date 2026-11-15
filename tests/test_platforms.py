@@ -89,7 +89,7 @@ def test_ebaz_pin_map_agrees_with_pins_toml():
     by_pin = {(s["connector"], s["pin"]): s for s in _toml_signals().values()}
     for header, balls in pinmap_ebaz.BALLS.items():
         for number, ball in balls.items():
-            if header == "DATA3" and (header, number) not in by_pin:      # DATA3 is not in pins.toml yet
+            if header == "DATA3" and (header, number) not in by_pin:      # only the adapter's keys and display are listed
                 continue
             assert by_pin[(header, number)]["ball"] == ball, f"{header}.{number}"
     for number, signal in pinmap_ebaz.DATA2_SIGNALS.items():
@@ -97,6 +97,9 @@ def test_ebaz_pin_map_agrees_with_pins_toml():
         assert sig["name"] == signal and sig.get("active", True)
     for number, role in pinmap_ebaz.DATA1_ROLES.items():
         assert by_pin[("DATA1", number)]["name"] == role
+    for number, role in pinmap_ebaz.DATA3_ADAPTER.items():
+        assert by_pin[("DATA3", number)]["name"] == role
+    assert {n for (h, n) in by_pin if h == "DATA3"} == set(pinmap_ebaz.DATA3_ADAPTER)
 
 
 # ---------------------------------------------------------------- bench on the EBAZ map

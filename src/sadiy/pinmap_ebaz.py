@@ -38,10 +38,17 @@ DATA2_SIGNALS: Dict[int, str] = {
     19: "pe4302_v[5]", 20: "i2c_scl", 11: "i2c_sda",
 }
 
-# DATA1 is reserved for the AD9226 module (Phase 4, not in the bitstream yet).
+# DATA1 is reserved for the AD9226 module (Phase 4, not in the bitstream yet), except the three balls that the
+# HelloFPGA adapter's LEDs use (pins.toml: led[0..2]; the LEDs can be freed only with a different adapter PCB).
 DATA1_ROLES: Dict[int, str] = {
     5: "adc_d[0]", 6: "adc_otr", 7: "adc_d[1]", 8: "adc_d[2]", 9: "adc_d[3]", 11: "adc_d[11]", 13: "adc_d[4]",
-    14: "adc_d[5]", 15: "adc_d[10]", 16: "adc_d[6]", 17: "adc_d[7]", 18: "adc_d[8]", 19: "adc_d[9]", 20: "adc_clk",
+    14: "adc_d[5]", 15: "led[0]", 16: "adc_d[6]", 17: "adc_d[7]", 18: "led[2]", 19: "adc_d[9]", 20: "led[1]",
+}
+
+# DATA3 pins that the adapter's display and keys occupy (Linux: PS SPI1 and EMIO GPIO), by pin number.
+DATA3_ADAPTER: Dict[int, str] = {
+    9: "lcd_res", 11: "lcd_sda", 13: "lcd_dc", 14: "lcd_scl", 15: "keys[1]", 16: "lcd_cs", 17: "keys[2]",
+    18: "keys[0]", 19: "keys[4]", 20: "keys[3]",
 }
 
 SUPPLY = {1: ("VCC in (5 to 12 V)", "power"), 2: ("VCC in (5 to 12 V)", "power"), 3: ("GND", "gnd"),
@@ -79,7 +86,11 @@ def _build() -> Dict[str, Pin]:
                 if header == "DATA2" and number in DATA2_SIGNALS:
                     name, kind = f"{ball}  {DATA2_SIGNALS[number]}", "free"
                 elif header == "DATA1":
-                    name, kind = f"{ball}  {DATA1_ROLES[number]} (AD9226, later)", "special"
+                    role = DATA1_ROLES[number]
+                    what = "adapter LED" if role.startswith("led") else "AD9226, later"
+                    name, kind = f"{ball}  {role} ({what})", "special"
+                elif header == "DATA3" and number in DATA3_ADAPTER:
+                    name, kind = f"{ball}  {DATA3_ADAPTER[number]} (adapter, Linux)", "special"
                 elif header == "DATA2":
                     name, kind = f"{ball}  spare", "special"
                 else:

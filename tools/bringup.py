@@ -15,7 +15,8 @@
   synth-ce on|off|release|read [--dry-run] [--gpio N] [--pl-owner]
                            run ON THE SBC: ADF4351 chip enable (BBB and EBAZ4205). off powers the chip down
                            (registers are lost: write R5..R0 again after on), release lets the adapter's
-                           jumper / pull-up decide. EBAZ: --pl-owner reads whether the PL engine owns CE
+                           jumper / pull-up decide. EBAZ: --pl-owner reads whether the PL engine owns CE (refuses
+                           while the PL is not configured: that read would stall the CPU)
   pll --mhz 110.7          divider / INT / FRAC / MOD, the real output frequency and the six register words
   sim-sweep                one simulated sweep, prints the strongest points
 """
@@ -135,8 +136,12 @@ def _ce_owner(args, pm):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "zynq-ebaz" / "sw"))   # or PYTHONPATH on the board
     from sadiy_ebaz.ce_owner import ce_owner_probe, has_ce_mux
-    from sadiy_ebaz.devmem import DevMemRegs
+    from sadiy_ebaz.devmem import DevMemRegs, pl_not_ready
 
+    why = pl_not_ready(args.fpga_state)                      # an AXI read of an unconfigured PL stalls the CPU
+    if why:
+        raise SystemExit(f"{why}: not reading the PL registers (a read would stall the CPU). Load the bitstream "
+                         "first (sadiy_pl_load.sh, or boot an image whose BOOT.BIN has it), or leave out --pl-owner")
     if not has_ce_mux():
         print("this register map has no CE mux (ADF_PINS.ce): CE is driven by Linux only")
         return None
@@ -145,7 +150,8 @@ def _ce_owner(args, pm):
 
 def cmd_ce(args):
     pm = platforms.get(args.platform)
-    ce = SynthCe(_ce_line(args, pm), _ce_owner(args, pm))
+    owner = _ce_owner(args, pm)                      # first: it may refuse, before any GPIO line is touched
+    ce = SynthCe(_ce_line(args, pm), owner)
     if args.action != "read":
         applied = {"on": ce.enable, "off": ce.disable, "release": ce.release}[args.action]()
         if not applied:
@@ -208,6 +214,7 @@ def main():
     e.add_argument("--dry-run", action="store_true", help="no hardware: a fake line (CE pulled high while released)")
     e.add_argument("--pl-owner", action="store_true", help="ebaz: ask the PL (/dev/mem) whether the engine owns CE")
     e.add_argument("--pl-base", type=lambda x: int(x, 0), default=0x43C00000)
+    e.add_argument("--fpga-state", default="/sys/class/fpga_manager/fpga0/state", help=argparse.SUPPRESS)   # tests
     e.set_defaults(fn=cmd_ce)
     f = sub.add_parser("adf4351-pattern")
     f.add_argument("--word", action="append", required=True, help="register word, e.g. 0x00580005")

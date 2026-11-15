@@ -109,3 +109,21 @@ def test_bringup_finds_sadiy_without_pythonpath():
                          capture_output=True, text=True, env={"PATH": "/usr/bin"}, cwd="/", timeout=30)
     assert out.returncode == 0, out.stderr
     assert "CE (DATA2.13, ebaz)" in out.stdout
+
+
+def test_pl_owner_refuses_an_unconfigured_pl(tmp_path):
+    """--pl-owner reads /dev/mem; with the PL not configured that read stalls the CPU, so it must stop first."""
+    state = tmp_path / "state"
+    state.write_text("unknown\n")
+    out = run("ebaz", "read", "--dry-run", "--pl-owner", "--fpga-state", str(state))
+    assert out.returncode != 0
+    assert "PL is unknown" in out.stderr and "stall" in out.stderr and "sadiy_pl_load.sh" in out.stderr
+    assert "CE (" not in out.stdout
+
+
+def test_pl_owner_passes_the_state_check_when_operating(tmp_path):
+    """With the PL operating the check lets it through; what fails next is /dev/mem (not a board), not the check."""
+    state = tmp_path / "state"
+    state.write_text("operating\n")
+    out = run("ebaz", "read", "--dry-run", "--pl-owner", "--fpga-state", str(state))
+    assert "PL is" not in out.stderr and "stall" not in out.stderr

@@ -209,3 +209,14 @@ def test_sweepd_bench_only_starts_on_ebaz_hardware_mode(tmp_path):
         p.terminate()
         out = p.communicate(timeout=10)[0]
     assert "bench-only on EBAZ4205" in out and "Traceback" not in out
+
+
+def test_pl_not_ready(tmp_path):
+    from sadiy_ebaz.devmem import pl_not_ready
+
+    state = tmp_path / "state"
+    state.write_text("operating\n")
+    assert pl_not_ready(state) is None
+    state.write_text("unknown\n")
+    assert pl_not_ready(state) == "PL is unknown"
+    assert pl_not_ready(tmp_path / "missing") is None        # no FPGA manager: not decided here

@@ -22,6 +22,13 @@
 [defaults]
 iostandard = "LVCMOS33"
 
+# Adapter board (HelloFPGA EBAZ4205_ZJB05, 2026-11-15, user decision): its LEDs sit on the DATA1 balls H18, K17 and E19,
+# so they are listed here as led[0..2] (active = false: the port is not in the Phase 1 top level; the engine build
+# constrains them in rtl/fpga/constraints/adapter_ui.xdc) and the AD9226 pins adc_d[8], adc_d[10] and adc_clk have no
+# ball on this adapter. The LEDs can be freed only with a different adapter PCB. Other AD9226 balls shared with the
+# adapter (UART header, HDMI, buzzer) carry a note. The DATA3 numbers of keys and display come from the schematic text
+# layer and agree with BALLS in src/sadiy/pinmap_ebaz.py; not checked by continuity.
+
 # phase: first project phase that needs the signal. active = true puts the
 # constraint into the XDC, false emits it commented out (the port does not
 # exist in the current top level).
@@ -189,7 +196,7 @@ ball = "B19"
 dir = "in"
 phase = 4
 active = false
-
+note = "on this adapter: B19 is the adapter's HDMI DAT2; not constrained"
 [[signal]]
 name = "adc_d[2]"
 connector = "DATA1"
@@ -207,7 +214,7 @@ ball = "C20"
 dir = "in"
 phase = 4
 active = false
-
+note = "on this adapter: C20 is the adapter's HDMI DAT1; not constrained"
 [[signal]]
 name = "adc_d[4]"
 connector = "DATA1"
@@ -226,7 +233,7 @@ ball = "D18"
 dir = "in"
 phase = 4
 active = false
-
+note = "on this adapter: D18 is the adapter's buzzer; not constrained"
 [[signal]]
 name = "adc_d[6]"
 connector = "DATA1"
@@ -235,7 +242,7 @@ ball = "D19"
 dir = "in"
 phase = 4
 active = false
-
+note = "on this adapter: D19 is the adapter's HDMI DAT0; not constrained"
 [[signal]]
 name = "adc_d[7]"
 connector = "DATA1"
@@ -246,14 +253,14 @@ phase = 4
 active = false
 
 [[signal]]
-name = "adc_d[8]"
+name = "led[2]"
 connector = "DATA1"
 pin = 18
 ball = "E19"
-dir = "in"
-phase = 4
+dir = "out"
+phase = 1
 active = false
-
+note = "adapter LED3 (EMIO GPIO 12, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc"
 [[signal]]
 name = "adc_d[9]"
 connector = "DATA1"
@@ -262,16 +269,16 @@ ball = "F19"
 dir = "in"
 phase = 4
 active = false
-
+note = "on this adapter: F19 is the adapter's HDMI CLK; not constrained"
 [[signal]]
-name = "adc_d[10]"
+name = "led[0]"
 connector = "DATA1"
 pin = 15
 ball = "H18"
-dir = "in"
-phase = 4
+dir = "out"
+phase = 1
 active = false
-
+note = "adapter LED1 (EMIO GPIO 10, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc"
 [[signal]]
 name = "adc_d[11]"
 connector = "DATA1"
@@ -280,7 +287,7 @@ ball = "H17"
 dir = "in"
 phase = 4
 active = false
-
+note = "on this adapter: H17 is the adapter's UART header TX; not constrained"
 [[signal]]
 name = "adc_otr"
 connector = "DATA1"
@@ -289,12 +296,115 @@ ball = "H16"
 dir = "in"
 phase = 4
 active = false
-
+note = "on this adapter: H16 is the adapter's UART header RX; not constrained"
 [[signal]]
-name = "adc_clk"
+name = "led[1]"
 connector = "DATA1"
 pin = 20
 ball = "K17"
 dir = "out"
-phase = 4
+phase = 1
 active = false
+note = "adapter LED2 (EMIO GPIO 11, Linux); constrained in rtl/fpga/constraints/adapter_ui.xdc"
+
+# ---- DATA3: adapter board display and keys (EMIO / PS SPI1, Linux; constrained in rtl/fpga/constraints/adapter_ui.xdc) ----
+
+[[signal]]
+name = "keys[0]"
+connector = "DATA3"
+pin = 18
+ball = "T19"
+dir = "in"
+phase = 1
+active = false
+note = "adapter KEY1 (EMIO GPIO 13, Linux, active low)"
+
+[[signal]]
+name = "keys[1]"
+connector = "DATA3"
+pin = 15
+ball = "P19"
+dir = "in"
+phase = 1
+active = false
+note = "adapter KEY2 (EMIO GPIO 14)"
+
+[[signal]]
+name = "keys[2]"
+connector = "DATA3"
+pin = 17
+ball = "U20"
+dir = "in"
+phase = 1
+active = false
+note = "adapter KEY3 (EMIO GPIO 15)"
+
+[[signal]]
+name = "keys[3]"
+connector = "DATA3"
+pin = 20
+ball = "U19"
+dir = "in"
+phase = 1
+active = false
+note = "adapter KEY4 (EMIO GPIO 16)"
+
+[[signal]]
+name = "keys[4]"
+connector = "DATA3"
+pin = 19
+ball = "V20"
+dir = "in"
+phase = 1
+active = false
+note = "adapter KEY5 (EMIO GPIO 17)"
+
+[[signal]]
+name = "lcd_cs"
+connector = "DATA3"
+pin = 16
+ball = "T20"
+dir = "out"
+phase = 1
+active = false
+note = "ST7789 CS = PS SPI1 SS0 via EMIO"
+
+[[signal]]
+name = "lcd_dc"
+connector = "DATA3"
+pin = 13
+ball = "R18"
+dir = "out"
+phase = 1
+active = false
+note = "ST7789 DC = EMIO GPIO 8"
+
+[[signal]]
+name = "lcd_res"
+connector = "DATA3"
+pin = 9
+ball = "N17"
+dir = "out"
+phase = 1
+active = false
+note = "ST7789 RES = EMIO GPIO 9"
+
+[[signal]]
+name = "lcd_scl"
+connector = "DATA3"
+pin = 14
+ball = "R19"
+dir = "out"
+phase = 1
+active = false
+note = "ST7789 SCL = PS SPI1 SCLK via EMIO"
+
+[[signal]]
+name = "lcd_sda"
+connector = "DATA3"
+pin = 11
+ball = "P20"
+dir = "out"
+phase = 1
+active = false
+note = "ST7789 SDA = PS SPI1 MOSI via EMIO"

@@ -11,9 +11,22 @@ from __future__ import annotations
 
 import mmap
 import os
+from pathlib import Path
+from typing import Optional
 
 DEFAULT_BASE = 0x43C00000   # M_AXI_GP0, fixed in the Vivado address map (handover-F2)
 DEFAULT_SIZE = 0x1000
+FPGA_STATE = Path("/sys/class/fpga_manager/fpga0/state")   # "operating" once a bitstream is loaded
+
+
+def pl_not_ready(state_path: Path = FPGA_STATE) -> Optional[str]:
+    """Why the PL registers must not be touched yet ("PL is unconfigured"), or None when the PL is configured or
+    the state cannot be read (not a board with an FPGA manager: DevMemRegs then fails or is the caller's choice)."""
+    try:
+        state = Path(state_path).read_text().strip()
+    except OSError:
+        return None
+    return None if state == "operating" else f"PL is {state}"
 PAGE = mmap.PAGESIZE
 
 
