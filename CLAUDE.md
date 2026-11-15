@@ -26,7 +26,7 @@ python -m sadiy.server.sweepd -v ...              # log level: -q warning, defau
 python -m sadiy.ui.cli_client --log-level warning # terminal client: sweepd's log history, then live
 python -m sadiy.ui.sa_gui --host <bbb-ip> --connect   # GUI against a real sweepd
 python -m sadiy.ui.sa_gui --platform ebaz --sim       # fixed platform (bbb|ebaz): the other board is not shown; without it the Pins tab has a selector
-python -m sadiy.server.sweepd --sim --platform ebaz   # simulated EBAZ4205 pin map (bench, status.platform); real EBAZ backends: plan S5/S7
+python -m sadiy.server.sweepd --sim --platform ebaz   # simulated EBAZ4205 pin map (bench, status.platform); without --sim on the EBAZ: the PL sweep engine through /dev/mem (zynq-ebaz/sw/sadiy_ebaz/platforms/ebaz_pl.py, no bench mode there yet; state in zynq-ebaz/log_rtl.md)
 python tools/gen_diagrams.py [--platform bbb|ebaz]    # figures and netlist; with --platform only that platform, netlist-<p>.md
 python tools/bringup.py pe4302-pattern --db 16 --from-db 15.5
 python tools/make_bbb_package.py         # BBB package in dist/ (git-ignored); update it whenever code the BBB runs changes

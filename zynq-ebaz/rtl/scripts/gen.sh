@@ -16,3 +16,4 @@ if [ -f "$RTL_DIR/regmap/gen_regs.py" ]; then
   "$PYTHON" "$RTL_DIR/regmap/gen_regs.py" "${mode[@]}"
 fi
 "$PYTHON" "$RTL_DIR/sim/gen_vectors.py" "${mode[@]}"
+"$PYTHON" "$RTL_DIR/dsp/gen_dsp.py" "${mode[@]}"

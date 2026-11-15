@@ -3,6 +3,9 @@
 Newest first. What was measured, with which setup, and what is still open. Source of the numbers: the user's runs on the
 EBAZ4205 with a logic analyzer (recorded by session R from the user's reports, 2026-11-14); no raw captures are in the repo.
 
+Everything below was measured with register map 1.0. Maps 1.1 (ADS1115 reader in the PL, CE) and 1.2 (generator,
+IF path) have not run on the board: `./run.sh adc if` is the first check.
+
 ## 2026-11-14 first load and run
 
 Setup: bitstream `ebaz_sadiy.bit.bin` loaded with `sadiy_pl_load.sh`, `pl_bringup.py` from `build/bringup-pkg`, logic analyzer

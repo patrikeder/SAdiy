@@ -47,6 +47,11 @@ pins back to the PS), then the synthesiser goes off over the PS SPI.
 
 ## What an `ebaz_pl` platform module must provide
 
+**Status 2026-11-15: this module exists** (`sw/sadiy_ebaz/platforms/ebaz_pl.py`, tests `sw/tests/test_ebaz_pl.py`).
+It differs from the list below in two points: register access is /dev/mem (`devmem.py`), not UIO, and it drives
+the ADF4351, the PE4302, CE and the detector through the engine's registers only, so the engine owns the pins
+all the time (no PS SPI / GPIO / I2C device). The list is kept as the description of the PS-owner variant.
+
 File `zynq-ebaz/sw/sadiy_ebaz/platforms/ebaz_pl.py` (`[platform] name = "ebaz-pl"` resolves to it):
 
 1. `build_engine(cfg: dict) -> SweepEngine`.
@@ -74,7 +79,7 @@ An `ebaz-ps` platform (no offload) does not need any of this: `SweepEngine` with
 
 Edit `OFFLOAD_PLATFORMS` in `sw/tests/contract/test_offload_contract.py`: add `("ebaz_pl", factory)`. `factory(**kw)`
 returns a `Platform` whose `offload()` is the `RegOffload`; `kw` may carry `det_src` and `sample_source`. Tests that
-steer the engine through a `model` attribute (lock failures, `det_src = 3`) skip a backend without one; the others
+steer the engine through a `model` attribute (lock failures, `det_src = 2` without a stream) skip a backend without one; the others
 run against the real core in a hardware-in-the-loop run. Do not weaken a test to make a backend pass: change
 `rtl-spec.md` first and tell lane R.
 
@@ -114,5 +119,6 @@ All additive in the frame header (like `flags`), `VERSION` stays 1. Defaults kee
 - `PE4302.manual` written while idle and owner starts make-before-break only if it differs from the engine value. Written while busy or not owner: no action, not applied later.
 - Taking the pins loads `manual`. Result memory full: sweep ends with `done` and `err_table`, `SWEEP_COUNT` not incremented. `stop_on_err` and `abort` leave `ENTRY_INDEX` at the current entry.
 - `soft_reset` clears `POINT_COUNT`, `ENTRY_INDEX`, `FIRST_ERR_INDEX` and `SWEEP_COUNT`.
-- `DET_CFG.src = 2` with no stream behaves like `src = 3`. Unwritten table RAM is zero (no-op entries).
+- `DET_CFG.src = 2` with no stream delivers no samples: the sweep waits in SAMPLE until `abort` (since map 1.1
+  `src = 3` is the ADS1115 reader). Unwritten table RAM is zero (no-op entries).
 - The engine's reset PE4302 value is `0x3F` levels: all stages in only for an active-high module. For an active-low module write `PE4302.manual` before taking the pins (`acquire_pins()` does).

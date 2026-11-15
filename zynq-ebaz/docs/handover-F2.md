@@ -1,5 +1,8 @@
 # Handover F2: PL sweep engine (for S7, S8, S9, S10)
 
+State 2026-11-15: register map 1.2. The first two sections describe the first bitstream (map 1.0); where later
+work changed something it is marked. Newest additions are the sections "sweepd on the PL engine" and "Fast path".
+
 Written by session R, 2026-11-14. Behaviour: `rtl-spec.md`. Python side: `handover-F1.md`. Status: `../log_rtl.md`.
 
 ## Build
@@ -12,7 +15,10 @@ rtl/scripts/build_bit.sh     # project in /media/patrik/Workspaces/HW/Vivado/EBA
 Needs Vivado 2025.2 (path in `rtl/scripts/env.sh`). At most 8 jobs. `build/fpga/summary.txt` has timing and
 utilisation; the script fails if WNS or WHS is negative.
 
-## For S8: load at runtime (not tested yet)
+## For S8: load at runtime (done by session L: `sw/deploy/sadiy_pl_load.sh`, works on the board)
+
+Outdated in the list below: there is no UIO node and no interrupt in use (register access is /dev/mem, completion
+is polled), and the boot image now contains the engine bitstream, so a runtime load is only needed for a newer one.
 
 - File: `build/fpga/ebaz_sadiy.bit.bin`. The PS7 settings equal the Phase 1 design, so the Phase 1 boot image
   stays. Copy to `/lib/firmware/` and load through fpga_manager (verify the method on this image).
@@ -25,13 +31,14 @@ utilisation; the script fails if WNS or WHS is negative.
 
 Most of this is automated: `rtl/scripts/make_bringup_pkg.sh` builds `build/bringup-pkg/` (bitstream, load script,
 `sadiy`, `sadiy_ebaz`, `regmap.toml`, `pl_bringup.py`, `run.sh`); copy it to the board, load the bitstream, then
-`./run.sh` (stages ident regs gen push owner ctrl lock: pass / fail, exit code) and `./run.sh la` (spi att: SPI
+`./run.sh` (stages ident regs gen push owner ctrl lock adc if: pass / fail, exit code) and `./run.sh la` (spi att: SPI
 frames at several SPI_DIV values and attenuator changes, with the expected LA picture printed and a prompt before
 each capture). `./run.sh --model` runs the same code against the PlModel on a PC. Needs Python 3.11+ (tomllib)
 or tomli. Steps 1 and 2 below (PS as owner, Phase 1 regression) stay manual. Source: `sw/tools/pl_bringup.py`,
 tests: `sw/tests/test_pl_bringup.py`.
 
-1. Read `ID` (offset 0) = `0x53410001`, `VERSION` = `0x00010000`, `CAPS` = `0x00640C0C`.
+1. Read `ID` (offset 0) = `0x53410001`, `VERSION` = `0x00010002` (map 1.2; the first bitstream had `0x00010000`),
+   `CAPS` = `0x00640C0C`.
 2. With the PS as owner, repeat the Phase 1 checks (SPI frames on the DSLogic, PE4302 walk). Nothing may differ.
 3. `PIN_STATE` shows the pad levels and lock detect.
 4. Test generator sweep without RF: `DET_CFG = 1`, small table, `start`; results = `N_AVG * (DET_TEST + index)`.

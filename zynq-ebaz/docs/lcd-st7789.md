@@ -59,7 +59,8 @@ PS SPI1 is a PS7 setting, so FSBL / ps7_init and the device tree change. Your Ph
    18 bits wide, lines 0..15 keep their numbers).
    Then tie the inputs like SPI0: `SPI1_MISO_I` to 0 and `SPI1_SS_I` to 1. Connecting the SPI1 outputs to pads is
    not needed in your design (my bitstream does that); unconnected outputs are fine.
-   `rtl/scripts/check_ps7.sh` must then say IDENTICAL again (today it reports exactly these four keys).
+   `rtl/scripts/check_ps7.sh` must then say IDENTICAL again. (Done by session L on 2026-11-14: it does, and the
+   LCD and the keys work on the board according to the user.)
 2. Rebuild XSA, then the PetaLinux image. Because the PS7 setting is in the XSA, `spi1` appears in the generated
    device tree.
 3. Kernel (already in your current build, checked in `kernel-build-artifacts/.config`): `CONFIG_SPI_CADENCE=y`,
