@@ -38,3 +38,16 @@ The RTL-lane agents above work in the other worktree; the pairs `pinmap-keeper` 
 Rules that hold for all of them (from `CLAUDE.md`): install nothing without asking, commit only when asked, the
 RTL lane works in the worktree `/media/patrik/Workspaces/uC/SAdiy-rtl` (branch `rtl`), the Linux lane in `/media/patrik/Workspaces/uC/SAdiy-linux` (branch `linux`); session L owns
 `zynq-ebaz/rtl/vivado`, `zynq-ebaz/sw/deploy` and its own documents. Report what was verified and what was not.
+
+## Skills (`.claude/skills/<name>/SKILL.md`)
+
+Routines that are invoked by name or picked by their description; they call the agents above where one fits.
+
+| Skill | Lane | Use |
+|---|---|---|
+| `ebaz-session` | both | start / end a session |
+| `rtl-check`, `fpga-bitstream`, `board-test` | R | RTL checks, bitstream and package, bench tests of the PL engine |
+| `lane-commit-merge-push` | both | commit on the lane branch, `--no-ff` merge into main, push (only on request) |
+| `run-tests` | L | pytest run (offscreen Qt), generated-file checks, reading failures |
+| `start-and-deploy` | L | deploy to BBB / EBAZ, start `sweepd` and the GUI (single source `docs/how-to-start.md`) |
+| `doc-sweep` | L | mechanical doc checks, then agent `repo-docs-auditor` |
