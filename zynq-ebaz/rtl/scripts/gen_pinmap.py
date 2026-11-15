@@ -207,7 +207,9 @@ def md(rows):
               "keys[2] (adapter, active low)", "keys[3] (adapter, active low)", "keys[4] (adapter, active low)"]
     L += [f"| {i} | {emio[i]} | {i + 8} | {second[i]} |" for i in range(8)]
     L += [f"| | | {i + 8} | {second[i]} |" for i in range(8, 10)]
-    L += ["", "Also on EMIO: SPI0 (SCLK, MOSI, SS0 = LE), SPI1 (adapter LCD: SCLK, MOSI, SS0) and I2C0 (SCL, SDA), "
+    L += ["", "Since register map 1.1 `adf4351_ce` and the I2C pins pass the engine's pin mux: while the engine owns the pins "
+          "CE follows `ADF_PINS.ce`, and with `DET_CFG.src = 3` the PL reads the ADS1115 itself.", "",
+          "Also on EMIO: SPI0 (SCLK, MOSI, SS0 = LE), SPI1 (adapter LCD: SCLK, MOSI, SS0) and I2C0 (SCL, SDA), "
           "see the tables above.", ""]
     return "\n".join(L)
 

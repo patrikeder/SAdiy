@@ -18,7 +18,7 @@ def test_probe_follows_pin_owner_act():
 
     def read(offset):
         reads.append(offset)
-        return word[0]
+        return 0x00010002 if offset == REGS["VERSION"].offset else word[0]
 
     owned = ce_owner.ce_owner_probe(read)
     assert owned() is False
@@ -26,7 +26,16 @@ def test_probe_follows_pin_owner_act():
     assert owned() is True
     word[0] = ~REGS["STATUS"].fields["pin_owner_act"].mask & 0xFFFFFFFF          # every other status bit set
     assert owned() is False
-    assert set(reads) == {REGS["STATUS"].offset}
+    assert set(reads) == {REGS["STATUS"].offset, REGS["VERSION"].offset}
+    assert reads.count(REGS["VERSION"].offset) == 1                  # the bitstream is asked once
+
+
+def test_a_map_1_0_bitstream_has_no_mux_even_with_a_newer_regmap():
+    status = REGS["STATUS"].fields["pin_owner_act"].put(1)
+    old_core = ce_owner.ce_owner_probe(lambda o: 0x00010000 if o == REGS["VERSION"].offset else status)
+    assert old_core() is False
+    new_core = ce_owner.ce_owner_probe(lambda o: 0x00010001 if o == REGS["VERSION"].offset else status)
+    assert new_core() is True
 
 
 def test_an_old_map_without_the_mux_means_linux_always_owns():

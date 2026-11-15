@@ -9,16 +9,46 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
   `zynq-ebaz/rtl/fpga/` and generate the project `/media/patrik/Workspaces/HW/Vivado/EBAZ_SAdiy`. Your
   `zynq-ebaz/rtl/vivado/**` (Phase 1, `pins.toml`, `gen_xdc.py`) is not touched and `pins.toml` stays the pin
   master. This takes S8's Vivado part from you; the runtime bitstream load and the UIO device tree stay yours.
-- The engine design keeps your Phase 1 PS7 settings and EMIO line map (GPIO 0..5 PE4302, 6 CE, 7 LD, SPI0,
-  I2C0, ENET0 MII, FCLK0 100 MHz, FCLK1 25 MHz), so a boot image built from your Phase 1 XSA should be able to
-  load the engine bitstream at runtime. AXI-lite base of the engine: `0x43C0_0000`, 4 KiB, on M_AXI_GP0;
+- PS7 settings and EMIO line map are the same in both designs (`check_ps7.sh`: identical, 2026-11-15): GPIO 0..5
+  PE4302, 6 CE, 7 LD, 8 / 9 LCD, 10..12 LEDs, 13..17 keys, SPI0, SPI1 (LCD), I2C0, ENET0 MII, FCLK0 100 MHz,
+  FCLK1 25 MHz. A newer engine bitstream loads at runtime on the current image. AXI-lite base of the engine: `0x43C0_0000`, 4 KiB, on M_AXI_GP0;
   interrupt on IRQ_F2P[0].
 - The register map differs from plan appendix A / B (generic SPI word table, indirect table / result access,
-  PS-pushed detector samples). See `docs/rtl-spec.md` section 11 before starting S7.
+  PS-pushed detector samples). See `docs/rtl-spec.md` section 11. Current map: 1.2 (`rtl/regmap/regmap.md`).
+- `sweepd --platform ebaz` on hardware uses `sw/sadiy_ebaz/platforms/ebaz_pl.py` (registers through /dev/mem).
+  Register access is /dev/mem, no UIO (your decision of 2026-11-14); older text that says UIO is outdated.
 
 ## State in one line
 
-**F1 and F2 done and verified in simulation; bitstream built with timing met; nothing run on the board yet. Committed on branch `rtl` (seam commit + zynq-ebaz commit), not pushed, not merged to main.**
+**2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board only map 1.0 has run (57 checks passed, SPI clock verified); maps 1.1 / 1.2 and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
+
+## 2026-11-15 review of session L's bench mode (5128b56), merged (for L: one change in your file)
+
+- Reviewed `ps_backend.py`, `ce_owner.py`, the `sweepd.py` / `bench.py` / `hal/base.py` changes: consistent with the
+  RTL. `release_pl_pins` (pin_owner = 0 plus abort) is what the pin mux expects; the I2C pins follow within one
+  ADS1115 transaction (a few hundred microseconds) because `i2c_pl` only changes while the reader is idle.
+- Changed in `ce_owner.py` (+ test): the probe now asks the core's `VERSION` once. Your check used the software's
+  regmap only, so with the map 1.0 bitstream of the first boot image and a newer checkout it reported "engine owns
+  CE" although that bitstream has no CE mux.
+- No RTL change needed. When the sweeping sweepd ends the engine keeps the pins on purpose (CE stays driven);
+  documented in `handover-F2.md`.
+- Your `tests/conftest.py` (collect GUI garbage) also cures the abort of the GUI smoke test I saw in this worktree.
+- Checked: 788 pytest, lint, 10 of 10 testbenches.
+
+## 2026-11-15 standalone DSP modules in `rtl/dsp/` (not in the bitstream)
+
+- User: start the FFT and the RBW filter and other modules needed later, build and test them in isolation,
+  document the interface. Done: `fft_r2` (4 .. 4096 points, Hann in the frequency domain), `fir_mac` (complex
+  FIR, 64 taps, decimation), `iq_power` (bin power as mantissa / exponent), `adc_ad9226`, `adc_spi_sar`
+  (ADC pins to the sample stream). Interfaces and the integration steps: `docs/dsp-modules.md`.
+- Each has a bit-exact reference in `sw/sadiy_ebaz/dspref.py`, a testbench `rtl/sim/tb_dsp_*.sv` (vectors from
+  `rtl/dsp/gen_dsp.py`, part of `gen.sh`) and an out-of-context build (`rtl/scripts/synth_dsp.sh`): all meet
+  100 MHz (worst: FFT +1.60 ns); together about 1300 LUT, 8 BRAM tiles, 10 DSP. Five deliberate faults in FFT
+  and FIR are caught.
+- The engine and its bitstream are unchanged by this (commit 77c6d61 is what is on main). `sim.sh` compiles
+  `dsp/*.sv` too; `test.sh` lints the five tops.
+- Not done: integration (list in `dsp-modules.md`), the ADC adapters against real parts (SPI timing is from
+  memory of the AD7685 class: verify), anything on the board.
 
 ## 2026-11-15 register map 1.2: sample stream format, generator, IF fast path (no ADC needed)
 

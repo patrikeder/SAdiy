@@ -7,7 +7,7 @@ Start with `docs/ebaz4205-zynq-plan.md` (handover, work packages, ownership, rep
 | Folder | Content | Written by |
 |---|---|---|
 | `sw/` | Linux side: `sadiy_ebaz` package, config, deploy, tools, tests | session L |
-| `rtl/` | FPGA side: `src`, `sim`, `model`, `regmap` (session R), `vivado` (session L) | R and L |
+| `rtl/` | FPGA side: `src` (engine), `dsp` (standalone modules), `sim`, `regmap`, `fpga`, `scripts` (session R), `vivado` (session L) | R and L |
 | `hw/` | PCB files (adapter v2, KiCad) | user only |
 | `docs/` | plan, handover-F*.md, STATUS-*.md, escalations, reports | R and L |
 | `build/` | generated output, git-ignored | tools |

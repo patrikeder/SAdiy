@@ -32,6 +32,7 @@ cat > "$OUT/sweepd.sh" <<'EOS'
 # sweepd on the EBAZ4205 with the PL sweep engine (registers through /dev/mem, run as root).
 #   ./sweepd.sh                 PL reads the ADS1115 itself ([platform] detector = "pl", the default)
 #   ./sweepd.sh -v              more log
+#   ./sweepd.sh --bench-only    wiring tests instead of sweeps: Linux owns the pins (session L's PS backend)
 # Other detector sources ("ps" = Linux reads the ADC and pushes, "test" = test generator): set
 # [platform] detector in config/default.toml. GUI on the PC: python -m sadiy.ui.sa_gui --host <ip> --connect
 cd "$(dirname "$0")"

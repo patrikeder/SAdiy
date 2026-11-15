@@ -151,4 +151,6 @@ To check before wiring: (1) continuity from each HDMI pad to its EBAZ DATA1 pin 
 | | | 16 | keys[3] (adapter, active low) |
 | | | 17 | keys[4] (adapter, active low) |
 
+Since register map 1.1 `adf4351_ce` and the I2C pins pass the engine's pin mux: while the engine owns the pins CE follows `ADF_PINS.ce`, and with `DET_CFG.src = 3` the PL reads the ADS1115 itself.
+
 Also on EMIO: SPI0 (SCLK, MOSI, SS0 = LE), SPI1 (adapter LCD: SCLK, MOSI, SS0) and I2C0 (SCL, SDA), see the tables above.

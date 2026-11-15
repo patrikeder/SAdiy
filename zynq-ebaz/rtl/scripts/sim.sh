@@ -10,7 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 vivado_env
 
 SIM_DIR="$RTL_DIR/sim"
-SRCS=("$RTL_DIR"/src/*.sv)
+SRCS=("$RTL_DIR"/src/*.sv "$RTL_DIR"/dsp/*.sv)       # dsp/: standalone modules, not in the bitstream yet
 [ -f "$RTL_DIR/regmap/axil_regs.sv" ] && SRCS+=("$RTL_DIR/regmap/axil_regs.sv")
 
 if [ $# -gt 0 ]; then TBS=("$@"); else
