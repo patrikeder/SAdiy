@@ -21,7 +21,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from .. import config as config_mod
-from .. import platforms
+from .. import buildinfo, platforms
 from ..core.sweep import FLAGS_UNRELIABLE, flag_names
 from ..logs import format_entry
 from . import log_core
@@ -230,6 +230,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_log_level = log_core.DEFAULT_LEVEL
         self._log_fetch_tries = 0
         self._bad_seen = 0
+        self._build_noted = False           # sweepd's build is written to the device log once per connection
         self._last_note = None
         self._synth_info = synth_core.LoInfo()
         self._synth = None                  # the ADF4351 readback shown in the status bar (see _update_synth)
@@ -685,12 +686,26 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._msg("")
 
+    def _note_server_build(self, server: Optional[dict]) -> None:
+        """Say which build sweepd is, once, and warn when it is not the build of this GUI (an old copy on a board)."""
+        if self._build_noted:
+            return
+        self._build_noted = True
+        if not server:
+            self._dev_note(logging.WARNING, "sweepd reports no build (an older version than this GUI: update the target)")
+            return
+        self._dev_note(logging.INFO, f"sweepd build: {buildinfo.describe(server)}")
+        if buildinfo.differ(server, buildinfo.info()):
+            self._dev_note(logging.WARNING, f"this GUI is a different build ({buildinfo.describe()}): "
+                                            "sweepd and the GUI may not agree on commands")
+
     def _sync_from_server(self, timeout_ms: int = 500) -> bool:
         r = self.client.request({"cmd": "status"}, timeout_ms)
         if not r or not r.get("ok"):
             return False
         self.limits.apply_server(r.get("limits", {}))
         self.pins.follow_server(r.get("platform"))
+        self._note_server_build(r.get("build"))
         info = synth_core.LoInfo.from_status(r)
         if info != self._synth_info:
             self._synth_info = info
@@ -999,6 +1014,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_tries = 0
         self.dev_log.gap = True                 # fetch what sweepd said before we came
         self._log_fetch_tries = 0
+        self._build_noted = False
         self._dev_note(logging.INFO, f"connecting to {self.host_edit.text().strip() or '127.0.0.1'}")
         self._try_sync()
 

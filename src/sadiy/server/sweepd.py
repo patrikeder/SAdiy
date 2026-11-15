@@ -17,7 +17,7 @@ import time
 from typing import Optional
 
 from .. import config as config_mod
-from .. import logs, platforms
+from .. import buildinfo, logs, platforms
 from ..core.cal import Cal
 from ..core.detector import Detector
 from ..core.freqplan import build_opposite_sweep, build_sweep
@@ -200,6 +200,7 @@ class Sweepd:
                 "settings": self.settings,
                 "bench": {"active": self.bench_active},
                 "platform": self.bench.pm.name if self.bench is not None else self.platform,
+                "build": buildinfo.info(),
                 "last_error": self.last_error,
                 "last_sweep": dataclasses.asdict(self.engine.last_stats) if self.engine is not None else None,
                 "log_seq": self.ring.last_seq if self.ring is not None else 0,
@@ -384,6 +385,7 @@ def main(argv=None) -> None:
                                                float(log_cfg.get("dedup_s", 5.0))))
     mode = "bench-only" if args.bench_only else "simulated chain" if args.sim else "hardware"
     log.info("sweepd starting: %s on %s, log level %s", mode, pm.label, logs.level_name(level))
+    log.info("build: %s", buildinfo.describe())
     # EBAZ4205 hardware: the PL sweep engine does the sweeps through its registers (sadiy_ebaz.platforms.ebaz_pl)
     # and owns the pins while sweepd sweeps, so there is no bench mode next to it. `--bench-only` gives the pins
     # to Linux instead (sadiy_ebaz.ps_backend): wiring tests, with no sweeping.

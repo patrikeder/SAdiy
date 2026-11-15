@@ -698,6 +698,23 @@ STAGES = {"ident": stage_ident, "regs": stage_regs, "gen": stage_gen, "push": st
 
 
 # ------------------------------------------------------------------------------------------------ main
+def _banner() -> None:
+    """Which copy of the software this is, and which register map file it reads (a stale package is the usual surprise)."""
+    try:
+        from sadiy import buildinfo
+        what = buildinfo.describe()
+    except ImportError:
+        what = "sadiy build unknown"
+    try:
+        from sadiy_ebaz import regmap_toml
+        path = os.environ.get("SADIY_REGMAP_TOML") or regmap_toml.DEFAULT_PATH
+        v = regmap_toml.map_version(path)
+        what += f"; regmap.toml {v >> 16}.{v & 0xFFFF} ({path})"
+    except (ImportError, OSError, KeyError):
+        pass
+    print(f"pl_bringup: {what}")
+
+
 def make_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                 epilog="Stages: " + " ".join(STAGES) + "; 'auto' = " + " ".join(AUTO)
@@ -717,6 +734,7 @@ def make_parser() -> argparse.ArgumentParser:
 
 def run(argv: Optional[Sequence[str]] = None, model=None) -> int:
     args = make_parser().parse_args(argv)
+    _banner()
     names: List[str] = []
     for s in args.stages or ["auto"]:
         names += AUTO if s == "auto" else LA_STAGES if s == "la" else AUTO + LA_STAGES if s == "all" else [s]

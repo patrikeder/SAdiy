@@ -3,10 +3,11 @@ Handy for headless checks over ssh."""
 from __future__ import annotations
 
 import argparse
+import sys
 
 import zmq
 
-from .. import logs
+from .. import buildinfo, logs
 from ..server import protocol
 
 LEVEL_CHOICES = [name for name in logs.LEVELS if name != "trace"]     # trace never leaves the BBB
@@ -44,6 +45,7 @@ def main(argv=None) -> None:
     ap.add_argument("--log-level", choices=LEVEL_CHOICES,
                     help="also print sweepd's log from this level up: first what it kept, then live")
     args = ap.parse_args(argv)
+    print(f"cli_client: {buildinfo.describe()}", file=sys.stderr)
 
     ctx = zmq.Context()
     sub = ctx.socket(zmq.SUB)

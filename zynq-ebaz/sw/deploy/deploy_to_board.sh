@@ -6,6 +6,7 @@
 #   ~/sadiy/zynq-ebaz/sw/sadiy_ebaz/ EBAZ backends and the PL register layer
 #   ~/sadiy/zynq-ebaz/rtl/regmap/regmap.toml
 #   ~/sadiy/config/                  default.toml
+#   ~/sadiy/BUILD_INFO               commit, branch, time of this copy (every program prints it when it starts)
 #   ~/sadiy/tools/bringup.py         gpio-map, synth-ce, pe4302-walk ... (run from ~/sadiy)
 #   ~/sadiy/zynq-ebaz/sw/tools/      pl_bringup.py, ebaz_lcd_test.py, ebaz_s4_*.sh, ebaz_baseline.sh
 # Run on the board with:  PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw python3 -m sadiy.server.sweepd ...
@@ -23,6 +24,8 @@ paths="src/sadiy config/default.toml"
 [ -d zynq-ebaz/sw/config ] && paths="$paths zynq-ebaz/sw/config"
 [ -f tools/bringup.py ] && paths="$paths tools/bringup.py"
 [ -d zynq-ebaz/sw/tools ] && paths="$paths zynq-ebaz/sw/tools"
+PYTHONPATH=src python3 -m sadiy.buildinfo write BUILD_INFO || rm -f BUILD_INFO     # which commit the board gets (BUILD_INFO is git-ignored)
+[ -f BUILD_INFO ] && paths="$paths BUILD_INFO"
 echo "deploying: $paths"
 ex=""
 for f in src/sadiy/ui/*.py; do
@@ -31,3 +34,4 @@ done
 tar -czf - --exclude='__pycache__' --exclude='*.pyc' $ex $paths \
   | ssh "$USER_@$IP" 'mkdir -p ~/sadiy && cd ~/sadiy && tar -xzf - && printf "export PYTHONPATH=\$HOME/sadiy/src:\$HOME/sadiy/zynq-ebaz/sw\n" > env.sh && echo "unpacked to ~/sadiy" && ls ~/sadiy'
 echo "on the board: . ~/sadiy/env.sh   (sets PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw; tools/bringup.py also works without it)"
+rm -f BUILD_INFO
