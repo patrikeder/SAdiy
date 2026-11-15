@@ -87,3 +87,7 @@ Current state in one line (update at each entry): **Image rebuilt 2026-11-14 18:
 - Requested by the user: CE support in the Python control scripts on both targets; the RTL may take CE over through an internal mux that ignores the Linux state.
 - `drivers/synth_ce.py`, `hal/linux.py` (`SysfsGpio(output=None)` looks at a line without changing it, `direction()`, `zynq_gpio_base()`), `hal/fake.py`, `tools/bringup.py synth-ce`, `sadiy_ebaz/ce_owner.py` (reads `STATUS.ce_engine` if the regmap has it). Details and the request to R in `docs/STATUS-linux.md`.
 - Tests: `tests/test_synth_ce.py` (10), `zynq-ebaz/sw/tests/test_ce_owner.py` (2); full suite 728 passed.
+
+## 2026-11-15 top on the LCD
+- Requested by the user: the login shell on the LCD is unusable (no keyboard, ~30 columns); show `top` continuously instead.
+- `sw/tools/ebaz_lcd_top.sh` (install / remove / status / frame / run): swaps the tty1 getty line of `/etc/inittab` for a loop around `top -b -n2` that prints a compact frame (time+load, tasks, CPU, memory, PID %CPU %MEM COMMAND) sized to the console. Runtime change on the SD card's rootfs (no image rebuild); `remove` restores the line. Tests: `sw/tests/test_lcd_top.py` (8, fake `top` in KiB and MiB layouts, install/remove on a copy of inittab). Works on the board (user report 2026-11-15), so the rebuilt image's LCD text console works too.

@@ -20,6 +20,13 @@
   sim-sweep                one simulated sweep, prints the strongest points
 """
 import argparse
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+for _p in (_ROOT / "src", _ROOT / "zynq-ebaz" / "sw"):      # run from a checkout or from ~/sadiy on a board without PYTHONPATH
+    if _p.is_dir() and str(_p) not in sys.path:
+        sys.path.append(str(_p))                             # appended: an explicit PYTHONPATH still wins
 
 from sadiy import config, patterns, pinmap, platforms
 from sadiy.bringup import walk_lines

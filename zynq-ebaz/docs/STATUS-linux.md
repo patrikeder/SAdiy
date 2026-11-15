@@ -11,7 +11,7 @@ Branch `linux`, worktree `../SAdiy-linux`; everything below is committed on `mai
 - Python deploy: `sw/deploy/deploy_to_board.sh` (sadiy, sadiy_ebaz, `tools/bringup.py`, `sw/tools`); not run yet.
 
 ## Next (needs the user at the board or bench)
-1. Boot the rebuilt image (copy `BOOT.BIN` and `image.ub`; the rootfs stays): LCD, LEDs, keys (`docs/ebaz-bringup.md`).
+1. Boot the rebuilt image (copy `BOOT.BIN` and `image.ub`; the rootfs stays): LCD, LEDs, keys (`docs/ebaz-bringup.md`). For a usable LCD: `sudo sh ebaz_lcd_top.sh install` shows `top` on it instead of the login prompt (written 2026-11-15, works on the board).
 2. S4 rest: pin locations on DATA2, SPI frames on the logic analyzer, adapter connected, `synth-ce`, PE4302 walk, ADF4351 at 100 MHz, ADS1115.
 3. Then S5 (`ebaz-ps` backend, sysvinit script for `sweepd`) and S7 (`ebaz-pl`, `/dev/mem` registers).
 

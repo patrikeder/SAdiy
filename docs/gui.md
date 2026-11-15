@@ -1,5 +1,7 @@
 # Spectrum analyzer GUI
 
+Steps to start the server and the GUI: [how-to-start.md](how-to-start.md).
+
 ```
 pip install -e .[ui]                      # PyQtGraph + PyQt5 (pyzmq is a core dependency)
 python -m sadiy.ui.sa_gui --sim           # start simulated hardware here and connect to it

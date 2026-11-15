@@ -36,6 +36,8 @@ python3 -m venv --system-site-packages .venv && . .venv/bin/activate
 pip install -e . --no-deps
 ```
 
+Only the steps to start the server on a board and the GUI on the PC: [docs/how-to-start.md](docs/how-to-start.md).
+
 Run the spectrum analyzer GUI. It starts its own simulated hardware, and its Pins tab drives a fake board:
 
 ```bash

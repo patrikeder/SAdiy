@@ -101,3 +101,11 @@ def test_command_names_the_other_board_nowhere():
 def test_pl_owner_is_ebaz_only():
     out = run("bbb", "read", "--dry-run", "--pl-owner")
     assert out.returncode != 0 and "only applies to --platform ebaz" in out.stderr
+
+
+def test_bringup_finds_sadiy_without_pythonpath():
+    """On the boards the checkout is ~/sadiy (src/sadiy next to tools/): no PYTHONPATH should be needed."""
+    out = subprocess.run([sys.executable, str(ROOT / "tools" / "bringup.py"), "--platform", "ebaz", "synth-ce", "read", "--dry-run"],
+                         capture_output=True, text=True, env={"PATH": "/usr/bin"}, cwd="/", timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert "CE (DATA2.13, ebaz)" in out.stdout

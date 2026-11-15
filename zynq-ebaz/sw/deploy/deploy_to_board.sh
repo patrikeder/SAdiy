@@ -29,5 +29,5 @@ for f in src/sadiy/ui/*.py; do
   case $(basename "$f") in __init__.py|cli_client.py|sweep_client.py) ;; *) ex="$ex --exclude=$f" ;; esac
 done
 tar -czf - --exclude='__pycache__' --exclude='*.pyc' $ex $paths \
-  | ssh "$USER_@$IP" 'mkdir -p ~/sadiy && cd ~/sadiy && tar -xzf - && echo "unpacked to ~/sadiy" && ls ~/sadiy'
-echo "on the board: export PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw"
+  | ssh "$USER_@$IP" 'mkdir -p ~/sadiy && cd ~/sadiy && tar -xzf - && printf "export PYTHONPATH=\$HOME/sadiy/src:\$HOME/sadiy/zynq-ebaz/sw\n" > env.sh && echo "unpacked to ~/sadiy" && ls ~/sadiy'
+echo "on the board: . ~/sadiy/env.sh   (sets PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw; tools/bringup.py also works without it)"

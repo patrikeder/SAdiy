@@ -112,8 +112,10 @@ of the SAdiy code. Init system is sysvinit, so the BBB `sweepd.service` does not
 ```
 sh zynq-ebaz/sw/deploy/deploy_to_board.sh <ebaz-ip>        # tar over ssh into ~/sadiy of user petalinux
 ssh petalinux@<ebaz-ip>
-export PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw
-python3 -m sadiy.server.sweepd --sim                        # smoke test without hardware
+. ~/sadiy/env.sh          # written by the deploy script: PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw (needed for python -m sadiy...)
+python3 -m sadiy.server.sweepd --sim --platform ebaz &      # smoke test without hardware (no EBAZ hardware backend yet)
+python3 -m sadiy.ui.cli_client --count 5                    # a client of that server
+python3 tools/bringup.py pe4302-pattern --db 16 --from-db 15.5   # tools find ~/sadiy/src themselves
 ```
 `deploy_to_board.sh` leaves the Qt GUI out (it runs on the PC) and includes `sadiy_ebaz` and `regmap.toml` only when
 they exist in the checkout (they come from the `rtl` branch after the merge). The kernel boots the rootfs with `ro`
