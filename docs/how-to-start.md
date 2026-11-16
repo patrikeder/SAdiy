@@ -1,6 +1,6 @@
 # How to start
 
-Only the steps. Two programs: the server `sweepd` runs on the target (EBAZ4205 or BBB) and the GUI runs on the PC. Details: [gui.md](gui.md), [architecture.md](architecture.md). Nothing here has swept real RF hardware yet; where a step is untested on a board it says so.
+Only the steps. Two programs: the server `sweepd` runs on the target (EBAZ4205 or BBB) and the GUI runs on the PC. Details: [gui.md](gui.md), [architecture.md](architecture.md). Bench mode on the EBAZ4205 has worked on the board (2026-11-16, user report: setting ADF4351 frequencies, setting the attenuation, reading ADS1115 values). Sweeping has started on the board but nothing has been checked against real RF yet; where a step is untested on a board it says so.
 
 ## 0. Once on the PC
 
@@ -19,11 +19,25 @@ python -m sadiy.ui.sa_gui --sim                    # starts a simulated server a
 
 ## B. EBAZ4205: server on the board, GUI on the PC
 
-**1. Put the code on the board** (PC, from the checkout; user `petalinux`):
+**1. Put the code and the bitstream on the board** (PC, from the checkout; user `petalinux`):
 
 ```bash
-sh zynq-ebaz/sw/deploy/deploy_to_board.sh <ebaz-ip>
+sh zynq-ebaz/sw/deploy/deploy_to_board.sh <ebaz-ip>          # BITSTREAM=<ebaz_sadiy.bit.bin> to choose the bitstream
 ```
+
+It prints which bitstream it found (default: `zynq-ebaz/build/fpga/` of this checkout, else the RTL worktree next to it) and puts the day-to-day scripts into `~/sadiy`.
+
+**The short way (on the board, from `~/sadiy`):**
+
+```bash
+./status.sh      # software build, PL state and map version, device nodes, running sweepd, network. Read-only
+./fpga.sh        # load the bitstream if the PL has none or the wrong one (--force: load again)
+./bench.sh       # bench mode: checks the PL, then sweepd --bench-only (Pins and Synth tabs; no sweeping)
+./sweep.sh       # sweeping with the PL engine (map 1.1 or newer; no bench mode in this run)
+./sim.sh         # simulated chain, no hardware, no root
+./stop.sh        # stop a running sweepd (lines go back to safe)
+```
+and on the PC `sh zynq-ebaz/sw/pc/gui.sh <ebaz-ip>` (or `--sim`). `bench.sh` and `sweep.sh` run `fpga.sh` first and stop with a message when the PL is not ready; `fpga.sh` restarts the network interface for a few seconds when it loads (an ssh session may stall). The steps below are what the scripts do.
 
 **2. Start the server** (on the board, over ssh):
 
@@ -39,13 +53,13 @@ sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz  
 - Which build runs: `sweepd` logs `build: sadiy 0.1.0, commit 9b446a2 (linux, ...)` right after its start line, `status` carries it, the GUI writes it into the Device log when it connects (and warns when GUI and server are different commits), and `bringup.py`, `pl_bringup.py` and `cli_client` print it when they start. `deploy_to_board.sh`, `make_bbb_package.py` and `make_bringup_pkg.sh` record it in a `BUILD_INFO` file next to the copy; "build unknown" means a copy without it. A bring-up package made earlier (`~/sadiy/bringup-pkg`) is its own copy of the code and is not updated by `deploy_to_board.sh`: compare its line with the checkout's (`python -m sadiy.buildinfo`).
 - Bench mode (Pins tab) is not available while the server sweeps ("this sweepd has no bench backend"): the PL engine owns the pins. Restart with `--bench-only` for wiring tests; checklist for the ADC, attenuator and lock: `zynq-ebaz/docs/bench-test-adc-att-lock.md`.
 - The server listens on tcp 5556 (sweeps) and 5557 (commands).
-- Bitstream: the `BOOT.BIN` rebuilt on 2026-11-15 14:53 holds the engine of 2026-11-15 00:03 = **register map 1.2** (sweep path, ADS1115 reader, CE and I2C pin mux, IF path). An SD card written before that has map 1.0 (engine of 2026-11-14 17:09): `--bench-only` and detector `ps` / `test` still work with it, the default PL detector stops with "needs map >= 1.1". Update the card: copy `BOOT.BIN` and `image.ub` (see `zynq-ebaz/sw/deploy/README.md`), or load the newer bitstream for one run with `sadiy_pl_load.sh` from session R's bring-up package. Both the sweep path and `--bench-only` are untested on the board.
+- Bitstream: the `BOOT.BIN` rebuilt on 2026-11-15 14:53 holds the engine of 2026-11-15 00:03 = **register map 1.2** (sweep path, ADS1115 reader, CE and I2C pin mux, IF path). An SD card written before that has map 1.0 (engine of 2026-11-14 17:09): `--bench-only` and detector `ps` / `test` still work with it, the default PL detector stops with "needs map >= 1.1". Update the card: copy `BOOT.BIN` and `image.ub` (see `zynq-ebaz/sw/deploy/README.md`), or load the newer bitstream for one run with `sadiy_pl_load.sh` from session R's bring-up package. `--bench-only` worked on the board (2026-11-16); the sweep path has started and swept (3.47 s per sweep, 401 points, 4 averages) but its results are not checked yet.
 
 **3. Start the GUI** (PC):
 
 ```bash
 . .venv/bin/activate
-python -m sadiy.ui.sa_gui --platform ebaz --host <ebaz-ip> --connect
+python -m sadiy.ui.sa_gui --platform ebaz --host <ebaz-ip> --connect      # or: sh zynq-ebaz/sw/pc/gui.sh <ebaz-ip>
 ```
 
 Press **Run** on the Spectrum tab (sweeping server), or open the **Pins** tab and **Enter bench mode** (`--bench-only` server). Without a GUI: `python -m sadiy.ui.cli_client --host <ebaz-ip> --count 5`.
