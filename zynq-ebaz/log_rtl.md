@@ -20,7 +20,37 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
 
 ## State in one line
 
-**2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board only map 1.0 has run (57 checks passed, SPI clock verified); maps 1.1 / 1.2 and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
+**2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board map 1.0 ran first (57 checks passed, SPI clock verified); on 2026-11-16 map 1.2 passed the stages `lock`, `adc` (17/17, ADC input open) and `if` (11/11, bit-exact); `owner`, `ce`, a real analog input and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
+
+## 2026-11-16 bench mode on the board works with the map 1.2 engine (report from L, user gave no numbers)
+
+- L reports (from the user): `sweepd --platform ebaz --bench-only` + GUI on the PC: ADF4351 frequencies, PE4302 attenuation
+  and ADS1115 values all worked; the pins came back to Linux as expected. Engine needed no change. Not reported yet: lock
+  detect per frequency, output frequency and level, PE4302 weights and polarity, DMM comparison of the ADC, `synth-ce`.
+- L's main is edfddfc (823 tests): board scripts in `zynq-ebaz/sw/board/`, `sw/tools/ebaz_pl_probe.py`, `sadiy/buildinfo.py`
+  (BUILD_INFO via `make_bringup_pkg.sh`), `deploy_to_board.sh` also copies the bitstream. Still to do on R's side when
+  the user says so: `git merge main` in SAdiy-rtl and remake the bring-up package. `on_wait` hook: waits for the user.
+- User, same day: ADF4351 output frequencies match what was set (no numbers given); output levels not measured yet, expected
+  "not far off".
+- Nothing committed for this entry.
+
+## 2026-11-16 map 1.2 on the board: stage `if` passes (11/11), DSP chain bit-exact
+
+- `sudo ./run.sh if`: 11 passed, 0 failed. 56 points of the IF sweep (generator 25 MSPS, two tones, CIC R = 16) equal the
+  Python reference word for word; first tone 84.08 dB (calculated 84.08), second 19.99 dB lower, no over-range flag; 28 us
+  per point incl. Python polling (7.7 us filter time). The 42 dB trace range belongs to the synthetic pattern.
+- Open: `owner` / `ctrl` / `ce` on map 1.2, LA frames, `sweepd --platform ebaz`, a converter on real pins. Details in
+  `docs/ebaz-pl-measurements.md`. Nothing committed for this entry.
+
+## 2026-11-16 first run of map 1.2 on the board: `lock` and `adc` pass (17/17)
+
+- User ran `sudo ./run.sh lock adc` on the board (VERSION 0x00010002): 17 passed, 0 failed. LD wait 447 us per point
+  incl. Python polling; the ADS1115 reader in the PL took 8 conversions, 1.78 ms per sample, no NACK, pin ownership
+  switches correctly (`i2c_pl` 0 / 1 / 0). Details and the open points in `docs/ebaz-pl-measurements.md`.
+- The ADS1115 input was open, so the codes (and the 424-code difference between the two points) mean nothing; the run
+  proves I2C addressing, timing, ACK and ownership only. Check values with a known voltage on the input.
+- Open: `if`, `owner`, `ce` on map 1.2; LA
+  frames; LD timeout path; `sweepd --platform ebaz` on the engine. Nothing committed for this entry.
 
 ## 2026-11-15 adapter pins from L's pins.toml (not merged yet), AD9226 pins stay a proposal
 
