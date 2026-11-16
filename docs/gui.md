@@ -52,7 +52,7 @@ The board drawing shows P8 and P9 as in `hw/diagrams/bbb-p*-pinout.svg` (pin 1 a
 
 ### Using it on the EBAZ4205
 
-Status: **the Pins tab works on the real EBAZ4205 only with `sweepd --platform ebaz --bench-only`** (Linux owns the pins: PS GPIO, `/dev/spidev0.0`, `/dev/i2c-0`; untested on the board). While `sweepd --platform ebaz` sweeps through the PL engine there is no bench mode, because the engine owns the pins: wiring tests and sweeping are two separate runs of `sweepd`. On the board (as root, `. ~/sadiy/env.sh` first):
+Status: **the Pins tab works on the real EBAZ4205 only with `sweepd --platform ebaz --bench-only`** (Linux owns the pins: PS GPIO, `/dev/spidev0.0`, `/dev/i2c-0`; run on the board 2026-11-16: ADF4351 frequency setting, PE4302 attenuation and ADS1115 readings worked). While `sweepd --platform ebaz` sweeps through the PL engine there is no bench mode, because the engine owns the pins: wiring tests and sweeping are two separate runs of `sweepd`. On the board (as root, `. ~/sadiy/env.sh` first):
 
 ```
 sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz --bench-only      # on the board

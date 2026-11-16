@@ -1,6 +1,6 @@
 # Bench test: ADS1115, PE4302, ADF4351 lock (EBAZ4205, Linux owns the pins)
 
-Goal: check the detector ADC, the attenuator and whether the LO locks at the frequencies set in the GUI. Nothing here has run on the board yet; every "expect" below is from the datasheets and the code, not a measurement. Mode: `sweepd --platform ebaz --bench-only` (PS path: `/dev/spidev0.0`, `/dev/i2c-0`, EMIO GPIO; the sweep engine is not used).
+Goal: check the detector ADC, the attenuator and whether the LO locks at the frequencies set in the GUI. Nothing here has run on the board yet; every "expect" below is from the datasheets and the code, not a measurement. Mode: `./bench.sh` (= `sweepd --platform ebaz --bench-only`) (PS path: `/dev/spidev0.0`, `/dev/i2c-0`, EMIO GPIO; the sweep engine is not used).
 
 ## Safety
 
@@ -17,14 +17,14 @@ On the PC, from the main checkout (must show a clean `git status`):
 sh zynq-ebaz/sw/deploy/deploy_to_board.sh <ebaz-ip>
 ```
 
-On the board (`ssh petalinux@<ebaz-ip>`):
+On the board (`ssh petalinux@<ebaz-ip>`, then `cd ~/sadiy`):
 
 ```
-cat /sys/class/fpga_manager/fpga0/state          # must say: operating (else: cd ~/sadiy/bringup-pkg && sudo ./sadiy_pl_load.sh)
-ls /dev/spidev0.0 /dev/i2c-*                     # both must exist
+./status.sh          # PL state operating, register map equals the software's, pins owned by Linux; /dev/spidev0.0 and /dev/i2c-0 ok
+./fpga.sh            # if the PL has no bitstream or the wrong one: loads fpga/ebaz_sadiy.bit.bin
 . ~/sadiy/env.sh
-python3 ~/sadiy/tools/bringup.py --platform ebaz gpio-map          # EMIO numbers and Linux line numbers
-python3 ~/sadiy/tools/bringup.py --platform ebaz synth-ce read --pl-owner    # CE pad, owner must be the PS
+python3 tools/bringup.py --platform ebaz gpio-map                    # EMIO numbers and Linux line numbers
+python3 tools/bringup.py --platform ebaz synth-ce read --pl-owner    # CE pad, owner must be the PS
 ```
 
 The EMIO signals reach the pads only through a loaded bitstream: an unconfigured PL means no signal anywhere. A bitstream loaded at run time is gone after a reboot; the SD card holds it only when `BOOT.BIN` and `image.ub` of 2026-11-15 14:53 (PetaLinux project, `images/linux/`) were copied to it.
@@ -32,8 +32,8 @@ The EMIO signals reach the pads only through a loaded bitstream: an unconfigured
 Start the server and the GUI:
 
 ```
-sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz --bench-only     # board
-python -m sadiy.ui.sa_gui --platform ebaz --host <ebaz-ip> --connect                             # PC
+./bench.sh                                          # board, from ~/sadiy (runs ./fpga.sh first); stop with Ctrl-C or ./stop.sh
+sh zynq-ebaz/sw/pc/gui.sh <ebaz-ip>                 # PC, from the checkout
 ```
 
 `sweepd` logs `build: sadiy ..., commit <hash> (main)`: it must be the commit you deployed (`python -m sadiy.buildinfo` in the checkout). In the GUI: Pins tab, **Enter bench mode**, answer the confirm. The status bar shows `LO not programmed`.
@@ -72,7 +72,7 @@ Also try: Apply twice in a row (must stay locked), and Apply a new frequency whi
 
 ## 4. After
 
-**Leave bench mode** (or close the GUI: the lines go back to safe), stop `sweepd` with Ctrl-C. To sweep again run `sweepd --platform ebaz` (needs map 1.1 or newer in the PL).
+**Leave bench mode** (or close the GUI: the lines go back to safe), stop `sweepd` with Ctrl-C. To sweep again run `./sweep.sh` (needs map 1.1 or newer in the PL).
 
 ## Send back
 

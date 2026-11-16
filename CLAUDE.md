@@ -18,7 +18,7 @@ Only one machine works on the project at a time; `origin` (GitHub) is the single
 
 ```
 . .venv/bin/activate
-pytest                                  # 791 passed at last check (2026-11-15); GUI tests are skipped without the GUI deps
+pytest                                  # 823 passed at last check (2026-11-16); GUI tests are skipped without the GUI deps
 python -m sadiy.server.sweepd --sim &   # simulated chain, tcp 5556 (frames) / 5557 (commands)
 python -m sadiy.ui.sa_gui --sim         # GUI against its own simulator
 python -m sadiy.server.sweepd --bench-only       # on the BBB: only bench mode, real hardware (add --sim for the fake board)
@@ -74,5 +74,5 @@ Free on a stock image: P8.7-P8.19 and P8.26 as GPIO. Not usable: P8.3-6 and P8.2
 ## Not done yet
 
 - ADF4351 register words (`drivers/adf4351.py`, R0..R5, `Adf4351.registers()`) are written and unit-tested for field positions, but not checked against the datasheet text or ADI's software. `python tools/bringup.py pll --mhz 100` prints the six words for a first-light test.
-- `build_hw_engine` in `sweepd` (real SPI, GPIO, ADS1115 for the sweep, enabling the outputs after lock, CE via `SynthCe`), libgpiod instead of sysfs. EBAZ4205: `sweepd --platform ebaz` sweeps through the PL engine (R's `ebaz_pl` backend) and `--bench-only` gives Linux the pins (`sadiy_ebaz/ps_backend.py`); both untested on the board, and there is no bench mode while it sweeps.
+- `build_hw_engine` in `sweepd` (real SPI, GPIO, ADS1115 for the sweep, enabling the outputs after lock, CE via `SynthCe`), libgpiod instead of sysfs. EBAZ4205: `sweepd --platform ebaz` sweeps through the PL engine (R's `ebaz_pl` backend) and `--bench-only` gives Linux the pins (`sadiy_ebaz/ps_backend.py`); bench mode worked on the board (2026-11-16: ADF4351 frequencies, attenuation, ADS1115 values), the PL sweep has started and swept but is not checked against real RF, and there is no bench mode while it sweeps.
 - Bench mode and the ADS1115 driver have only run on the fake backend. Pin map, `config-pin` modes, SPI and I2C device numbers, PE4302 weights and polarity are unverified on a real BBB.
