@@ -102,9 +102,9 @@ def sh(board_dir, script, tmp_path, *args, **plenv):
 
 def test_deploy_puts_scripts_and_bitstream_in_the_base_directory(board):
     base, out = board
-    for name in ("fpga.sh", "bench.sh", "sweep.sh", "sim.sh", "status.sh", "stop.sh", "common.sh"):
+    for name in ("fpga.sh", "bench.sh", "sweep.sh", "sim.sh", "status.sh", "stop.sh", "selftest.sh", "common.sh"):
         assert (base / name).is_file(), name
-    for name in ("fpga.sh", "bench.sh", "sweep.sh", "sim.sh", "status.sh", "stop.sh"):
+    for name in ("fpga.sh", "bench.sh", "sweep.sh", "sim.sh", "status.sh", "stop.sh", "selftest.sh"):
         assert os.access(base / name, os.X_OK), name
     assert (base / "fpga" / "ebaz_sadiy.bit.bin").read_bytes() == b"\x00bitstream"
     assert (base / "fpga" / "sadiy_pl_load.sh").is_file()
@@ -146,6 +146,25 @@ def test_bench_and_sweep_stop_before_sweepd_when_the_pl_is_not_ready(board, tmp_
     for script in ("bench.sh", "sweep.sh"):
         out = sh(base, script, tmp_path, pl=fake_pl(tmp_path, state="unknown"))
         assert out.returncode != 0 and "starting sweepd" not in out.stdout, script
+
+
+def test_selftest_sh_stops_when_the_pl_is_not_ready(board, tmp_path):
+    base, _ = board
+    (base / "fpga" / "ebaz_sadiy.bit.bin").unlink()
+    out = sh(base, "selftest.sh", tmp_path, pl=fake_pl(tmp_path, state="unknown"))
+    assert out.returncode == 2 and "PASS" not in out.stdout
+
+
+def test_selftest_sh_refuses_while_sweepd_runs(board, tmp_path):
+    base, _ = board
+    token = "sadiy-selftest-token-4712"
+    py = subprocess.Popen([sys.executable, "-c", f"import time; time.sleep(30)  # {token}"])
+    try:
+        out = sh(base, "selftest.sh", tmp_path, pl=fake_pl(tmp_path), SADIY_PROC_PATTERN=token)
+        assert out.returncode != 0 and "sweepd is already running" in out.stderr and "PASS" not in out.stdout
+    finally:
+        py.kill()
+        py.wait()
 
 
 def test_status_sh_is_read_only_and_reports(board, tmp_path):
@@ -194,3 +213,34 @@ def test_process_check_matches_python_and_sudo_never_a_shell_that_mentions_it(bo
             if p.poll() is None:
                 p.kill()
             p.wait()
+
+
+def test_status_lists_the_copies_of_the_software_and_marks_the_one_in_use(board, tmp_path):
+    """A bring-up package with its own old copy of sadiy was the surprise on the board: status.sh must show it."""
+    base, _ = board
+    old = base / "bringup-pkg" / "sadiy" / "server"
+    old.mkdir(parents=True)
+    (old / "sweepd.py").write_text("# old copy\n")
+    out = sh(base, "status.sh", tmp_path, pl=fake_pl(tmp_path))
+    lines = [l for l in out.stdout.splitlines() if l.endswith(("BUILD_INFO (made before build info, or copied by hand)",)) or " commit " in l]
+    assert any(l.startswith("* ") and str(base / "src") in l for l in out.stdout.splitlines()), out.stdout
+    assert any(l.startswith("  ") and str(base / "bringup-pkg") in l and "no BUILD_INFO" in l for l in out.stdout.splitlines()), out.stdout
+
+
+def test_readme_is_deployed_and_names_the_namespace_package_trap(board):
+    base, _ = board
+    text = (base / "README.txt").read_text()
+    assert "./bench.sh" in text and "env.sh" in text and "No module named 'sadiy.server'" in text
+
+
+def test_python_module_run_fails_the_way_the_user_saw_without_pythonpath(board, tmp_path):
+    """Documented trap: from the folder that holds ~/sadiy, without PYTHONPATH, `python3 -m sadiy.server.sweepd` finds
+    the plain folder ~/sadiy and says No module named 'sadiy.server'. The scripts set PYTHONPATH themselves."""
+    base, _ = board
+    out = subprocess.run([sys.executable, "-S", "-m", "sadiy.server.sweepd", "--help"], cwd=base.parent,
+                         env={"PATH": os.environ["PATH"]}, capture_output=True, text=True, timeout=30)
+    assert out.returncode != 0 and "No module named 'sadiy.server'" in out.stderr
+    ok = subprocess.run(["sh", str(base / "status.sh")], cwd=tmp_path, env={"PATH": os.environ["PATH"], "HOME": str(base.parent),
+                        "SADIY_NO_SUDO": "1", "SADIY_PROC_PATTERN": "sadiy-test-no-such-process",
+                        "PROBE_ARGS": f"--base 0 --state {tmp_path}/s --mem {tmp_path}/m"}, capture_output=True, text=True, timeout=30)
+    assert ok.returncode == 0 and ok.stdout.startswith("software: sadiy ")       # from another directory, by full path

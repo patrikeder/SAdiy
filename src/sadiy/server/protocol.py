@@ -12,6 +12,12 @@ Commands (REQ/REP, JSON):
       rf_div, int_n, frac, mod, mode, prescaler, main / aux, words per register) plus the live lock detect "ld"
       (source "bench"); while sweeping the LO of the last point tuned (source "sweep"); else null. The chip can
       not be read over SPI on this wiring, so this is what it was told. `bench_status` carries the same "synth".
+  {"cmd": "selftest", "points": 401, "n_avg": 4, "base": 10000, "sweeps": 5, "wrap": false, "fill": false}
+      -> {"ok": true, "passed": bool, "checks": n, "failed": [lines], "lines": [report lines], "seconds": s, "params": {...}}
+      Ramp self-test of the EBAZ4205 PL sweep engine (zynq-ebaz/docs/selftest.md): the engine's own test generator
+      must return known values. Runs between two sweeps (a command waits for the sweep in progress), sweeping
+      goes on afterwards, the engine keeps its pins. Without that engine: {"ok": false, "error": ...}; status has
+      "selftest_available". The reply can take seconds: use a long timeout.
   {"cmd": "log", "since": seq, "level": "debug" | 10, "limit": n}
       -> {"ok": true, "entries": [{seq, t, level, name, msg, repeats, boot}, ...], "last_seq": n, "boot": id}
       Records the daemon kept, newer than `since`. A client calls it on connect and when it sees a gap in

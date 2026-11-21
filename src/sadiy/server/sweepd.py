@@ -181,6 +181,8 @@ class Sweepd:
                 log.info("sweep stopped by a client")
             self.running = False
             return {"ok": True}
+        if name == "selftest":
+            return self._selftest(cmd)
         if name == "log":
             if self.ring is None:
                 return {"ok": True, "entries": [], "last_seq": 0, "boot": ""}
@@ -201,6 +203,7 @@ class Sweepd:
                 "bench": {"active": self.bench_active},
                 "platform": self.bench.pm.name if self.bench is not None else self.platform,
                 "build": buildinfo.info(),
+                "selftest_available": self._selftest_fn() is not None,
                 "last_error": self.last_error,
                 "last_sweep": dataclasses.asdict(self.engine.last_stats) if self.engine is not None else None,
                 "log_seq": self.ring.last_seq if self.ring is not None else 0,
@@ -210,6 +213,49 @@ class Sweepd:
                 "synth": self.synth_readback(),
             }
         return {"ok": False, "error": f"unknown command {name!r}"}
+
+    def _selftest_fn(self):
+        """The engine's ramp self-test (the PL sweep engine only), or None."""
+        offload = getattr(self.engine, "offload", None) if self.engine is not None else None
+        return getattr(offload, "self_test", None)
+
+    def _selftest(self, cmd: dict) -> dict:
+        """Ramp self-test of the PL engine: pass/fail against known values, see zynq-ebaz/docs/selftest.md. Runs
+        between two sweeps (commands are only handled there), sweeping goes on afterwards."""
+        fn = self._selftest_fn()
+        if fn is None:
+            return {"ok": False, "error": "no ramp self-test here: it needs the EBAZ4205 PL sweep engine "
+                                          "(sweepd --platform ebaz without --sim or --bench-only)"}
+        try:
+            points = int(cmd.get("points", 401))
+            n_avg = int(cmd.get("n_avg", 4))
+            base = int(cmd.get("base", 10000))
+            sweeps = int(cmd.get("sweeps", 5))
+            fill, wrap = bool(cmd.get("fill", False)), bool(cmd.get("wrap", False))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "selftest parameters must be numbers"}
+        if not (2 <= points <= 4096 and 1 <= n_avg <= 4095 and 0 <= base <= 0xFFFF and 1 <= sweeps <= 20):
+            return {"ok": False, "error": "selftest: points 2..4096, n_avg 1..4095, base 0..65535, sweeps 1..20"}
+        runs = [(n_avg, base)] + ([(1, 0xFFF0)] if wrap else [])
+        n_points = 4096 if fill else points
+        est = sum((sweeps + 1) * n_points * (40 + a) * 1e-6 for a, _b in runs)      # T_MIN + T_SETTLE 20 us each
+        if est > 30.0:
+            return {"ok": False, "error": f"selftest would take about {est:.0f} s: use fewer points, sweeps or averages"}
+        log.info("self-test started: %d points, N_AVG %d, base %d, %d sweeps%s%s (sweeping pauses for about %.1f s)",
+                 n_points, n_avg, base, sweeps, ", wrap run" if wrap else "", ", full memory" if fill else "", est)
+        t0 = time.monotonic()
+        rep = fn(points=points, runs=runs, sweeps=sweeps, fill=fill)
+        dt = time.monotonic() - t0
+        self._announce = True
+        failed = [c.line() for c in rep.failed]
+        if rep.ok:
+            log.info("self-test PASS: %d checks, %.2f s", len(rep.checks), dt)
+        else:
+            log.warning("self-test FAIL: %d of %d checks failed (%.2f s): %s", len(failed), len(rep.checks), dt,
+                        "; ".join(failed[:3]))
+        return {"ok": True, "passed": rep.ok, "checks": len(rep.checks), "failed": failed, "lines": rep.lines(),
+                "seconds": round(dt, 3),
+                "params": {"points": n_points, "n_avg": n_avg, "base": base, "sweeps": sweeps, "wrap": wrap, "fill": fill}}
 
     def synth_readback(self) -> Optional[dict]:
         """The ADF4351 for `status`: the bench's view of it while bench mode is open (words written, lock detect),
@@ -360,6 +406,9 @@ def main(argv=None) -> None:
                     help="the board this runs on: bbb (default) or ebaz (EBAZ4205); default from [platform] name of the config")
     ap.add_argument("--rt", action="store_true", help="request SCHED_FIFO priority")
     ap.add_argument("--sweeps", type=int, default=0, help="stop after N sweeps (0 = run forever)")
+    ap.add_argument("--test-ramp", action="store_true",
+                    help="EBAZ4205 PL engine: take the detector samples from the engine's test ramp ([platform] detector "
+                         "= test, base from det_test_base), to look at it in the GUI; the pass/fail run is selftest.sh")
     ap.add_argument(
         "--period", type=float, default=None,
         help="minimum seconds per sweep (default 0.1 with --sim, 0 on hardware)",
@@ -375,6 +424,8 @@ def main(argv=None) -> None:
     cfg = config_mod.load(args.config)
     if args.platform:
         cfg.setdefault("platform", {})["name"] = args.platform
+    if args.test_ramp:
+        cfg.setdefault("platform", {})["detector"] = "test"
     pm = platforms.from_config(cfg)
     log_cfg = cfg.get("log", {})
     if args.log_level:
@@ -386,6 +437,8 @@ def main(argv=None) -> None:
     mode = "bench-only" if args.bench_only else "simulated chain" if args.sim else "hardware"
     log.info("sweepd starting: %s on %s, log level %s", mode, pm.label, logs.level_name(level))
     log.info("build: %s", buildinfo.describe())
+    if args.test_ramp:
+        log.warning("test ramp: the detector samples are the PL engine's test generator, not RF (sweeps show a ramp)")
     # EBAZ4205 hardware: the PL sweep engine does the sweeps through its registers (sadiy_ebaz.platforms.ebaz_pl)
     # and owns the pins while sweepd sweeps, so there is no bench mode next to it. `--bench-only` gives the pins
     # to Linux instead (sadiy_ebaz.ps_backend): wiring tests, with no sweeping.
