@@ -122,3 +122,15 @@ def test_gui_notes_the_server_build_once_and_warns_on_a_different_one(monkeypatc
         assert "reports no build" in "\n".join(texts())
     finally:
         win.close()
+
+
+def test_search_paths_depend_on_the_layout(tmp_path):
+    deployed = tmp_path / "home" / "sadiy" / "src" / "sadiy" / "buildinfo.py"
+    package = tmp_path / "home" / "sadiy" / "bringup-pkg" / "sadiy" / "buildinfo.py"
+    for f in (deployed, package):
+        f.parent.mkdir(parents=True)
+        f.write_text("")
+    d = [p.relative_to(tmp_path.resolve()).as_posix() for p in buildinfo.search_paths(deployed)]
+    assert d == ["home/sadiy/src/BUILD_INFO", "home/sadiy/BUILD_INFO"]
+    p = [x.relative_to(tmp_path.resolve()).as_posix() for x in buildinfo.search_paths(package)]
+    assert p == ["home/sadiy/bringup-pkg/BUILD_INFO"]          # never the one of ~/sadiy around it

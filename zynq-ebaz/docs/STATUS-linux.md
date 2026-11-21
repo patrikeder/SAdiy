@@ -3,6 +3,7 @@
 Branch `linux`, worktree `../SAdiy-linux`; everything below is committed on `main` (CE control, `4beac24`). The newer updates further down take precedence over this block.
 
 ## Done
+- Ramp self-test (2026-11-21): `~/sadiy/selftest.sh` runs the PL sweep path with the engine's test ramp and gives PASS/FAIL; spec, criteria and the answers of R in `docs/selftest.md`. Not run on the board yet: first run is `./selftest.sh --wrap` (exit 0 = PASS).
 - PetaLinux project `/media/patrik/Workspaces/HW/ZYNQLinux/ebaz4205_sadiy/` (not in git; mirrored files in `sw/deploy/petalinux/`). Image built three times; the first (Phase 1) booted on the board on 2026-11-14 (`ebaz-baseline.md`: kernel 6.12.40, Ethernet 100 Mbit, Python with zmq, numpy, spidev).
 - S1: `sw/tools/ebaz_baseline.sh` RAN (result in `docs/ebaz-baseline.md`).
 - S2: `rtl/vivado/pins.toml`, `gen_xdc.py`, constraints (generated). Tests: `sw/tests/test_pins_xdc.py`. Schematic check: DATA2 consistent; DATA1-13 mismatch (D19 vs D20) to resolve before Phase 4.
