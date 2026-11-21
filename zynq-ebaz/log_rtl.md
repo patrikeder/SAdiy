@@ -22,6 +22,14 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
 
 **2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board map 1.0 ran first (57 checks passed, SPI clock verified); on 2026-11-16 map 1.2 passed the stages `lock`, `adc` (17/17, ADC input open) and `if` (11/11, bit-exact); `owner`, `ce`, a real analog input and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
 
+## 2026-11-21 block diagram redrawn with the Verilog hierarchy
+
+`docs/blockdiagram.svg` (from `rtl/scripts/gen_blockdiagram.py`, rewritten) now shows the hierarchy as frames
+(`ebaz_sadiy_top`, `u_engine : sadiy_top`, `u_bd : ebaz_sadiy_bd`, `u_if : if_power`), every engine instance
+including the inline logic (synchronisers, I2C handover, selectors, irq gate) and the IF chain, and a 2 to 3 word
+name on every wire, coloured by kind. Kept from the old drawing: devices outside the FPGA, FPGA pins, EMIO line
+numbers, DDR/MIO note, "not built yet". No RTL change.
+
 ## 2026-11-16 bench mode on the board works with the map 1.2 engine (report from L, user gave no numbers)
 
 - L reports (from the user): `sweepd --platform ebaz --bench-only` + GUI on the PC: ADF4351 frequencies, PE4302 attenuation
