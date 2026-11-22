@@ -22,6 +22,51 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
 
 **2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board map 1.0 ran first (57 checks passed, SPI clock verified); on 2026-11-16 map 1.2 passed the stages `lock`, `adc` (17/17, ADC input open) and `if` (11/11, bit-exact); `owner`, `ce`, a real analog input and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
 
+## 2026-11-22 virtual spectrum: three peaks and drift from the engine itself (user request, built with L)
+
+`sadiy_ebaz/virtual_spectrum.py`: `VirtualSweep(offload, detector, cal)` has the call of `OffloadSweep`
+(`run_points`) so a SweepEngine takes it as `offload`. The generator plays 4096 samples (25 MS/s) with three tones
+plus noise, the IF path steps its NCO over the points (IF_NCO_STEP), the table is measure-only entries (no SPI,
+pins unchanged). The display shows peaks at 100 / 200 / 300 MHz of the points' axis at -30 / -45 / -60 dBm on a
+-90 dBm floor (CIC R = 128: first null +-195 kHz); volts are built from the detector and cal objects so the normal
+path shows exactly those levels. Per sweep the NCO window drifts by up to +-8 points (period 48 sweeps) and
+`IF_CIC.skip` cycles through 4, 8, 12, 6, 10, 14 (new noise draw every sweep, peaks stay). `ideal_dbm()` is the
+noise-free expected trace (overlay), `verify()` compares result words bit for bit with `ifpath.if_power_ref`,
+`state()` gives sweep / drift / skip, `close()` restores DET_CFG, GEN_CFG, IF_NCO(_STEP), IF_CIC, T_MIN/T_SETTLE,
+N_AVG (idempotent, never raises). Found while testing: `IF_CIC.skip` is 4 bits, so a skip of 16 or more silently wraps
+(the first version used 16 and 20 and showed transients in the skirts); now refused with ValueError. Tests:
+`tests/test_virtual_spectrum.py` (19, PL model; four deliberate breakages each fail 1 to 4 of them). Full suite 860
+passed. Not run on the board. Expected time per sweep there: about 25 ms of hardware (mean skip 7.3: 60 us a
+point) plus about 5 ms readout and the poll.
+
+## 2026-11-22 ramp self-test passed on the board; `RegOffload.last_sweep_s` / `last_read_s`
+
+L ran `selftest.sh --wrap -v` on the board (map 1.2): PASS, 191 of 191 checks. Time: 22.5 to 22.8 ms for 401
+points, N_AVG 4, T_MIN = T_SETTLE = 20 us, against 17.7 ms from the point-time model. The difference is the host:
+`RegOffload.run()` returns only after the result readout (401 x RESULT_DATA through /dev/mem, about 10 us each) and
+`done` is seen at the next 1 ms poll; the sequencer adds only about 0.11 us per point (fabric clock 100 MHz,
+checked by the SPI clock on the analyzer). `run()` now stores `last_sweep_s` (start write until done is seen) and
+`last_read_s` (readout) so a test can check the hardware floor against the first only
+(`tests/test_offload_timing.py`, 4 tests). Prediction to check on the board: `--fill` (4096 points) about 49 ms of
+extra time if it is the readout.
+
+## 2026-11-21 sweeps larger than the table run in chunks (user: "yes, do chunking with a test")
+
+Problem seen on the target: a sweep needs more table entries than the core holds (4096; 4001 points = 6865
+entries, about 3100 points is the limit for 30..480 MHz, less for narrow spans), so `upload` refused it.
+`OffloadSweep.run_points` now splits such a sweep into runs of whole points (`plan_chunks`, uses the core's
+`max_entries` and `max_points`), uploads and runs each, and returns one list: the caller sees one sweep
+(`OffloadSweep.chunks` = number of runs of the last sweep). The first point of every run carries all six
+register words (its table does not know what the run before sent), the PE4302 level is applied again at the
+start of each run (same value, no change). A sweep that fits behaves as before (table uploaded once, cached); a
+chunked sweep uploads every table at every sweep. SWEEP_COUNT counts one per run. A point that does not fit alone
+raises ValueError. `platform.build_table` is now `point_words` + `table_from_words` (same output).
+`tests/test_offload_chunking.py` (14 tests: planner, boundaries lose/repeat no point, result memory limit, equal to
+the one-table result on the PL model, re-upload, plan cache, incomplete run); three deliberate breakages of the
+planner fail 6, 7 and 0 (equivalent mutant: the upload guard exists twice) of them. Full suite 837 passed.
+Not run on the board; the gap between runs (upload plus start, a few ms by estimate, not measured) is the cost.
+`sweepd.py` `points_max: 4001` (session L's file) now holds for every span.
+
 ## 2026-11-21 block diagram redrawn with the Verilog hierarchy
 
 `docs/blockdiagram.svg` (from `rtl/scripts/gen_blockdiagram.py`, rewritten) now shows the hierarchy as frames
