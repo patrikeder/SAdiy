@@ -371,6 +371,65 @@ def adapter_svg_data(svg_path: Path, text_color: str = "#000000") -> bytes:
 
 
 @dataclass(frozen=True)
+class Shape:
+    """One drawn part of the adapter picture, for a drawer that has no SVG module (units of the picture).
+    kind "rect": x, y, w, h, rx; "circle": x, y = centre, w = h = 2 r; "text": x, y = baseline start, text, size,
+    bold, italic, anchor ("start", "middle" or "end"). A colour of None is "not given" (text: the window text colour)
+    and "none" is no fill / no line."""
+
+    kind: str
+    x: float
+    y: float
+    w: float = 0.0
+    h: float = 0.0
+    rx: float = 0.0
+    fill: Optional[str] = None
+    stroke: Optional[str] = None
+    stroke_width: float = 1.0
+    dash: Tuple[float, ...] = ()
+    text: str = ""
+    size: float = 12.0
+    bold: bool = False
+    italic: bool = False
+    anchor: str = "start"
+
+
+def adapter_shapes(svg_path: Path) -> Tuple[Tuple[float, float], List[Shape]]:
+    """(width, height) of the picture and its shapes in drawing order, read from the file made by `gen_pinmap.py`
+    (rect, circle and text only, which is all it uses). The full-size white page is left out like in
+    `adapter_svg_data`. Used when Qt has no SVG module (a PyQt6 without QtSvg on Raspberry Pi OS)."""
+    root = ET.parse(svg_path).getroot()
+    vb = [float(v) for v in root.get("viewBox", "0 0 100 100").replace(",", " ").split()]
+    width, height = vb[2], vb[3]
+    shapes: List[Shape] = []
+
+    def num(el, name, default=0.0):
+        try:
+            return float(el.get(name, default))
+        except ValueError:
+            return float(default)
+
+    for el in root.iter():
+        tag = el.tag.replace(_SVG, "")
+        if tag == "rect":
+            w, h = num(el, "width"), num(el, "height")
+            if (w, h) == (width, height) and el.get("fill", "").lower() in ("#fff", "#ffffff", "white"):
+                continue
+            shapes.append(Shape("rect", num(el, "x"), num(el, "y"), w, h, num(el, "rx"), el.get("fill", "#000"),
+                                el.get("stroke", "none"), num(el, "stroke-width", 1.0)))
+        elif tag == "circle":
+            r = num(el, "r")
+            dash = tuple(float(v) for v in el.get("stroke-dasharray", "").replace(",", " ").split())
+            shapes.append(Shape("circle", num(el, "cx"), num(el, "cy"), 2 * r, 2 * r, 0.0, el.get("fill", "#000"),
+                                el.get("stroke", "none"), num(el, "stroke-width", 1.0), dash))
+        elif tag == "text":
+            shapes.append(Shape("text", num(el, "x"), num(el, "y"), fill=el.get("fill"), text="".join(el.itertext()),
+                                size=num(el, "font-size", 12.0), bold=el.get("font-weight", "") in ("bold", "700"),
+                                italic=el.get("font-style", "") == "italic", anchor=el.get("text-anchor", "start")))
+    return (width, height), shapes
+
+
+@dataclass(frozen=True)
 class AdapterRegion:
     """A clickable part of the adapter picture: the pin it stands for and its rectangle in picture units."""
 

@@ -28,6 +28,15 @@ Black display, 10 x 10 graticule, yellow trace A, blue stored trace B, red marke
 
 A marker keeps its frequency when the span changes and disappears when it leaves the screen.
 
+**Small screens.** Every tab fits a window of about 600 px height; the Advanced tab, the longest, scrolls when the window is lower than its content (on a 1080 px display the window used to be forced to 1194 px).
+
+**Saved settings (Settings menu).** The GUI remembers what you set. The settings are the frequencies, points, averages, attenuation (and Auto), image reject, reference level, dB/div and the trace mode; as `default.json` in the settings folder the GUI also keeps the host and ports of the connection. The folder is `$SADIY_CONFIG_DIR`, else `$XDG_CONFIG_HOME/sadiy`, else `~/.config/sadiy` (the menu item *Show settings folder* names it). It is per PC and not in the repository.
+- **At the start** the GUI loads `default.json` (the first time there is none: the settings as delivered). A host or port given on the command line wins over the saved connection. When you connect the first time, the saved settings are sent to `sweepd` (it was told what it measures); a later reconnect adopts what `sweepd` has, as before. On a first start nothing is sent.
+- **At exit** `default.json` is written. *Save as default* does it at once. While the GUI is connected to the simulator it started, the saved host stays.
+- **Save as...** stores the setup under a name (letters, digits, space and `_ . - + ( )`) in `settings/<name>.json` of the folder; **Load** lists the saved names and applies one to the controls and, when connected, to `sweepd`; **Delete** removes one after asking. Named settings hold the measurement setup only, so loading one never changes the host.
+- **Restore settings as delivered** takes the values of `config/default.json` of the repository (never written by the program; the built-in values are the fallback), applies them and makes them the next start's `default.json`. Named settings stay.
+- Values that are not usable (a frequency outside the range, 5000 points, an unknown trace mode) are clamped or replaced and named in the status bar; a damaged `default.json` is reported in the device log and the as-delivered values are used. Files are JSON, written whole or not at all (`ui/settings_core.py` has the layout).
+
 **Flagged points.** `sweepd` marks points it does not trust (see "Per-point handling" in `architecture.md`). Points read without PLL lock, and points at detector overload, get a red × on the trace. In Max hold, Min hold and Average a point stays marked if it was bad in any sweep since the trace was cleared. The marker readout names every flag of its point in brackets: `[unlocked]`, `[overload]`, `[at floor]` (only an upper bound) or `[outlier rejected]`. A `sweepd` that sends no flags (older version) simply shows none.
 
 The status bar warns when the step is larger than RBW/2 (narrow signals read low, see "Points versus RBW" in `architecture.md`). With the default 401 points over 30 to 480 MHz it shows up at once. Use "Points = 2·span/RBW" or a narrower span.
@@ -72,7 +81,7 @@ Other scripts that run on the board: `zynq-ebaz/sw/tools/ebaz_s4_readonly.sh` an
 
 Differences from the BBB, all visible in the tab:
 
-- A **View** selector (EBAZ4205 only) switches the left part between the **Adapter board** (default: the picture `zynq-ebaz/docs/pinmap-adapter.svg` made by `rtl/scripts/gen_pinmap.py`: UART header, USB-C, HDMI, LEDs, buzzer, LCD, keys and the right connector with its signals, FPGA ball and bank for each; re-read from the file at each start of the GUI; drawn on the window's own colours, not on a white page: the file's white background is left out and its plain text takes the window's text colour; pins are clickable here too: a click on a circle, key, LED or label selects the pin, as in the connectors view, the selected one gets a red frame, and the regions are read from the picture itself, so a regenerated picture keeps working) and the **Connectors** drawing described next, where pins are clicked. Power and ground pins and NC have no region there; choose those in the connectors view. Without the file (a GUI started away from the checkout) or without Qt's SVG module (Raspberry Pi OS: `sudo apt install python3-pyqt6.qtsvg`; the tab says so) the connectors drawing is shown and the selector is hidden. The BeagleBone has no such picture.
+- A **View** selector (EBAZ4205 only) switches the left part between the **Adapter board** (default: the picture `zynq-ebaz/docs/pinmap-adapter.svg` made by `rtl/scripts/gen_pinmap.py`: UART header, USB-C, HDMI, LEDs, buzzer, LCD, keys and the right connector with its signals, FPGA ball and bank for each; re-read from the file at each start of the GUI; drawn on the window's own colours, not on a white page: the file's white background is left out and its plain text takes the window's text colour; pins are clickable here too: a click on a circle, key, LED or label selects the pin, as in the connectors view, the selected one gets a red frame, and the regions are read from the picture itself, so a regenerated picture keeps working) and the **Connectors** drawing described next, where pins are clicked. Power and ground pins and NC have no region there; choose those in the connectors view. Without the file (a GUI started away from the checkout) the connectors drawing is shown and the selector is hidden. Qt's SVG module is not needed: without it (a PyQt6 on Raspberry Pi OS has none unless `python3-pyqt6.qtsvg` is installed) the same picture is painted by hand from the shapes in the file (`bench_core.adapter_shapes`), looking almost the same. The BeagleBone has no such picture.
 - The drawing shows DATA2 (the adapter's signals), DATA1 and DATA3 (display, keys and LEDs: shown only, they can not be driven here) with lines to PE4302, ADF4351 and ADS1115. There is no AIN0 and no on-chip ADC, so the ADC box has only the ADS1115.
 - No pin mux: SPI (DATA2.5, .7, .8) and I2C (DATA2.20, .11) are wired to the PS in the bitstream, so they can not be driven as GPIO and **Back to bus** is not needed. The six PE4302 lines (DATA2.14 to .19), SYN_CE (DATA2.13) and lock detect (DATA2.9, read only) are EMIO GPIO and work as on the BBB.
 - Pin ids are `DATA<n>.<pin>`; the pin page shows the FPGA ball in the name, `GPIO: EMIO n (Linux line 54 + n)` and the adapter pin it goes to.
@@ -143,15 +152,17 @@ The list follows what `sweepd` reports (RF range, IF, injection, PFD), so anothe
 |---|---|
 | `ui/sa_gui.py` | Qt window (PyQtGraph display, controls, tabs) |
 | `ui/sa_core.py` | axis, settings clamping, trace modes, peak search, markers, CSV: no Qt, unit-tested |
+| `ui/settings_core.py` | saved settings: layout of the JSON, checking and clamping, the settings folder, named settings, the as-delivered file `config/default.json`: no Qt, unit-tested |
 | `ui/log_core.py` | the Device log's state: numbered, duplicate-free records, gap and restart detection, unread counters, levels: no Qt, unit-tested |
 | `ui/bench_tab.py` | the Pins tab: board drawing and controls, platform selector |
 | `ui/synth_tab.py` | the Synth tab: presets, frequency and power, the readback (uses the Pins tab's bench session) |
 | `ui/synth_core.py` | presets from sweepd's status, plan preview, readback texts: no Qt, unit-tested |
-| `ui/bench_core.py` | bench session, confirm memory, input parsing, pattern preview, board layout and hit test (all take a `pinmap.PinMap`, default BBB): no Qt, unit-tested |
+| `ui/bench_core.py` | bench session, the shapes of the adapter picture, confirm memory, input parsing, pattern preview, board layout and hit test (all take a `pinmap.PinMap`, default BBB): no Qt, unit-tested |
 | `pinmap.py`, `pinmap_ebaz.py`, `platforms.py` | the pin maps (`pinmap.BBB`, `pinmap_ebaz.EBAZ`) and `platforms.get(name)`; the layout of the drawn board is part of the map |
 | `ui/sweep_client.py` | ZeroMQ SUB (newest frame only, all log records, flags of the last frame) and REQ with short timeouts, `fetch_log` |
 | `ui/sim_runner.py` | starts / stops `sweepd --sim`, writes the temporary TOML override, keeps the log |
 | `tests/test_sa_gui_smoke.py`, `tests/test_bench_gui_smoke.py`, `tests/test_synth_gui_smoke.py`, `tests/test_platform_gui_smoke.py` | build the window offscreen, feed frames and flags, drive the Pins tab and the Device log, run the simulator end to end; skipped without PyQt5 / pyqtgraph |
+| `tests/test_settings_core.py`, `tests/test_settings_gui.py` | the settings files and the Settings menu (offscreen, with a temporary folder) |
 | `tests/test_log_core.py`, `tests/test_sweep_client_log.py` | log buffer logic; the client against real ZeroMQ sockets on localhost |
 
 ## Known limits

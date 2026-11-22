@@ -42,10 +42,6 @@ def _group(title: str, layout: QtWidgets.QLayout) -> QtWidgets.QGroupBox:
     return box
 
 
-SVG_MISSING = ("The adapter picture needs the Qt SVG module, which is not installed "
-               "(Debian / Raspberry Pi OS: sudo apt install python3-pyqt6.qtsvg); the connectors are shown.")
-
-
 def svg_available() -> bool:
     """Whether Qt's SVG module can be used. pyqtgraph hands out QtSvg lazily: with a PyQt6 that has no QtSvg the import
     above works and the first use raises ImportError."""
@@ -58,19 +54,29 @@ def svg_available() -> bool:
 
 class SvgView(QtWidgets.QWidget):
     """The picture of the adapter board, scaled to the widget with its aspect ratio kept. Its pins are clickable like
-    those of the connector drawing (regions read from the picture by `bench_core.adapter_regions`)."""
+    those of the connector drawing (regions read from the picture by `bench_core.adapter_regions`). Drawn by Qt's SVG
+    renderer; without the SVG module (PyQt6 on Raspberry Pi OS) the same shapes are painted by hand
+    (`bench_core.adapter_shapes`), so the picture shows either way. `use_renderer=False` forces the hand drawing."""
 
-    def __init__(self, path: Path, pm: pinmap.PinMap, on_select: Callable[[str], None]) -> None:
+    def __init__(self, path: Path, pm: pinmap.PinMap, on_select: Callable[[str], None],
+                 use_renderer: Optional[bool] = None) -> None:
         super().__init__()
         self.path = Path(path)
         self.pm = pm
         self.on_select = on_select
         self.selected: Optional[str] = None
-        self.renderer = QtSvg.QSvgRenderer()
-        self._load()
+        self.picture_size, self.shapes = core.adapter_shapes(self.path)
+        self.renderer = None
+        if (svg_available() if use_renderer is None else use_renderer):
+            self.renderer = QtSvg.QSvgRenderer()
+            self._load()
         self.regions = core.adapter_regions(path, pm)
         self.setMinimumSize(300, 200)
         self.setMouseTracking(True)
+
+    @property
+    def uses_renderer(self) -> bool:
+        return self.renderer is not None
 
     def _load(self) -> None:
         """The picture drawn for this widget's colours: no white page behind it, text in the window's text colour."""
@@ -78,17 +84,19 @@ class SvgView(QtWidgets.QWidget):
         self.renderer.load(QtCore.QByteArray(core.adapter_svg_data(self.path, color)))
 
     def changeEvent(self, event) -> None:
-        if event.type() == QtCore.QEvent.Type.PaletteChange:
+        if event.type() == QtCore.QEvent.Type.PaletteChange and self.renderer is not None:
             self._load()
             self.update()
         super().changeEvent(event)
 
     def _scale(self):
-        size = self.renderer.viewBoxF().size()
-        if not self.renderer.isValid() or size.width() <= 0 or size.height() <= 0:
+        width, height = self.picture_size
+        if self.renderer is not None and not self.renderer.isValid():
             return None
-        s = min(self.width() / size.width(), self.height() / size.height())
-        return s, (self.width() - size.width() * s) / 2, (self.height() - size.height() * s) / 2
+        if width <= 0 or height <= 0:
+            return None
+        s = min(self.width() / width, self.height() / height)
+        return s, (self.width() - width * s) / 2, (self.height() - height * s) / 2
 
     def to_picture(self, pos: QtCore.QPoint):
         sc = self._scale()
@@ -115,6 +123,39 @@ class SvgView(QtWidgets.QWidget):
             pin = self.pm.pins[pid]
             self.setToolTip(f"{pid} {pin.name}" + (f" = {pin.net}" if pin.net else ""))
 
+    def _paint_shapes(self, p: QtGui.QPainter, s: float, ox: float, oy: float) -> None:
+        """The shapes by hand, in widget coordinates (so the font sizes and text widths are those of the screen)."""
+        text_color = self.palette().color(QtGui.QPalette.ColorRole.WindowText)
+        pal = QtCore.Qt.PenStyle
+        for sh in self.shapes:
+            if sh.kind == "text":
+                font = QtGui.QFont(p.font())
+                font.setPixelSize(max(1, int(round(sh.size * s))))
+                font.setBold(sh.bold)
+                font.setItalic(sh.italic)
+                p.setFont(font)
+                p.setPen(QtGui.QColor(sh.fill) if sh.fill and sh.fill != "none" else text_color)
+                width = QtGui.QFontMetricsF(font).horizontalAdvance(sh.text)
+                x = ox + sh.x * s - (width if sh.anchor == "end" else width / 2 if sh.anchor == "middle" else 0.0)
+                p.drawText(QtCore.QPointF(x, oy + sh.y * s), sh.text)
+                continue
+            if sh.stroke and sh.stroke != "none":
+                pen = QtGui.QPen(QtGui.QColor(sh.stroke), max(1.0, sh.stroke_width * s))
+                if sh.dash:
+                    pen.setDashPattern([d for d in sh.dash])
+                p.setPen(pen)
+            else:
+                p.setPen(pal.NoPen)
+            p.setBrush(QtGui.QColor(sh.fill) if sh.fill and sh.fill != "none" else QtCore.Qt.BrushStyle.NoBrush)
+            rect = QtCore.QRectF(ox + sh.x * s, oy + sh.y * s, sh.w * s, sh.h * s)
+            if sh.kind == "circle":
+                rect = QtCore.QRectF(ox + (sh.x - sh.w / 2) * s, oy + (sh.y - sh.h / 2) * s, sh.w * s, sh.h * s)
+                p.drawEllipse(rect)
+            elif sh.rx > 0:
+                p.drawRoundedRect(rect, sh.rx * s, sh.rx * s)
+            else:
+                p.drawRect(rect)
+
     def paintEvent(self, _event) -> None:
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
@@ -125,8 +166,11 @@ class SvgView(QtWidgets.QWidget):
             p.drawText(self.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, f"cannot draw {self.path.name}")
             return
         s, ox, oy = sc
-        size = self.renderer.viewBoxF().size()
-        self.renderer.render(p, QtCore.QRectF(ox, oy, size.width() * s, size.height() * s))
+        width, height = self.picture_size
+        if self.renderer is not None:
+            self.renderer.render(p, QtCore.QRectF(ox, oy, width * s, height * s))
+        else:
+            self._paint_shapes(p, s, ox, oy)
         for r in self.regions:
             if r.pin_id == self.selected:
                 x, y, w, h = r.rect
@@ -396,18 +440,11 @@ class PinsTab(QtWidgets.QWidget):
         self.view_stack = QtWidgets.QStackedWidget()
         self.view_stack.addWidget(self.canvas)
         figure = core.adapter_figure(pm)
-        self.adapter_view, self._svg_note = None, ""
-        if figure is not None:
-            if svg_available():
-                self.adapter_view = SvgView(figure, pm, self.select_pin)
-            else:
-                self._svg_note = SVG_MISSING
+        self.adapter_view = SvgView(figure, pm, self.select_pin) if figure is not None else None
         if self.adapter_view is not None:
             self.view_stack.addWidget(self.adapter_view)
-        self.view_lbl.setVisible(self.adapter_view is not None or bool(self._svg_note))
+        self.view_lbl.setVisible(self.adapter_view is not None)
         self.view_cb.setVisible(self.adapter_view is not None)
-        self.view_lbl.setText("View:" if self.adapter_view is not None else self._svg_note)
-        self.view_lbl.setStyleSheet("" if self.adapter_view is not None else "color:#c05000;")
         self._body.addWidget(self.view_stack, 1)
         self._body.addWidget(self.side)
         self.set_view(self._view)

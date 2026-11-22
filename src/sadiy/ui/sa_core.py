@@ -103,6 +103,11 @@ class SaSettings:
     ref_dbm: float = -20.0
     db_per_div: float = 10.0
 
+    def assign(self, other: "SaSettings") -> None:
+        """Take over every value of `other` (the object stays the same, so holders of it see the change)."""
+        for name in vars(other):
+            setattr(self, name, getattr(other, name))
+
     @property
     def center_hz(self) -> float:
         return 0.5 * (self.start_hz + self.stop_hz)
