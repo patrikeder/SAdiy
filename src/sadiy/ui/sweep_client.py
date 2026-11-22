@@ -62,6 +62,7 @@ class SweepClient:
         self._rep_url = ""
         self.bad_frames = 0
         self.last_flags: Optional[np.ndarray] = None    # per-point flags of the frame `poll_latest` returned last
+        self.last_ideal: Optional[np.ndarray] = None    # expected trace of that frame (virtual spectrum), else None
         self._logs: List[LogEntry] = []
 
     @property
@@ -111,7 +112,7 @@ class SweepClient:
         if latest is None:
             return None
         try:
-            header, p, self.last_flags = protocol.decode_frame_flags(latest)
+            header, p, self.last_flags, self.last_ideal = protocol.decode_frame_all(latest)
             return header, p
         except ValueError:
             self.bad_frames += 1

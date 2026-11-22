@@ -49,3 +49,32 @@ def parse_reply(reply: Optional[dict]) -> Result:
     if reply.get("passed"):
         return Result(True, f"PASS: {checks} checks, {seconds:.1f} s", lines)
     return Result(False, f"FAIL: {len(failed)} of {checks} checks failed ({seconds:.1f} s)", lines)
+
+
+# ---- virtual spectrum (three peaks and a drift made by the PL's generator and IF path, no RF) -----------------------
+def virtual_command(on: bool) -> dict:
+    return {"cmd": "virtual", "on": bool(on)}
+
+
+def virtual_timeout_ms() -> int:
+    """Switching waits for the sweep in progress (3.5 s with real RF) and then writes a few registers."""
+    return int((WAIT_FOR_SWEEP_S + 4.0) * 1000)
+
+
+@dataclass(frozen=True)
+class VirtualInfo:
+    available: bool = False
+    active: bool = False
+    text: str = ""
+
+    @classmethod
+    def from_status(cls, v: Optional[dict]) -> "VirtualInfo":
+        if not isinstance(v, dict):
+            return cls()
+        state = v.get("state") if isinstance(v.get("state"), dict) else None
+        text = ""
+        if v.get("active"):
+            text = "VIRTUAL SPECTRUM, not RF"
+            if state:
+                text += f": sweep {state.get('sweep', '?')}, drift {state.get('drift_points', 0):+d} points"
+        return cls(bool(v.get("available")), bool(v.get("active")), text)

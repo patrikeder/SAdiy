@@ -127,6 +127,8 @@ class SpectrumView(pg.PlotWidget):
 
         self.trace_b = pi.plot(pen=pg.mkPen(C_TRACE_B, width=1))
         self.trace_a = pi.plot(pen=pg.mkPen(C_TRACE_A, width=1))
+        # the virtual spectrum's expected trace (noise-free), dashed, under the measured one
+        self.ideal = pi.plot(pen=pg.mkPen(C_TEXT, width=1, style=QtCore.Qt.PenStyle.DashLine))
         # points sweepd flagged as not reliable (PLL not locked, detector overload): red crosses on the trace
         self.bad = pi.plot(pen=None, symbol="x", symbolSize=8, symbolPen=pg.mkPen(C_MARKER, width=1), symbolBrush=None)
         self._marks = []
@@ -175,6 +177,12 @@ class SpectrumView(pg.PlotWidget):
         else:
             item.setData(f, p, skipFiniteCheck=True)
 
+    def set_ideal(self, f, p) -> None:
+        if p is None:
+            self.ideal.setData([], [])
+        else:
+            self.ideal.setData(f, p, skipFiniteCheck=True)
+
     def set_bad(self, f, p, mask) -> None:
         if p is None or mask is None or not mask.any():
             self.bad.setData([], [])
@@ -210,6 +218,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.trace_a = core.TraceProcessor()
         self.trace_b = None                 # (axis, levels) stored with "Store B"
         self.flags_a = None                 # per-point flags behind trace A (or-ed over a hold / average)
+        self.ideal_dbm = None               # expected trace of the last frame (virtual spectrum), else None
         self.image_active = False           # the frames on screen are the lower of two sweeps (image rejection)
         self.axis: Optional[core.Axis] = None
         self.last_atten = self.settings.atten_db
@@ -471,7 +480,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _refresh_selftest(self) -> None:
         busy = self._selftest_req is not None
-        ready = self.client.connected and self._selftest_available and not busy
+        ready = (self.client.connected and self._selftest_available and not busy
+                 and not getattr(getattr(self, "_virtual", None), "active", False))   # the virtual spectrum owns the generator
         self.st_btn.setEnabled(ready)
         for w in (self.st_sweeps, self.st_wrap, self.st_fill):
             w.setEnabled(not busy)
@@ -526,6 +536,96 @@ class MainWindow(QtWidgets.QMainWindow):
         self.st_label.setText("")
         self._refresh_selftest()
 
+    def _build_virtual_box(self) -> QtWidgets.QGroupBox:
+        """Virtual spectrum of the EBAZ4205 PL engine: three peaks and a slow drift made by its sample generator and IF path
+        (no RF, no ADC). The whole chain from the table to the GUI can be watched without hardware around it."""
+        self._virtual = selftest_core.VirtualInfo()
+        self._virtual_req = None
+        self._virtual_note = ""             # why the last switch did not work
+        self._virtual_timer = QtCore.QTimer(self)
+        self._virtual_timer.setInterval(200)
+        self._virtual_timer.timeout.connect(self._poll_virtual)
+        self.vs_btn = _button("Start virtual spectrum", self._toggle_virtual,
+                              "Replaces the real sweep by one made inside the PL: peaks at 100, 200 and 300 MHz of the "
+                              "displayed axis (-30, -45, -60 dBm), noise and a slow drift. No RF input is used. Not "
+                              "possible while the self-test runs.")
+        self.vs_label = QtWidgets.QLabel("")
+        g = QtWidgets.QHBoxLayout()
+        g.addWidget(self.vs_btn)
+        g.addWidget(self.vs_label, 1)
+        self._refresh_virtual()
+        return _group("Virtual spectrum (PL sweep engine, no RF needed)", g)
+
+    def _apply_virtual(self, status: Optional[dict]) -> None:
+        self._virtual = selftest_core.VirtualInfo.from_status(status)
+        self._refresh_virtual()
+        self._refresh_selftest()
+
+    def _refresh_virtual(self) -> None:
+        v, busy = self._virtual, self._virtual_req is not None
+        self.vs_btn.setEnabled(self.client.connected and (v.available or v.active) and not busy)
+        self.vs_btn.setText("Stop virtual spectrum" if v.active else "Start virtual spectrum")
+        if busy:
+            return
+        if v.active:
+            self.vs_label.setStyleSheet("color: #d08a00; font-weight: bold;")
+            self.vs_label.setText(v.text)
+        else:
+            self.vs_label.setStyleSheet("")
+            if self._virtual_note:
+                self.vs_label.setText(self._virtual_note)
+            else:
+                self.vs_label.setText("" if v.available or not (self.client.connected and self.synced)
+                                      else "not available: needs sweepd on the EBAZ4205 PL engine with the virtual spectrum module")
+
+    def _toggle_virtual(self) -> None:
+        if self._virtual_req is not None or not self.client.connected:
+            return
+        self._virtual_note = ""
+        self._virtual_req = self.client.request_async(selftest_core.virtual_command(not self._virtual.active),
+                                                      selftest_core.virtual_timeout_ms())
+        if self._virtual_req is None:
+            self._set_virtual_result(None)
+            return
+        self.vs_label.setStyleSheet("")
+        self.vs_label.setText("switching: waits for the sweep in progress…")
+        self._virtual_timer.start()
+        self._refresh_virtual()
+
+    def _poll_virtual(self) -> None:
+        req = self._virtual_req
+        if req is None:
+            self._virtual_timer.stop()
+            return
+        done, reply = req.poll()
+        if not done:
+            return
+        self._virtual_timer.stop()
+        self._virtual_req = None
+        self._set_virtual_result(reply)
+
+    def _set_virtual_result(self, reply: Optional[dict]) -> None:
+        if reply is None:
+            self._dev_note(logging.WARNING, "virtual spectrum: no answer from sweepd")
+            self._virtual_note = "no answer from sweepd"
+        elif not reply.get("ok"):
+            self._dev_note(logging.WARNING, f"virtual spectrum: {reply.get('error', 'refused')}")
+            self._virtual_note = f"not switched: {reply.get('error', 'refused')}"
+        else:
+            self._virtual_note = ""
+            self._apply_virtual(reply.get("virtual"))
+            self._msg("Virtual spectrum: the trace is not RF" if self._virtual.active else "")
+            return
+        self._refresh_virtual()
+
+    def _cancel_virtual(self) -> None:
+        self._virtual_timer.stop()
+        if self._virtual_req is not None:
+            self._virtual_req.close()
+            self._virtual_req = None
+        self._virtual = selftest_core.VirtualInfo()
+        self._refresh_virtual()
+
     def _build_advanced_tab(self, host: str, pub_port: int, rep_port: int) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget()
         col = QtWidgets.QVBoxLayout(page)
@@ -547,6 +647,7 @@ class MainWindow(QtWidgets.QMainWindow):
         g.addWidget(self.conn_label, 1, 1, 1, 5)
         col.addWidget(_group("Connection to sweepd", g))
         col.addWidget(self._build_selftest_box())
+        col.addWidget(self._build_virtual_box())
 
         # device log: what sweepd reports. Low-level detail stays on the BBB (journalctl over ssh).
         self.dev_level_cb = QtWidgets.QComboBox()
@@ -804,10 +905,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.synth_tab.set_info(info)
         self._synth = r.get("synth")
         self._selftest_available = bool(r.get("selftest_available", False))
+        self._apply_virtual(r.get("virtual"))
         self.settings.apply_server(r.get("settings", {}))
         self._remote_running = bool(r.get("running", True))
         self.synced = True
         self._refresh_selftest()
+        self._refresh_virtual()
         self.last_atten = self.settings.atten_db
         self._refresh_controls()
         self._redraw()
@@ -983,7 +1086,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._poll_dev_log()
         self._update_synth()
         if frame is not None:
-            self.handle_frame(*frame, flags=self.client.last_flags)
+            self.handle_frame(*frame, flags=self.client.last_flags, ideal=self.client.last_ideal)
 
     def _update_synth(self) -> None:
         """The ADF4351 readback in the status bar and the Synth tab. In bench mode it comes with the Pins tab's
@@ -997,14 +1100,17 @@ class MainWindow(QtWidgets.QMainWindow):
             r = self.client.request({"cmd": "status"}, 150)
             ok = bool(r and r.get("ok"))
             self._synth = r.get("synth") if ok else None
+            if ok:
+                self._apply_virtual(r.get("virtual"))
             self._synth_every_s = 1.5 if ok else 5.0
             self._synth_t = time.monotonic()
         self.status_synth.setText(synth_core.status_text(self._synth))
         self.synth_tab.show_readback(self._synth)
 
-    def handle_frame(self, header: dict, p, flags=None) -> None:
+    def handle_frame(self, header: dict, p, flags=None, ideal=None) -> None:
         axis = core.Axis.from_header(header)
         self.axis = axis
+        self.ideal_dbm = None if ideal is None else np.array(ideal, dtype=np.float32)    # virtual spectrum only
         self.last_atten = float(header.get("atten_db", self.last_atten))
         self.image_active = bool(header.get("image_reject"))
         t = header.get("t")
@@ -1048,6 +1154,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view.set_scale(axis.start_hz, axis.stop_hz, s.ref_dbm, s.db_per_div)
         f = axis.freqs()
         self.view.set_trace("a", f, data)
+        ideal = getattr(self, "ideal_dbm", None)
+        self.view.set_ideal(f, ideal if (data is not None and ideal is not None and ideal.size == data.size) else None)
         flags = self.flags_a if (data is not None and self.flags_a is not None and self.flags_a.size == data.size) else None
         self.view.set_bad(f, data, None if flags is None else (flags & FLAGS_UNRELIABLE) != 0)
         if self.trace_b is not None and self.show_b_chk.isChecked() and self.trace_b[0] == axis:
@@ -1095,6 +1203,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.client.disconnect()
             self.synced = False
             self._cancel_selftest()
+            self._cancel_virtual()
             self.connect_btn.setText("Connect")
             self._set_conn("not connected")
             self._dev_note(logging.INFO, "disconnected")

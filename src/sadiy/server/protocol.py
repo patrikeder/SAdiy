@@ -1,7 +1,8 @@
 """Wire format. A sweep frame is a topic, a JSON header and float32 power data (dBm), and optionally a
 fourth part with one flag byte per point (bits in `core.sweep`: unlocked, overload, at floor, outlier
 rejected, image not suppressed; header["flags"] is true then). The fourth part is additive, so readers that know nothing of
-it keep working and `VERSION` stays 1.
+it keep working and `VERSION` stays 1. A virtual spectrum adds a last part, the expected (noise-free) trace as float32 dBm,
+one per point, after the flags part when there is one (header["ideal"] is true then; `decode_frame_all` reads all parts).
 
 Commands (REQ/REP, JSON):
   {"cmd": "set", "start_hz":..., "stop_hz":..., "points":..., "atten_db":..., "auto_atten":true|false,
@@ -18,6 +19,12 @@ Commands (REQ/REP, JSON):
       must return known values. Runs between two sweeps (a command waits for the sweep in progress), sweeping
       goes on afterwards, the engine keeps its pins. Without that engine: {"ok": false, "error": ...}; status has
       "selftest_available". The reply can take seconds: use a long timeout.
+  {"cmd": "virtual", "on": true|false}
+      -> {"ok": true, "virtual": {"available": bool, "active": bool, "state": {...}|null}}
+      Virtual spectrum of the EBAZ4205 PL sweep engine (sadiy_ebaz.virtual_spectrum): three peaks and a slow drift made
+      by the PL's sample generator and IF path replace the real sweep (no RF); sweeps keep at least 0.1 s apart. `state`
+      is what the module reports (sweep, drift_points, ...). Refused in bench mode and without the module; the self-test
+      is refused while it is on. status carries the same "virtual". Off again on a failed sweep and on shutdown.
   {"cmd": "log", "since": seq, "level": "debug" | 10, "limit": n}
       -> {"ok": true, "entries": [{seq, t, level, name, msg, repeats, boot}, ...], "last_seq": n, "boot": id}
       Records the daemon kept, newer than `since`. A client calls it on connect and when it sees a gap in
@@ -61,7 +68,7 @@ BENCH_PREFIX = "bench_"
 
 
 def encode_frame(seq: int, f_start_hz: float, f_step_hz: float, atten_db: float, p_dbm, flags=None,
-                 image_reject: bool = False) -> List[bytes]:
+                 image_reject: bool = False, ideal=None) -> List[bytes]:
     p = np.asarray(p_dbm, dtype="<f4")
     header = {
         "v": VERSION,
@@ -82,6 +89,14 @@ def encode_frame(seq: int, f_start_hz: float, f_step_hz: float, atten_db: float,
         header["flags"] = True
         parts[1] = json.dumps(header).encode()
         parts.append(f.tobytes())
+    if ideal is not None:
+        # the expected trace of a virtual spectrum (dBm, float32): the last part, after the flags when there are some
+        q = np.asarray(ideal, dtype="<f4")
+        if q.size != p.size:
+            raise ValueError("one expected value per point is required")
+        header["ideal"] = True
+        parts[1] = json.dumps(header).encode()
+        parts.append(q.tobytes())
     return parts
 
 
@@ -92,6 +107,12 @@ def decode_frame(parts) -> Tuple[dict, np.ndarray]:
 
 def decode_frame_flags(parts) -> Tuple[dict, np.ndarray, Optional[np.ndarray]]:
     """Like `decode_frame`, plus the per-point flags (None when the frame has none)."""
+    header, p, flags, _ideal = decode_frame_all(parts)
+    return header, p, flags
+
+
+def decode_frame_all(parts) -> Tuple[dict, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
+    """Header, dBm, flags and the expected trace (None for a part the frame does not have)."""
     if parts[0] != TOPIC:
         raise ValueError("not a sweep frame")
     header = json.loads(parts[1])
@@ -100,12 +121,18 @@ def decode_frame_flags(parts) -> Tuple[dict, np.ndarray, Optional[np.ndarray]]:
     p = np.frombuffer(parts[2], dtype="<f4")
     if p.size != header["n"]:
         raise ValueError("payload length does not match header")
-    flags = None
-    if header.get("flags") and len(parts) > 3:
-        flags = np.frombuffer(parts[3], dtype=np.uint8)
+    flags = ideal = None
+    k = 3
+    if header.get("flags") and len(parts) > k:
+        flags = np.frombuffer(parts[k], dtype=np.uint8)
+        k += 1
         if flags.size != header["n"]:
             raise ValueError("flag length does not match header")
-    return header, p, flags
+    if header.get("ideal") and len(parts) > k:
+        ideal = np.frombuffer(parts[k], dtype="<f4")
+        if ideal.size != header["n"]:
+            raise ValueError("expected-trace length does not match header")
+    return header, p, flags, ideal
 
 
 def encode_log(entry: LogEntry) -> List[bytes]:
