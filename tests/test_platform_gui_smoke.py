@@ -252,6 +252,63 @@ def test_adapter_figure_lookup(tmp_path):
     assert bench_core.adapter_figure(pinmap_ebaz.EBAZ).name == "pinmap-adapter.svg"      # the real one in the repo
 
 
+def test_without_qtsvg_the_pins_tab_shows_the_connectors_and_says_why(app, monkeypatch):
+    """A PyQt6 without QtSvg (Raspberry Pi OS): the import works, the first use raises ImportError."""
+    from sadiy.ui import bench_tab
+
+    class NoSvg:
+        def __getattr__(self, name):
+            raise ImportError("cannot import name 'QtSvg' from 'PyQt6'")
+
+    monkeypatch.setattr(bench_tab, "QtSvg", NoSvg())
+    assert not bench_tab.svg_available()
+    win = MainWindow()
+    try:
+        tab = win.pins
+        tab.set_platform("ebaz")
+        assert tab.adapter_view is None and tab.view_stack.currentWidget() is tab.canvas
+        assert not tab.view_cb.isVisibleTo(win) and "apt install python3-pyqt6.qtsvg" in tab.view_lbl.text()
+        assert not tab.view_lbl.isHidden()
+        tab.set_platform("bbb")
+        assert tab.view_lbl.isHidden()
+    finally:
+        win.close()
+
+
+def test_adapter_svg_drops_the_white_page_and_takes_the_text_colour():
+    pm = pinmap_ebaz.EBAZ
+    path = bench_core.adapter_figure(pm)
+    raw = path.read_text(encoding="utf-8")
+    assert '<rect width="1500" height="900" fill="#fff"/>' in raw
+    data = bench_core.adapter_svg_data(path, "#abcdef").decode()
+    assert '<rect width="1500" height="900" fill="#fff"/>' not in data
+    assert data.count("<rect") == raw.count("<rect") - 1 and data.count("<text") == raw.count("<text")
+    assert '<svg fill="#abcdef"' in data
+    other = path.parent / "no-such-page.svg"                                 # a file without the white page is kept as it is
+    other.write_text("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect width='4' height='4'/></svg>")
+    try:
+        assert "<rect width='4' height='4'/>" in bench_core.adapter_svg_data(other, "#000").decode()
+    finally:
+        other.unlink()
+
+
+def test_adapter_view_paints_on_the_palette_colours(app):
+    from pyqtgraph.Qt import QtGui
+    from sadiy.ui.bench_tab import SvgView
+
+    pm = pinmap_ebaz.EBAZ
+    view = SvgView(bench_core.adapter_figure(pm), pm, lambda _pid: None)
+    view.resize(750, 450)
+    for window, text in (("#202124", "#e8eaed"), ("#f0f0f0", "#202020")):
+        pal = view.palette()
+        pal.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(window))
+        pal.setColor(QtGui.QPalette.ColorRole.WindowText, QtGui.QColor(text))
+        view.setPalette(pal)
+        img = view.grab().toImage()
+        assert img.pixelColor(3, 3) == QtGui.QColor(window)                 # no white page: the corner is the window colour
+        assert img.pixelColor(375, 225) != QtGui.QColor(window)             # and the picture is drawn
+
+
 def test_adapter_regions_cover_every_signal_pin_of_the_picture():
     from sadiy.ui import bench_core
 

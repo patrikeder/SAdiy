@@ -352,6 +352,24 @@ def adapter_figure(pm: pinmap.PinMap, root: Optional[Path] = None) -> Optional[P
     return path if path.is_file() else None
 
 
+_SVG_BACKGROUND = re.compile(r'<rect width="(\d+)" height="(\d+)" fill="#fff"\s*/>')
+
+
+def adapter_svg_data(svg_path: Path, text_color: str = "#000000") -> bytes:
+    """The adapter picture for a display of any colour scheme: the generated file is made for white paper, so its
+    full-size white background rectangle is dropped (the widget paints its own background) and the text that has no
+    colour of its own gets `text_color` (the window's text colour). Everything else, the dark board and the
+    coloured parts, stays as drawn."""
+    text = Path(svg_path).read_text(encoding="utf-8")
+    m = _SVG_BACKGROUND.search(text)
+    box = re.search(r'viewBox="0 0 (\d+) (\d+)"', text)
+    if m and box and (m.group(1), m.group(2)) == (box.group(1), box.group(2)):
+        text = text[:m.start()] + text[m.end():]
+    if "<svg" in text and "fill=" not in text[text.index("<svg"):text.index(">", text.index("<svg"))]:
+        text = text.replace("<svg", f'<svg fill="{text_color}"', 1)
+    return text.encode("utf-8")
+
+
 @dataclass(frozen=True)
 class AdapterRegion:
     """A clickable part of the adapter picture: the pin it stands for and its rectangle in picture units."""

@@ -42,6 +42,20 @@ def _group(title: str, layout: QtWidgets.QLayout) -> QtWidgets.QGroupBox:
     return box
 
 
+SVG_MISSING = ("The adapter picture needs the Qt SVG module, which is not installed "
+               "(Debian / Raspberry Pi OS: sudo apt install python3-pyqt6.qtsvg); the connectors are shown.")
+
+
+def svg_available() -> bool:
+    """Whether Qt's SVG module can be used. pyqtgraph hands out QtSvg lazily: with a PyQt6 that has no QtSvg the import
+    above works and the first use raises ImportError."""
+    try:
+        QtSvg.QSvgRenderer
+    except (ImportError, AttributeError):
+        return False
+    return True
+
+
 class SvgView(QtWidgets.QWidget):
     """The picture of the adapter board, scaled to the widget with its aspect ratio kept. Its pins are clickable like
     those of the connector drawing (regions read from the picture by `bench_core.adapter_regions`)."""
@@ -52,10 +66,22 @@ class SvgView(QtWidgets.QWidget):
         self.pm = pm
         self.on_select = on_select
         self.selected: Optional[str] = None
-        self.renderer = QtSvg.QSvgRenderer(str(path))
+        self.renderer = QtSvg.QSvgRenderer()
+        self._load()
         self.regions = core.adapter_regions(path, pm)
         self.setMinimumSize(300, 200)
         self.setMouseTracking(True)
+
+    def _load(self) -> None:
+        """The picture drawn for this widget's colours: no white page behind it, text in the window's text colour."""
+        color = self.palette().color(QtGui.QPalette.ColorRole.WindowText).name()
+        self.renderer.load(QtCore.QByteArray(core.adapter_svg_data(self.path, color)))
+
+    def changeEvent(self, event) -> None:
+        if event.type() == QtCore.QEvent.Type.PaletteChange:
+            self._load()
+            self.update()
+        super().changeEvent(event)
 
     def _scale(self):
         size = self.renderer.viewBoxF().size()
@@ -92,9 +118,10 @@ class SvgView(QtWidgets.QWidget):
     def paintEvent(self, _event) -> None:
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QtGui.QColor("#ffffff"))
+        p.fillRect(self.rect(), self.palette().color(QtGui.QPalette.ColorRole.Window))
         sc = self._scale()
         if sc is None:
+            p.setPen(self.palette().color(QtGui.QPalette.ColorRole.WindowText))
             p.drawText(self.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, f"cannot draw {self.path.name}")
             return
         s, ox, oy = sc
@@ -369,11 +396,18 @@ class PinsTab(QtWidgets.QWidget):
         self.view_stack = QtWidgets.QStackedWidget()
         self.view_stack.addWidget(self.canvas)
         figure = core.adapter_figure(pm)
-        self.adapter_view = SvgView(figure, pm, self.select_pin) if figure is not None else None
+        self.adapter_view, self._svg_note = None, ""
+        if figure is not None:
+            if svg_available():
+                self.adapter_view = SvgView(figure, pm, self.select_pin)
+            else:
+                self._svg_note = SVG_MISSING
         if self.adapter_view is not None:
             self.view_stack.addWidget(self.adapter_view)
-        self.view_lbl.setVisible(self.adapter_view is not None)
+        self.view_lbl.setVisible(self.adapter_view is not None or bool(self._svg_note))
         self.view_cb.setVisible(self.adapter_view is not None)
+        self.view_lbl.setText("View:" if self.adapter_view is not None else self._svg_note)
+        self.view_lbl.setStyleSheet("" if self.adapter_view is not None else "color:#c05000;")
         self._body.addWidget(self.view_stack, 1)
         self._body.addWidget(self.side)
         self.set_view(self._view)
