@@ -34,10 +34,11 @@ It prints which bitstream it found (default: `zynq-ebaz/build/fpga/` of this che
 ./fpga.sh        # load the bitstream if the PL has none or the wrong one (--force: load again)
 ./bench.sh       # bench mode: checks the PL, then sweepd --bench-only (Pins and Synth tabs; no sweeping)
 ./sweep.sh       # sweeping with the PL engine (map 1.1 or newer; no bench mode in this run)
+./selftest.sh    # pass/fail test of the PL sweep path with the engine's test ramp (no RF; ./sweep.sh --test-ramp shows it in the GUI)
 ./sim.sh         # simulated chain, no hardware, no root
 ./stop.sh        # stop a running sweepd (lines go back to safe)
 ```
-and on the PC `sh zynq-ebaz/sw/pc/gui.sh <ebaz-ip>` (or `--sim`). `bench.sh` and `sweep.sh` run `fpga.sh` first and stop with a message when the PL is not ready; `fpga.sh` restarts the network interface for a few seconds when it loads (an ssh session may stall). The steps below are what the scripts do.
+and on the PC `sh zynq-ebaz/sw/pc/gui.sh <ebaz-ip>` (or `--sim`). `bench.sh` and `sweep.sh` run `fpga.sh` first and stop with a message when the PL is not ready; `fpga.sh` restarts the network interface for a few seconds when it loads (an ssh session may stall). The steps below are what the scripts do. `~/sadiy/README.txt` on the board says what is where. Typing `python3 -m sadiy.server.sweepd` by hand needs `. ~/sadiy/env.sh` first: without PYTHONPATH, from `~` the folder `~/sadiy` is found as an empty package and the error is `No module named 'sadiy.server'`. `./status.sh` lists every copy of the software under `~` with its build (old bring-up packages carry their own, not updated by the deploy).
 
 **2. Start the server** (on the board, over ssh):
 

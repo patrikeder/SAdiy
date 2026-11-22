@@ -290,3 +290,17 @@ def test_image_reject_checkbox_goes_to_the_command_and_the_info_line(win):
     win.settings.apply_server({"image_reject": False})                      # adopted from sweepd on connect
     win._refresh_controls()
     assert not win.img_chk.isChecked()
+
+
+def test_our_platform_option_is_hidden_from_qt(monkeypatch):
+    """`sa_gui --platform ebaz` must not reach Qt, which reads --platform as the name of its platform plugin."""
+    import sys
+
+    from sadiy.ui import sa_gui
+
+    seen = []
+    monkeypatch.setattr(sa_gui.pg, "mkQApp", lambda name=None: seen.append(list(sys.argv)) or "app")
+    monkeypatch.setattr(sys, "argv", ["sa_gui", "--platform", "ebaz", "--host", "1.2.3.4", "--connect"])
+    assert sa_gui._make_app() == "app"
+    assert seen == [["sa_gui"]]
+    assert sys.argv == ["sa_gui", "--platform", "ebaz", "--host", "1.2.3.4", "--connect"]      # restored

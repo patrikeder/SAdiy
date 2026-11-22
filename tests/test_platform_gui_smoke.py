@@ -196,3 +196,96 @@ def test_sim_runner_passes_the_platform():
     r.platform = "ebaz"
     argv = r.build_command("x.toml", 0.1)
     assert argv[-2:] == ["--platform", "ebaz"]
+
+
+def test_ebaz_shows_the_adapter_picture_and_can_switch_to_the_connectors(app):
+    win = MainWindow(platform="ebaz")
+    try:
+        tab = win.pins
+        assert tab.adapter_view is not None and tab.adapter_view.renderer.isValid()
+        assert not tab.view_cb.isHidden()
+        assert tab.view_stack.currentWidget() is tab.adapter_view          # the default view
+        tab.adapter_view.resize(900, 600)
+        assert not tab.adapter_view.grab().isNull()                         # paints without an exception
+        tab.view_cb.setCurrentIndex(tab.view_cb.findData("connectors"))
+        assert tab.view_stack.currentWidget() is tab.canvas
+        tab.set_view("adapter")
+        assert tab.view_stack.currentWidget() is tab.adapter_view and tab.view_cb.currentData() == "adapter"
+    finally:
+        win.close()
+
+
+def test_bbb_has_no_adapter_picture_and_no_view_selector(app):
+    win = MainWindow(platform="bbb")
+    try:
+        tab = win.pins
+        assert tab.adapter_view is None and tab.view_cb.isHidden()
+        tab.set_view("adapter")
+        assert tab.view_stack.currentWidget() is tab.canvas
+    finally:
+        win.close()
+
+
+def test_the_view_choice_survives_a_platform_change(app):
+    win = MainWindow()
+    try:
+        tab = win.pins
+        tab.set_platform("ebaz")
+        tab.set_view("connectors")
+        tab.set_platform("bbb")
+        tab.set_platform("ebaz")
+        assert tab.view_stack.currentWidget() is tab.canvas
+    finally:
+        win.close()
+
+
+def test_adapter_figure_lookup(tmp_path):
+    from sadiy import pinmap
+    from sadiy.ui import bench_core
+
+    assert bench_core.adapter_figure(pinmap.BBB) is None
+    assert bench_core.adapter_figure(pinmap_ebaz.EBAZ, tmp_path) is None            # file missing
+    (tmp_path / "zynq-ebaz" / "docs").mkdir(parents=True)
+    fig = tmp_path / "zynq-ebaz" / "docs" / "pinmap-adapter.svg"
+    fig.write_text("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'/>")
+    assert bench_core.adapter_figure(pinmap_ebaz.EBAZ, tmp_path) == fig
+    assert bench_core.adapter_figure(pinmap_ebaz.EBAZ).name == "pinmap-adapter.svg"      # the real one in the repo
+
+
+def test_adapter_regions_cover_every_signal_pin_of_the_picture():
+    from sadiy.ui import bench_core
+
+    pm = pinmap_ebaz.EBAZ
+    regions = bench_core.adapter_regions(bench_core.adapter_figure(pm), pm)
+    ids = {r.pin_id for r in regions}
+    signals = {p.id for p in pm.pins.values() if p.id.startswith("DATA2.") and p.kind not in ("power", "gnd")
+               and p.name not in ("NC",)}
+    assert signals <= ids, sorted(signals - ids)
+    assert {"DATA1.15", "DATA1.18", "DATA1.20", "DATA3.18", "DATA3.15", "DATA3.17", "DATA3.19", "DATA3.20",
+            "DATA3.16", "DATA3.13", "DATA3.14", "DATA3.11"} <= ids              # LEDs, keys and the LCD pins
+    # points taken from the picture: the circle of adf4351_dat, the circle of adf4351_le, LED1, KEY1, "CS lcd_cs", empty
+    assert bench_core.adapter_hit(regions, 790, 472) == "DATA2.7"
+    assert bench_core.adapter_hit(regions, 830, 516) == "DATA2.8"
+    assert bench_core.adapter_hit(regions, 900, 262) == "DATA1.15"
+    assert bench_core.adapter_hit(regions, 470, 700) == "DATA3.18"
+    assert bench_core.adapter_hit(regions, 250, 424) == "DATA3.16"
+    assert bench_core.adapter_hit(regions, 5, 5) is None
+
+
+def test_clicking_the_adapter_picture_selects_the_pin(app):
+    win = MainWindow(platform="ebaz")
+    try:
+        tab = win.pins
+        view = tab.adapter_view
+        view.resize(900, 560)
+        QtTest.QTest.mouseClick(view, QtCore.Qt.LeftButton, pos=view.to_widget(790, 472))      # adf4351_dat
+        assert tab.selected == "DATA2.7" and view.selected == "DATA2.7" and tab.canvas.selected == "DATA2.7"
+        QtTest.QTest.mouseClick(view, QtCore.Qt.LeftButton, pos=view.to_widget(470, 700))      # KEY1
+        assert tab.selected == "DATA3.18"
+        QtTest.QTest.mouseClick(view, QtCore.Qt.LeftButton, pos=view.to_widget(1200, 800))     # nothing there
+        assert tab.selected == "DATA3.18"
+        assert not view.grab().isNull()                                                        # paints with the red frame
+        QtTest.QTest.mouseMove(view, view.to_widget(790, 472))
+        assert view.pin_at(view.to_widget(790, 472)) == "DATA2.7"
+    finally:
+        win.close()

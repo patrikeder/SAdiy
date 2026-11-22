@@ -111,6 +111,16 @@ class OffloadSweep:
             unlocked += list(res.unlocked)
         return volts, unlocked, code * STEP_DB
 
+    def self_test(self, **params):
+        """Ramp self-test on the core of this engine (`ramp_test.run_on_core`), for the sweepd `selftest` command.
+        Only between sweeps. The engine keeps its pins; the sweep table is uploaded again at the next sweep."""
+        from . import ramp_test
+
+        try:
+            return ramp_test.run_on_core(self.offload, release=False, **params)
+        finally:
+            self._key = None
+
     def safe_state(self) -> None:
         """After a failed sweep: stop the engine and give the pins back with the PS lines in the safe state
         (all stages in), so the PS can switch the synthesiser outputs off over its own SPI. Needs `atten`

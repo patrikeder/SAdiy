@@ -5,13 +5,53 @@ the REQ socket is rebuilt (the REQ state machine would otherwise be stuck waitin
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+import time
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 import zmq
 
 from ..logs import LogEntry
 from ..server import protocol
+
+
+class AsyncRequest:
+    """One command whose reply takes seconds (the ramp self-test waits for the sweep in progress, then runs). It has its own
+    REQ socket, so the GUI's normal commands keep working, and is polled from the GUI timer: nothing blocks."""
+
+    def __init__(self, ctx, url: str, cmd: dict, timeout_s: float, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._deadline = clock() + timeout_s
+        self._sock: Optional[zmq.Socket] = ctx.socket(zmq.REQ)
+        self._sock.setsockopt(zmq.LINGER, 0)
+        self._sock.setsockopt(zmq.SNDTIMEO, 100)
+        self._sock.connect(url)
+        try:
+            self._sock.send_json(cmd)
+        except zmq.ZMQError:
+            self.close()
+
+    def poll(self) -> Tuple[bool, Optional[dict]]:
+        """(finished, reply). The reply is None when the daemon did not answer in time (or the send failed)."""
+        if self._sock is None:
+            return True, None
+        try:
+            if self._sock.poll(0):
+                reply = self._sock.recv_json()
+                self.close()
+                return True, reply
+        except zmq.ZMQError:
+            self.close()
+            return True, None
+        if self._clock() >= self._deadline:
+            self.close()
+            return True, None
+        return False, None
+
+    def close(self) -> None:
+        if self._sock is not None:
+            self._sock.close(linger=0)
+            self._sock = None
 
 
 class SweepClient:
@@ -92,6 +132,12 @@ class SweepClient:
             return [LogEntry.from_dict(d) for d in r["entries"]], str(r.get("boot", "")), int(r["last_seq"])
         except (KeyError, TypeError, ValueError):
             return None
+
+    def request_async(self, cmd: dict, timeout_ms: int) -> Optional[AsyncRequest]:
+        """Start a command that may take long; None when not connected. Poll the returned object."""
+        if self._req is None:
+            return None
+        return AsyncRequest(self._ctx, self._rep_url, cmd, timeout_ms / 1000.0)
 
     def request(self, cmd: dict, timeout_ms: int = 500) -> Optional[dict]:
         """Send one command; the reply dict, or None on timeout / not connected."""

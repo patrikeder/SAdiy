@@ -24,7 +24,7 @@ from .. import config as config_mod
 from .. import buildinfo, platforms
 from ..core.sweep import FLAGS_UNRELIABLE, flag_names
 from ..logs import format_entry
-from . import log_core
+from . import log_core, selftest_core
 from . import sa_core as core
 from . import synth_core
 from .bench_tab import PinsTab
@@ -435,6 +435,97 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------ advanced tab
 
+    def _build_selftest_box(self) -> QtWidgets.QGroupBox:
+        """Ramp self-test of the EBAZ4205 PL engine: pass/fail against known values, no RF needed (docs: zynq-ebaz/docs/selftest.md)."""
+        self._selftest_available = False
+        self._selftest_req = None
+        self._selftest_timer = QtCore.QTimer(self)
+        self._selftest_timer.setInterval(200)
+        self._selftest_timer.timeout.connect(self._poll_selftest)
+        self.st_btn = _button("Run self-test", self._run_selftest,
+                              "The PL engine's own test ramp must come back with known values (no RF, no ADC, no synthesiser "
+                              "writes). sweepd runs it between two sweeps: sweeping pauses for about a second, then goes on.")
+        self.st_sweeps = _ispin(selftest_core.SWEEPS_MIN, selftest_core.SWEEPS_MAX, selftest_core.DEFAULT_SWEEPS)
+        self.st_sweeps.setToolTip("Checked sweeps per run, each with another test base; a poison sweep always comes first")
+        self.st_wrap = QtWidgets.QCheckBox("Wrap run")
+        self.st_wrap.setToolTip("A second run with N_AVG 1 and base 0xFFF0: the 16-bit wrap of the ramp")
+        self.st_fill = QtWidgets.QCheckBox("Full memory (4096 points)")
+        self.st_fill.setToolTip("Fills the sweep table and the result memory exactly: covers the 12-bit addressing")
+        self.st_label = QtWidgets.QLabel("")
+        self.st_report = QtWidgets.QPlainTextEdit()
+        self.st_report.setReadOnly(True)
+        self.st_report.setFont(_mono())
+        self.st_report.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
+        self.st_report.setMaximumHeight(110)
+        g = QtWidgets.QGridLayout()
+        g.addWidget(self.st_btn, 0, 0)
+        g.addWidget(QtWidgets.QLabel("Sweeps"), 0, 1)
+        g.addWidget(self.st_sweeps, 0, 2)
+        g.addWidget(self.st_wrap, 0, 3)
+        g.addWidget(self.st_fill, 0, 4)
+        g.addWidget(self.st_label, 0, 5)
+        g.setColumnStretch(5, 1)
+        g.addWidget(self.st_report, 1, 0, 1, 6)
+        self._refresh_selftest()
+        return _group("Ramp self-test (PL sweep engine, no RF needed)", g)
+
+    def _refresh_selftest(self) -> None:
+        busy = self._selftest_req is not None
+        ready = self.client.connected and self._selftest_available and not busy
+        self.st_btn.setEnabled(ready)
+        for w in (self.st_sweeps, self.st_wrap, self.st_fill):
+            w.setEnabled(not busy)
+        if busy:
+            return
+        if self.client.connected and self.synced and not self._selftest_available and not self.st_label.text():
+            self.st_label.setText("not available: needs sweepd on the EBAZ4205 PL engine (not --sim or --bench-only)")
+        elif self._selftest_available and self.st_label.text().startswith("not available"):
+            self.st_label.setText("")
+
+    def _run_selftest(self) -> None:
+        if self._selftest_req is not None or not self.client.connected:
+            return
+        opts = selftest_core.Options(self.st_sweeps.value(), self.st_wrap.isChecked(), self.st_fill.isChecked())
+        self._selftest_req = self.client.request_async(opts.command(), selftest_core.timeout_ms())
+        if self._selftest_req is None:
+            self._set_selftest_result(selftest_core.parse_reply(None))
+            return
+        self.st_label.setStyleSheet("")
+        self.st_label.setText("running: waits for the sweep in progress, then sweeping pauses for about a second…")
+        self.st_report.clear()
+        self._selftest_timer.start()
+        self._refresh_selftest()
+
+    def _poll_selftest(self) -> None:
+        req = self._selftest_req
+        if req is None:
+            self._selftest_timer.stop()
+            return
+        done, reply = req.poll()
+        if not done:
+            return
+        self._selftest_timer.stop()
+        self._selftest_req = None
+        self._set_selftest_result(selftest_core.parse_reply(reply))
+
+    def _set_selftest_result(self, res: "selftest_core.Result") -> None:
+        color = {True: "#3a9d5d", False: "#e05050", None: "#d08a00"}[res.passed]
+        self.st_label.setStyleSheet(f"color: {color}; font-weight: bold;")
+        self.st_label.setText(res.summary)
+        self.st_report.setPlainText("\n".join(res.lines))
+        if res.passed is None:
+            self._dev_note(logging.WARNING, f"self-test {res.summary}")
+        self._refresh_selftest()
+
+    def _cancel_selftest(self) -> None:
+        self._selftest_timer.stop()
+        if self._selftest_req is not None:
+            self._selftest_req.close()
+            self._selftest_req = None
+        self._selftest_available = False
+        self.st_label.setText("")
+        self._refresh_selftest()
+
     def _build_advanced_tab(self, host: str, pub_port: int, rep_port: int) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget()
         col = QtWidgets.QVBoxLayout(page)
@@ -455,6 +546,7 @@ class MainWindow(QtWidgets.QMainWindow):
         g.addWidget(self.connect_btn, 1, 0)
         g.addWidget(self.conn_label, 1, 1, 1, 5)
         col.addWidget(_group("Connection to sweepd", g))
+        col.addWidget(self._build_selftest_box())
 
         # device log: what sweepd reports. Low-level detail stays on the BBB (journalctl over ssh).
         self.dev_level_cb = QtWidgets.QComboBox()
@@ -711,9 +803,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._synth_info = info
             self.synth_tab.set_info(info)
         self._synth = r.get("synth")
+        self._selftest_available = bool(r.get("selftest_available", False))
         self.settings.apply_server(r.get("settings", {}))
         self._remote_running = bool(r.get("running", True))
         self.synced = True
+        self._refresh_selftest()
         self.last_atten = self.settings.atten_db
         self._refresh_controls()
         self._redraw()
@@ -1000,6 +1094,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.pins.shutdown()
             self.client.disconnect()
             self.synced = False
+            self._cancel_selftest()
             self.connect_btn.setText("Connect")
             self._set_conn("not connected")
             self._dev_note(logging.INFO, "disconnected")
@@ -1122,6 +1217,16 @@ class MainWindow(QtWidgets.QMainWindow):
         super().closeEvent(event)
 
 
+def _make_app():
+    """The QApplication. pyqtgraph builds it from sys.argv and Qt reads `--platform <plugin>` itself, so our own
+    `--platform ebaz` made it look for a Qt platform plugin called "ebaz": hide our options from it."""
+    argv, sys.argv = sys.argv, sys.argv[:1]
+    try:
+        return pg.mkQApp("SAdiy")
+    finally:
+        sys.argv = argv
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="127.0.0.1")
@@ -1134,7 +1239,7 @@ def main(argv=None) -> None:
                          "is started for it. Without it the Pins tab has a selector that follows sweepd")
     args = ap.parse_args(argv)
 
-    app = pg.mkQApp("SAdiy")
+    app = _make_app()
     win = MainWindow(args.host, args.pub_port, args.rep_port, platform=args.platform)
     win.show()
     if args.sim:

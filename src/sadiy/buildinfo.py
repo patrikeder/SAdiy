@@ -22,8 +22,20 @@ from . import __version__
 
 FILE = "BUILD_INFO"
 _HERE = Path(__file__).resolve()
-# package layout (bringup-pkg/sadiy/), then checkout or deployed layout (<root>/src/sadiy/, /opt/sadiy/src/sadiy/)
-SEARCH = (_HERE.parents[1] / FILE, _HERE.parents[2] / FILE)
+
+
+def search_paths(module_file: Path) -> tuple:
+    """Where BUILD_INFO of the copy that `module_file` (sadiy/buildinfo.py) belongs to can be: next to the sadiy
+    folder (bring-up package: bringup-pkg/BUILD_INFO), and, only when that folder is a `src` (checkout, ~/sadiy,
+    /opt/sadiy), one level up. A package without the file must not borrow the one of the folder around it."""
+    holder = Path(module_file).resolve().parents[1]
+    paths = [holder / FILE]
+    if holder.name == "src":
+        paths.append(holder.parent / FILE)
+    return tuple(paths)
+
+
+SEARCH = search_paths(_HERE)
 
 
 def _git(root: Path, *args: str) -> Optional[str]:

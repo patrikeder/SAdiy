@@ -32,7 +32,7 @@ PYTHONPATH=src python3 -m sadiy.buildinfo write BUILD_INFO || rm -f BUILD_INFO  
 [ -f BUILD_INFO ] && paths="$paths BUILD_INFO"
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE" BUILD_INFO' EXIT
-if [ -d zynq-ebaz/sw/board ]; then cp zynq-ebaz/sw/board/*.sh "$STAGE"/ && chmod +x "$STAGE"/*.sh; fi
+if [ -d zynq-ebaz/sw/board ]; then cp zynq-ebaz/sw/board/*.sh zynq-ebaz/sw/board/README.txt "$STAGE"/ && chmod +x "$STAGE"/*.sh; fi
 mkdir -p "$STAGE/fpga"
 [ -f zynq-ebaz/sw/deploy/sadiy_pl_load.sh ] && cp zynq-ebaz/sw/deploy/sadiy_pl_load.sh "$STAGE/fpga/"
 bit=""
@@ -52,4 +52,4 @@ for f in src/sadiy/ui/*.py; do
 done
 tar -czf - --exclude='__pycache__' --exclude='*.pyc' $ex $paths -C "$STAGE" . \
   | ssh "$USER_@$IP" 'mkdir -p ~/sadiy && cd ~/sadiy && tar -xzf - && printf "export PYTHONPATH=\$HOME/sadiy/src:\$HOME/sadiy/zynq-ebaz/sw\n" > env.sh && echo "unpacked to ~/sadiy" && ls ~/sadiy'
-echo "on the board, from ~/sadiy: ./status.sh | ./fpga.sh | ./bench.sh | ./sweep.sh | ./sim.sh | ./stop.sh   (. ~/sadiy/env.sh sets PYTHONPATH for python -m ...)"
+echo "on the board, from ~/sadiy: ./status.sh | ./fpga.sh | ./bench.sh | ./sweep.sh | ./selftest.sh | ./sim.sh | ./stop.sh   (. ~/sadiy/env.sh sets PYTHONPATH for python -m ...)"
