@@ -1217,6 +1217,16 @@ class MainWindow(QtWidgets.QMainWindow):
         super().closeEvent(event)
 
 
+def _make_app():
+    """The QApplication. pyqtgraph builds it from sys.argv and Qt reads `--platform <plugin>` itself, so our own
+    `--platform ebaz` made it look for a Qt platform plugin called "ebaz": hide our options from it."""
+    argv, sys.argv = sys.argv, sys.argv[:1]
+    try:
+        return pg.mkQApp("SAdiy")
+    finally:
+        sys.argv = argv
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="127.0.0.1")
@@ -1229,7 +1239,7 @@ def main(argv=None) -> None:
                          "is started for it. Without it the Pins tab has a selector that follows sweepd")
     args = ap.parse_args(argv)
 
-    app = pg.mkQApp("SAdiy")
+    app = _make_app()
     win = MainWindow(args.host, args.pub_port, args.rep_port, platform=args.platform)
     win.show()
     if args.sim:
