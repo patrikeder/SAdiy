@@ -68,6 +68,8 @@ class RegOffload:
         self._n_measure = 0
         self.version = version
         self.table_dirty = False          # the table holds something else than the last `upload` (see send_words)
+        self.last_sweep_s = 0.0           # last `run`: start write until done is seen (hardware time + poll granularity)
+        self.last_read_s = 0.0            # last `run`: reading the results back (register accesses of the host)
         if det_src == SRC_ADC and version & 0xFFFF < 1:
             raise RuntimeError("this bitstream has no ADS1115 reader (register map 1.0): rebuild it or use PS push")
         self._set_ctrl_bits(stop_on_err=int(stop_on_err))
@@ -153,8 +155,9 @@ class RegOffload:
         self._wr(_off("N_AVG"), n_avg)
         if src != SRC_PUSH:
             timeout_s = max(timeout_s, self.estimated_s(n_avg))
+        t_start = self._clock()
         self._pulse("start")
-        deadline = self._clock() + timeout_s
+        deadline = t_start + timeout_s
         while True:
             st = self._status()
             if st["done"] and not st["busy"]:
@@ -167,6 +170,9 @@ class RegOffload:
                 self.abort()
                 raise TimeoutError(f"sweep did not finish within {timeout_s} s (state {st['state']})")
             self._sleep(self._poll_s)
+        t_done = self._clock()
+        self.last_sweep_s = t_done - t_start
+        self.last_read_s = 0.0
         if st["err_table"]:
             raise RuntimeError(f"sweep refused or result memory full (N_ENTRIES={self._n_entries}, "
                                f"pin_owner_act={st['pin_owner_act']})")
@@ -175,6 +181,7 @@ class RegOffload:
         count = _fld("POINT_COUNT", "count").get(self._rd(_off("POINT_COUNT")))
         self._wr(_off("RESULT_ADDR"), 0)
         words = [self._rd(_off("RESULT_DATA")) for _ in range(count)]
+        self.last_read_s = self._clock() - t_done
         return OffloadResult.from_result_words(words, n_avg, aborted=bool(st["aborted"]),
                                                err_table=False, err_lock=bool(st["err_lock"]))
 
