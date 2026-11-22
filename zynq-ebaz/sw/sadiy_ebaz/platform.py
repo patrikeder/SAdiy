@@ -121,17 +121,19 @@ def att_pins_for(code: int, steps: Sequence[int], active_high: bool) -> int:
     return pins
 
 
-def build_table(points, synth, att_pins: int, *, full: bool = False, skip_lock: bool = False) -> List[TableEntry]:
-    """Sweep table for `points`: the register words of `synth.registers()` as generic SPI entries.
+def point_words(points, synth) -> List[List[int]]:
+    """The register words of every point, in write order (R5..R0): what `synth.registers()` gives for the point."""
+    return [synth.registers(point.pll or synth.plan(point.f_lo_hz)) for point in points]
 
-    Per point the six words (write order R5..R0) are emitted, but only those that differ from the last word
-    sent for the same register in this table; R0 is always sent, last, with `measure` (it starts the VCO band
-    selection). `full=True` sends all six every time. The first entry also applies `att_pins`. Nothing is
-    tuned or written to SPI here; R4 carries the output state of `synth.outputs`."""
+
+def table_from_words(words_per_point: Sequence[Sequence[int]], att_pins: int, *, full: bool = False,
+                     skip_lock: bool = False) -> List[TableEntry]:
+    """Sweep table from the register words of the points (see `build_table`): per point only the words that differ
+    from the last word sent for the same register in this table, R0 always, last, with `measure`; `full=True`
+    sends all of them every time. The first entry also applies `att_pins`."""
     entries: List[TableEntry] = []
     last = {}
-    for point in points:
-        words = synth.registers(point.pll or synth.plan(point.f_lo_hz))
+    for words in words_per_point:
         for word in words:
             reg = word & 7
             is_r0 = reg == 0
@@ -143,3 +145,13 @@ def build_table(points, synth, att_pins: int, *, full: bool = False, skip_lock: 
         first = entries[0]
         entries[0] = TableEntry(first.word, att_pins, first.spi_en, True, first.measure, first.skip_lock)
     return entries
+
+
+def build_table(points, synth, att_pins: int, *, full: bool = False, skip_lock: bool = False) -> List[TableEntry]:
+    """Sweep table for `points`: the register words of `synth.registers()` as generic SPI entries.
+
+    Per point the six words (write order R5..R0) are emitted, but only those that differ from the last word
+    sent for the same register in this table; R0 is always sent, last, with `measure` (it starts the VCO band
+    selection). `full=True` sends all six every time. The first entry also applies `att_pins`. Nothing is
+    tuned or written to SPI here; R4 carries the output state of `synth.outputs`."""
+    return table_from_words(point_words(points, synth), att_pins, full=full, skip_lock=skip_lock)
