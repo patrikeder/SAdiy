@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from pyqtgraph.Qt import QtCore, QtGui, QtSvg, QtWidgets
 
 from .. import patterns, pinmap
 from .. import platforms as platforms_mod
@@ -40,6 +40,72 @@ def _group(title: str, layout: QtWidgets.QLayout) -> QtWidgets.QGroupBox:
     box = QtWidgets.QGroupBox(title)
     box.setLayout(layout)
     return box
+
+
+class SvgView(QtWidgets.QWidget):
+    """The picture of the adapter board, scaled to the widget with its aspect ratio kept. Its pins are clickable like
+    those of the connector drawing (regions read from the picture by `bench_core.adapter_regions`)."""
+
+    def __init__(self, path: Path, pm: pinmap.PinMap, on_select: Callable[[str], None]) -> None:
+        super().__init__()
+        self.path = Path(path)
+        self.pm = pm
+        self.on_select = on_select
+        self.selected: Optional[str] = None
+        self.renderer = QtSvg.QSvgRenderer(str(path))
+        self.regions = core.adapter_regions(path, pm)
+        self.setMinimumSize(300, 200)
+        self.setMouseTracking(True)
+
+    def _scale(self):
+        size = self.renderer.viewBoxF().size()
+        if not self.renderer.isValid() or size.width() <= 0 or size.height() <= 0:
+            return None
+        s = min(self.width() / size.width(), self.height() / size.height())
+        return s, (self.width() - size.width() * s) / 2, (self.height() - size.height() * s) / 2
+
+    def to_picture(self, pos: QtCore.QPoint):
+        sc = self._scale()
+        return None if sc is None else ((pos.x() - sc[1]) / sc[0], (pos.y() - sc[2]) / sc[0])
+
+    def to_widget(self, x: float, y: float) -> QtCore.QPoint:
+        s, ox, oy = self._scale()
+        return QtCore.QPoint(int(x * s + ox), int(y * s + oy))
+
+    def pin_at(self, pos: QtCore.QPoint) -> Optional[str]:
+        pt = self.to_picture(pos)
+        return None if pt is None else core.adapter_hit(self.regions, *pt)
+
+    def mousePressEvent(self, event) -> None:
+        pid = self.pin_at(event.pos())
+        if pid is not None:
+            self.on_select(pid)
+
+    def mouseMoveEvent(self, event) -> None:
+        pid = self.pin_at(event.pos())
+        if pid is None:
+            self.setToolTip("")
+        else:
+            pin = self.pm.pins[pid]
+            self.setToolTip(f"{pid} {pin.name}" + (f" = {pin.net}" if pin.net else ""))
+
+    def paintEvent(self, _event) -> None:
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QtGui.QColor("#ffffff"))
+        sc = self._scale()
+        if sc is None:
+            p.drawText(self.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, f"cannot draw {self.path.name}")
+            return
+        s, ox, oy = sc
+        size = self.renderer.viewBoxF().size()
+        self.renderer.render(p, QtCore.QRectF(ox, oy, size.width() * s, size.height() * s))
+        for r in self.regions:
+            if r.pin_id == self.selected:
+                x, y, w, h = r.rect
+                p.setPen(QtGui.QPen(QtGui.QColor(C_SELECT), 2))
+                p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                p.drawRoundedRect(QtCore.QRectF(ox + x * s, oy + y * s, w * s, h * s), 4, 4)
 
 
 class BoardCanvas(QtWidgets.QWidget):
@@ -251,9 +317,19 @@ class PinsTab(QtWidgets.QWidget):
                                     "fix it with --platform on the command line.")
         self.platform_cb.currentIndexChanged.connect(self._on_platform_cb)
         self.platform_lbl = QtWidgets.QLabel("Platform:")
+        self._view = "adapter"                  # what is shown when the platform has a picture of its adapter board
+        self.view_lbl = QtWidgets.QLabel("View:")
+        self.view_cb = QtWidgets.QComboBox()
+        self.view_cb.addItem("Adapter board", "adapter")
+        self.view_cb.addItem("Connectors", "connectors")
+        self.view_cb.setToolTip("The adapter board with its signals, or the connectors with the boards they go to. "
+                                "Pins are clickable in both.")
+        self.view_cb.currentIndexChanged.connect(lambda _i: self.set_view(self.view_cb.currentData()))
         top = QtWidgets.QHBoxLayout()
         top.addWidget(self.platform_lbl)
         top.addWidget(self.platform_cb)
+        top.addWidget(self.view_lbl)
+        top.addWidget(self.view_cb)
         top.addWidget(self.mode_btn)
         top.addWidget(self.expert_chk)
         top.addWidget(self.mode_label, 1)
@@ -290,13 +366,33 @@ class PinsTab(QtWidgets.QWidget):
         self.side.addTab(self._scrolled(self._build_raw_page()), "Raw access")
         self.side.addTab(self._scrolled(self._build_pattern_page()), "Patterns")
         self.side.setFixedWidth(475)
-        self._body.addWidget(self.canvas, 1)
+        self.view_stack = QtWidgets.QStackedWidget()
+        self.view_stack.addWidget(self.canvas)
+        figure = core.adapter_figure(pm)
+        self.adapter_view = SvgView(figure, pm, self.select_pin) if figure is not None else None
+        if self.adapter_view is not None:
+            self.view_stack.addWidget(self.adapter_view)
+        self.view_lbl.setVisible(self.adapter_view is not None)
+        self.view_cb.setVisible(self.adapter_view is not None)
+        self._body.addWidget(self.view_stack, 1)
         self._body.addWidget(self.side)
+        self.set_view(self._view)
         self.platform_cb.blockSignals(True)
         self.platform_cb.setCurrentIndex(max(0, self.platform_cb.findData(pm.name)))
         self.platform_cb.blockSignals(False)
         self._set_active_ui()
         self.select_pin(pm.by_net["ATT_V1"].id)
+
+    def set_view(self, view: str) -> None:
+        """"adapter" (picture of the adapter board) or "connectors" (clickable drawing). A platform without a picture
+        always shows the connectors; the choice is kept for the next platform change."""
+        view = "connectors" if view != "adapter" else "adapter"
+        self._view = view
+        show_adapter = view == "adapter" and self.adapter_view is not None
+        self.view_stack.setCurrentWidget(self.adapter_view if show_adapter else self.canvas)
+        self.view_cb.blockSignals(True)
+        self.view_cb.setCurrentIndex(self.view_cb.findData("adapter" if show_adapter else "connectors"))
+        self.view_cb.blockSignals(False)
 
     def platform(self) -> str:
         return self.pm.name
@@ -661,6 +757,9 @@ class PinsTab(QtWidgets.QWidget):
     def select_pin(self, pid: str) -> None:
         self.selected = pid
         self.canvas.selected = pid
+        if self.adapter_view is not None:
+            self.adapter_view.selected = pid
+            self.adapter_view.update()
         self.pin_info.setText(core.describe_pin(self.pm.pins[pid]))
         self.side.setCurrentIndex(0)
         self._update_pin_controls()
