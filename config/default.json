@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "sweep": {
+    "start_hz": 30000000.0,
+    "stop_hz": 480000000.0,
+    "points": 401,
+    "averages": 4,
+    "atten_db": 10.0,
+    "auto_atten": true,
+    "image_reject": false
+  },
+  "display": {
+    "ref_dbm": -20.0,
+    "db_per_div": 10.0,
+    "trace_mode": "clear_write"
+  }
+}

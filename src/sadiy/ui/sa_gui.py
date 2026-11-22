@@ -24,7 +24,7 @@ from .. import config as config_mod
 from .. import buildinfo, platforms
 from ..core.sweep import FLAGS_UNRELIABLE, flag_names
 from ..logs import format_entry
-from . import log_core, selftest_core
+from . import log_core, selftest_core, settings_core
 from . import sa_core as core
 from . import synth_core
 from .bench_tab import PinsTab
@@ -205,14 +205,30 @@ class SpectrumView(pg.PlotWidget):
 # ---------------------------------------------------------------- main window
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, host: str = "127.0.0.1", pub_port: int = 5556, rep_port: int = 5557,
-                 platform: Optional[str] = None) -> None:
+    def __init__(self, host: Optional[str] = "127.0.0.1", pub_port: Optional[int] = 5556, rep_port: Optional[int] = 5557,
+                 platform: Optional[str] = None, store: Optional[settings_core.Store] = None) -> None:
         """`platform` None: the Pins tab offers a selector (bbb or ebaz) that follows sweepd. A name fixes it
-        (command line `--platform`) and the other platform is not shown."""
+        (command line `--platform`) and the other platform is not shown.
+        `store`: the settings folder (`settings_core`): the GUI starts with its default.json and writes it at exit, and
+        the Settings menu saves and loads named settings. Without one nothing is read or written. A host or port
+        of None is taken from default.json (else 127.0.0.1, 5556, 5557)."""
         super().__init__()
         self.setWindowTitle("SAdiy spectrum analyzer")
         self.limits = core.Limits()
         self.settings = core.SaSettings()
+        self.store = store
+        self._start_notes: list = []        # what loading default.json had to say, shown once the window exists
+        self._pending_restore: Optional[dict] = None   # saved settings to send to sweepd at the first connection
+        start_mode = "clear_write"
+        saved = self._load_start_file()
+        if saved is not None:
+            self.settings.assign(saved.settings)
+            start_mode = saved.trace_mode
+            self._pending_restore = settings_core.to_dict(saved.settings, saved.trace_mode)
+        conn = saved.connection if saved is not None and saved.connection is not None else settings_core.Connection()
+        host = conn.host if host is None else host
+        pub_port = conn.pub_port if pub_port is None else pub_port
+        rep_port = conn.rep_port if rep_port is None else rep_port
         self.client = SweepClient()
         self.runner = SimRunner()
         self.trace_a = core.TraceProcessor()
@@ -256,7 +272,7 @@ class MainWindow(QtWidgets.QMainWindow):
         tabs.addTab(self.pins, "Pins")
         self.synth_tab = SynthTab(self.pins, self._msg)
         tabs.addTab(self.synth_tab, "Synth")
-        self._advanced_page = self._build_advanced_tab(host, pub_port, rep_port)
+        self._advanced_page = PinsTab._scrolled(self._build_advanced_tab(host, pub_port, rep_port))   # scrolls on a small screen
         tabs.addTab(self._advanced_page, "Advanced")
         tabs.currentChanged.connect(lambda _i: self._update_log_badge())
         self.setCentralWidget(tabs)
@@ -280,6 +296,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().addPermanentWidget(self.status_log)
         self.statusBar().addPermanentWidget(self.status_warn)
 
+        _quiet(self.mode_cb, max(0, self.mode_cb.findData(start_mode)))
+        self.trace_a.set_mode(self.mode_cb.currentData())
+        self._build_settings_menu()
+        for note in self._start_notes:
+            self._dev_note(logging.WARNING, note)
         self._refresh_controls()
         self._redraw()
         self.timer = QtCore.QTimer(self)
@@ -845,6 +866,140 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status_conn.setText(text)
         self.conn_label.setText(text)
 
+    # ------------------------------------------------------------ saved settings (settings_core)
+
+    def _load_start_file(self) -> Optional[settings_core.Loaded]:
+        """default.json of the settings folder; None when there is none (first start) or it can not be used."""
+        if self.store is None:
+            return None
+        try:
+            loaded = self.store.load_default(self.limits)
+        except settings_core.SettingsError as exc:
+            self._start_notes.append(f"settings: {exc}; the settings as delivered are used")
+            return None
+        if loaded is not None:
+            self._start_notes += [f"settings in {self.store.default_path.name}: {n}" for n in loaded.notes]
+        return loaded
+
+    def _build_settings_menu(self) -> None:
+        menu = self.menuBar().addMenu("&Settings")
+        self.settings_menu = menu
+        have = self.store is not None
+        self.act_save_default = menu.addAction("Save as default", self.save_default)
+        self.act_save_as = menu.addAction("Save as...", self._ask_save_as)
+        self.menu_load = menu.addMenu("Load")
+        self.menu_delete = menu.addMenu("Delete")
+        menu.addSeparator()
+        self.act_restore = menu.addAction("Restore settings as delivered", self.restore_as_delivered)
+        self.act_folder = menu.addAction("Show settings folder", self._show_folder)
+        for w in (self.act_save_default, self.act_save_as, self.menu_load, self.menu_delete, self.act_folder):
+            w.setEnabled(have)
+        self.act_save_default.setToolTip("default.json is loaded at the start and written at exit as well")
+        self.act_restore.setToolTip("The values of config/default.json; they also become the default.json of the next start")
+        self.menu_load.aboutToShow.connect(lambda: self._fill_names(self.menu_load, self.load_named))
+        self.menu_delete.aboutToShow.connect(lambda: self._fill_names(self.menu_delete, self._ask_delete))
+
+    def _fill_names(self, menu, handler) -> None:
+        menu.clear()
+        names = self.store.names() if self.store is not None else []
+        for name in names:
+            menu.addAction(name, lambda _checked=False, n=name: handler(n))
+        if not names:
+            menu.addAction("(nothing saved yet)").setEnabled(False)
+
+    def current_settings_dict(self, connection: bool = False) -> dict:
+        conn = (settings_core.Connection(self.host_edit.text().strip() or "127.0.0.1", self.pub_sb.value(), self.rep_sb.value())
+                if connection else None)
+        return settings_core.to_dict(self.settings, self.mode_cb.currentData(), conn)
+
+    def save_default(self, quiet: bool = False) -> bool:
+        """Write default.json (settings and connection). Done at exit as well."""
+        if self.store is None:
+            return False
+        d = self.current_settings_dict(connection=not self.runner.running)
+        if self.runner.running:                     # the simulator at 127.0.0.1 is not the sweepd to remember: keep that one
+            try:
+                before = self.store.load_default(self.limits)
+            except settings_core.SettingsError:
+                before = None
+            if before is not None and before.connection is not None:
+                d["connection"] = settings_core.to_dict(self.settings, "clear_write", before.connection)["connection"]
+        try:
+            path = self.store.save_default(d)
+        except settings_core.SettingsError as exc:
+            if not quiet:
+                self._msg(f"Settings not saved: {exc}", warn=True)
+            return False
+        if not quiet:
+            self._msg(f"Saved the settings as default ({path})")
+        return True
+
+    def save_named(self, name: str) -> bool:
+        if self.store is None:
+            return False
+        try:
+            path = self.store.save(name, self.current_settings_dict())
+        except settings_core.SettingsError as exc:
+            self._msg(f"Settings not saved: {exc}", warn=True)
+            return False
+        self._msg(f"Saved the settings as {settings_core.check_name(name)!r} ({path})")
+        return True
+
+    def load_named(self, name: str) -> bool:
+        if self.store is None:
+            return False
+        try:
+            loaded = self.store.load(name, self.limits)
+        except settings_core.SettingsError as exc:
+            self._msg(f"Settings not loaded: {exc}", warn=True)
+            return False
+        self._apply_loaded(loaded, f"Loaded the settings {name!r}")
+        return True
+
+    def delete_named(self, name: str) -> bool:
+        if self.store is None:
+            return False
+        try:
+            self.store.delete(name)
+        except settings_core.SettingsError as exc:
+            self._msg(f"Settings not deleted: {exc}", warn=True)
+            return False
+        self._msg(f"Deleted the saved settings {name!r}")
+        return True
+
+    def restore_as_delivered(self) -> None:
+        """The settings of config/default.json into the controls and to sweepd; the connection stays. They become the
+        next start's default.json too (the named settings are kept)."""
+        self._apply_loaded(settings_core.as_delivered(self.limits), "Settings restored as delivered")
+        self.save_default(quiet=True)
+
+    def _apply_loaded(self, loaded: settings_core.Loaded, text: str) -> None:
+        self.settings.assign(loaded.settings)
+        _quiet(self.mode_cb, max(0, self.mode_cb.findData(loaded.trace_mode)))
+        self.trace_a.set_mode(self.mode_cb.currentData())
+        self.last_atten = self.settings.atten_db
+        self._refresh_controls()
+        self._push()
+        self._redraw()
+        if loaded.notes:
+            self._msg(f"{text}; " + "; ".join(loaded.notes), warn=True)
+        else:
+            self._msg(text)
+
+    def _ask_save_as(self) -> None:
+        name, ok = QtWidgets.QInputDialog.getText(self, "Save settings", "Name of the settings:")
+        if ok and name.strip():
+            self.save_named(name)
+
+    def _ask_delete(self, name: str) -> None:
+        box = QtWidgets.QMessageBox
+        if box.question(self, "Delete settings", f"Delete the saved settings {name!r}?") == box.StandardButton.Yes:
+            self.delete_named(name)
+
+    def _show_folder(self) -> None:
+        if self.store is not None:
+            self._msg(f"Settings folder: {self.store.dir}")
+
     # ------------------------------------------------------------ controls <-> settings
 
     def _refresh_controls(self) -> None:
@@ -914,6 +1069,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.last_atten = self.settings.atten_db
         self._refresh_controls()
         self._redraw()
+        if self._pending_restore is not None:       # the first connection: the operator's saved settings go to sweepd
+            doc, self._pending_restore = self._pending_restore, None
+            self._apply_loaded(settings_core.parse(doc, self.limits), "Settings of the last session restored")
         return True
 
     def _after_freq_change(self) -> None:
@@ -1318,6 +1476,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._msg(f"Saved {path}")
 
     def closeEvent(self, event) -> None:
+        self.save_default(quiet=True)
         self.timer.stop()
         self.pins.shutdown()
         if self.runner.running:
@@ -1338,9 +1497,9 @@ def _make_app():
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--pub-port", type=int, default=5556)
-    ap.add_argument("--rep-port", type=int, default=5557)
+    ap.add_argument("--host", help="sweepd host (default: the one used last time, else 127.0.0.1)")
+    ap.add_argument("--pub-port", type=int, help="sweep frames port (default: last time, else 5556)")
+    ap.add_argument("--rep-port", type=int, help="command port (default: last time, else 5557)")
     ap.add_argument("--connect", action="store_true", help="connect to sweepd at start")
     ap.add_argument("--sim", action="store_true", help="start simulated hardware at start and connect to it")
     ap.add_argument("--platform", choices=platforms.NAMES,
@@ -1349,7 +1508,8 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
 
     app = _make_app()
-    win = MainWindow(args.host, args.pub_port, args.rep_port, platform=args.platform)
+    win = MainWindow(args.host, args.pub_port, args.rep_port, platform=args.platform,
+                     store=settings_core.Store.user())
     win.show()
     if args.sim:
         QtCore.QTimer.singleShot(0, win.start_sim)

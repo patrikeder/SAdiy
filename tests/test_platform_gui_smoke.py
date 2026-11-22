@@ -252,7 +252,7 @@ def test_adapter_figure_lookup(tmp_path):
     assert bench_core.adapter_figure(pinmap_ebaz.EBAZ).name == "pinmap-adapter.svg"      # the real one in the repo
 
 
-def test_without_qtsvg_the_pins_tab_shows_the_connectors_and_says_why(app, monkeypatch):
+def test_without_qtsvg_the_adapter_picture_is_still_drawn_by_hand(app, monkeypatch):
     """A PyQt6 without QtSvg (Raspberry Pi OS): the import works, the first use raises ImportError."""
     from sadiy.ui import bench_tab
 
@@ -266,13 +266,50 @@ def test_without_qtsvg_the_pins_tab_shows_the_connectors_and_says_why(app, monke
     try:
         tab = win.pins
         tab.set_platform("ebaz")
-        assert tab.adapter_view is None and tab.view_stack.currentWidget() is tab.canvas
-        assert not tab.view_cb.isVisibleTo(win) and "apt install python3-pyqt6.qtsvg" in tab.view_lbl.text()
-        assert not tab.view_lbl.isHidden()
-        tab.set_platform("bbb")
-        assert tab.view_lbl.isHidden()
+        assert tab.adapter_view is not None and not tab.adapter_view.uses_renderer
+        assert tab.view_stack.currentWidget() is tab.adapter_view and not tab.view_cb.isHidden()
+        view = tab.adapter_view
+        view.resize(750, 450)
+        assert view.grab().toImage().pixelColor(375, 225) != view.palette().color(view.backgroundRole())
+        r = next(r for r in view.regions if r.pin_id == "DATA2.14")
+        x, y, w, h = r.rect
+        QtTest.QTest.mouseClick(view, QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.KeyboardModifier.NoModifier,
+                                view.to_widget(x + w / 2, y + h / 2))                # clicking works as with the renderer
+        assert tab.selected == "DATA2.14"
     finally:
         win.close()
+
+
+def test_hand_drawing_and_svg_renderer_agree_on_where_things_are(app):
+    from pyqtgraph.Qt import QtGui
+    from sadiy.ui.bench_tab import SvgView, svg_available
+
+    if not svg_available():
+        pytest.skip("no QtSvg here")
+    pm = pinmap_ebaz.EBAZ
+    path = bench_core.adapter_figure(pm)
+    images = []
+    for use in (True, False):
+        v = SvgView(path, pm, lambda _pid: None, use_renderer=use)
+        v.resize(1000, 600)
+        pal = v.palette()
+        pal.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor("#202124"))
+        pal.setColor(QtGui.QPalette.ColorRole.WindowText, QtGui.QColor("#e8eaed"))
+        v.setPalette(pal)
+        images.append(v.grab().toImage())
+    a, b = images
+    pts = [(x, y) for x in range(5, 1000, 11) for y in range(5, 600, 11)]
+    differ = sum(1 for x, y in pts if (a.pixelColor(x, y) != QtGui.QColor("#202124")) != (b.pixelColor(x, y) != QtGui.QColor("#202124")))
+    assert differ < len(pts) * 0.03, f"{differ} of {len(pts)} sample points differ in being drawn or not"
+
+
+def test_adapter_shapes_read_the_picture():
+    (w, h), shapes = bench_core.adapter_shapes(bench_core.adapter_figure(pinmap_ebaz.EBAZ))
+    assert (w, h) == (1500, 900)
+    kinds = [s.kind for s in shapes]
+    assert kinds.count("text") == 173 and kinds.count("circle") == 29 and kinds.count("rect") == 14     # page left out
+    assert any(s.kind == "circle" and s.dash for s in shapes) and any(s.kind == "text" and s.italic for s in shapes)
+    assert any(s.kind == "text" and s.anchor == "end" for s in shapes)
 
 
 def test_adapter_svg_drops_the_white_page_and_takes_the_text_colour():
