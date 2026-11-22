@@ -121,6 +121,15 @@ class OffloadSweep:
         finally:
             self._key = None
 
+    def virtual(self, detector, cal):
+        """The virtual spectrum on the core of this engine (`virtual_spectrum.VirtualSweep`, same `run_points`), for the
+        sweepd `virtual` command; None when this build has no such module."""
+        try:
+            from .virtual_spectrum import VirtualSweep
+        except ImportError:
+            return None
+        return VirtualSweep(self.offload, detector, cal)
+
     def safe_state(self) -> None:
         """After a failed sweep: stop the engine and give the pins back with the PS lines in the safe state
         (all stages in), so the PS can switch the synthesiser outputs off over its own SPI. Needs `atten`

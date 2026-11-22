@@ -112,6 +112,9 @@ class Sweepd:
             "image_reject": bool(cfg["sweep"].get("image_reject", False)),
         }
         self.running = engine is not None
+        self._virtual = None            # the virtual spectrum replacing the engine's offload while it is on
+        self._real_offload = None
+        self.min_period_s = 0.0         # sweeps are kept at least this far apart (virtual spectrum: 0.1 s)
         self.seq = 0
         self._points = None
         self._key = None
@@ -183,6 +186,8 @@ class Sweepd:
             return {"ok": True}
         if name == "selftest":
             return self._selftest(cmd)
+        if name == "virtual":
+            return self._virtual_command(cmd)
         if name == "log":
             if self.ring is None:
                 return {"ok": True, "entries": [], "last_seq": 0, "boot": ""}
@@ -204,6 +209,7 @@ class Sweepd:
                 "platform": self.bench.pm.name if self.bench is not None else self.platform,
                 "build": buildinfo.info(),
                 "selftest_available": self._selftest_fn() is not None,
+                "virtual": self.virtual_status(),
                 "last_error": self.last_error,
                 "last_sweep": dataclasses.asdict(self.engine.last_stats) if self.engine is not None else None,
                 "log_seq": self.ring.last_seq if self.ring is not None else 0,
@@ -222,6 +228,8 @@ class Sweepd:
     def _selftest(self, cmd: dict) -> dict:
         """Ramp self-test of the PL engine: pass/fail against known values, see zynq-ebaz/docs/selftest.md. Runs
         between two sweeps (commands are only handled there), sweeping goes on afterwards."""
+        if self._virtual is not None:
+            return {"ok": False, "error": "the virtual spectrum is on: switch it off first (it owns the generator and DET_CFG)"}
         fn = self._selftest_fn()
         if fn is None:
             return {"ok": False, "error": "no ramp self-test here: it needs the EBAZ4205 PL sweep engine "
@@ -257,6 +265,75 @@ class Sweepd:
                 "seconds": round(dt, 3),
                 "params": {"points": n_points, "n_avg": n_avg, "base": base, "sweeps": sweeps, "wrap": wrap, "fill": fill}}
 
+    # ---- virtual spectrum: three peaks and a drift made by the PL's sample generator and IF path (sadiy_ebaz) -------------
+    def _virtual_hook(self):
+        offload = getattr(self.engine, "offload", None) if self.engine is not None else None
+        if self._virtual is not None:
+            offload = self._real_offload
+        return getattr(offload, "virtual", None)
+
+    def _virtual_ideal(self):
+        """The noise-free expected trace of the virtual sweep just made (None when not virtual or it cannot say)."""
+        if self._virtual is None:
+            return None
+        try:
+            return self._virtual.ideal_dbm(self._points)
+        except Exception as exc:        # the overlay is a nicety; the sweep must not fail because of it
+            log.debug("virtual spectrum: no expected trace: %s", exc)
+            return None
+
+    def virtual_status(self) -> dict:
+        state = None
+        if self._virtual is not None:
+            try:
+                state = self._virtual.state()
+            except Exception:           # status must never fail because of the generator
+                state = None
+        return {"available": self._virtual is not None or self._virtual_hook() is not None,
+                "active": self._virtual is not None, "state": state}
+
+    def _virtual_command(self, cmd: dict) -> dict:
+        on = bool(cmd.get("on", True))
+        if not on:
+            if self._virtual is not None:
+                self._leave_virtual("switched off by a client")
+            return {"ok": True, "virtual": self.virtual_status()}
+        if self._virtual is not None:
+            return {"ok": True, "virtual": self.virtual_status()}
+        hook = self._virtual_hook()
+        if hook is None:
+            return {"ok": False, "error": "no virtual spectrum here: it needs the EBAZ4205 PL sweep engine "
+                                          "(sweepd --platform ebaz without --sim or --bench-only)"}
+        if self.bench_active:
+            return {"ok": False, "error": "bench mode is active: leave it first"}
+        vs = hook(self.engine.detector, self.engine.cal)
+        if vs is None:
+            return {"ok": False, "error": "this build of the PL software has no virtual spectrum module"}
+        self._real_offload, self.engine.offload, self._virtual = self.engine.offload, vs, vs
+        self.min_period_s = 0.1
+        self.running = True
+        self._announce = True
+        log.warning("virtual spectrum on: the trace is made by the PL's sample generator and IF path, not by RF "
+                    "(peaks at 100, 200 and 300 MHz of the displayed axis, drifting)")
+        return {"ok": True, "virtual": self.virtual_status()}
+
+    def _leave_virtual(self, why: str) -> None:
+        vs, self._virtual = self._virtual, None
+        if vs is None:
+            return
+        try:
+            vs.close()
+        except Exception as exc:        # leaving must work even when the generator misbehaves
+            log.warning("virtual spectrum: close failed: %s", exc)
+        if self.engine is not None and self._real_offload is not None:
+            self.engine.offload = self._real_offload
+            if hasattr(self._real_offload, "_key"):
+                self._real_offload._key = None          # the sweep table is uploaded again at the next sweep
+        self._real_offload = None
+        self.min_period_s = 0.0
+        self._announce = True
+        log.info("virtual spectrum off (%s): real sweeps again", why)
+
     def synth_readback(self) -> Optional[dict]:
         """The ADF4351 for `status`: the bench's view of it while bench mode is open (words written, lock detect),
         else the LO of the last sweep point when the engine's synth can say. None when nothing knows."""
@@ -287,6 +364,7 @@ class Sweepd:
         return False
 
     def shutdown(self) -> None:
+        self._leave_virtual("sweepd is stopping")
         if self.bench is not None:
             self.bench.close("sweepd is stopping")
 
@@ -325,7 +403,7 @@ class Sweepd:
             st["atten_db"] = next_atten_db(self.engine.last_peak_det_dbm, used_atten)
         step_hz = (st["stop_hz"] - st["start_hz"]) / (int(st["points"]) - 1)
         frame = protocol.encode_frame(self.seq, st["start_hz"], step_hz, used_atten, p_dbm, self.engine.last_flags,
-                                       image_reject=bool(st["image_reject"]))
+                                       image_reject=bool(st["image_reject"]), ideal=self._virtual_ideal())
         self.seq += 1
         return frame
 
@@ -341,6 +419,7 @@ class Sweepd:
             log.error("sweep failed, sweeping stopped: %s", exc, exc_info=True)
             for problem in self.engine.safe_state():
                 log.warning("safe state after the failed sweep: %s", problem)
+            self._leave_virtual("a sweep failed")
             return None
         dt = time.monotonic() - t0
         st = self.settings
@@ -406,6 +485,9 @@ def main(argv=None) -> None:
                     help="the board this runs on: bbb (default) or ebaz (EBAZ4205); default from [platform] name of the config")
     ap.add_argument("--rt", action="store_true", help="request SCHED_FIFO priority")
     ap.add_argument("--sweeps", type=int, default=0, help="stop after N sweeps (0 = run forever)")
+    ap.add_argument("--test-spectrum", action="store_true",
+                    help="EBAZ4205 PL engine: start with the virtual spectrum (three peaks and a drift made by the PL's "
+                         "sample generator and IF path), to see the whole chain without RF; the GUI has a button")
     ap.add_argument("--test-ramp", action="store_true",
                     help="EBAZ4205 PL engine: take the detector samples from the engine's test ramp ([platform] detector "
                          "= test, base from det_test_base), to look at it in the GUI; the pass/fail run is selftest.sh")
@@ -463,6 +545,10 @@ def main(argv=None) -> None:
             sys.exit(f"sweepd: cannot start the {pm.label} bench backend: {exc}")
         bench = Bench(backend, cfg, platform=pm)
     daemon = Sweepd(cfg, engine, bench, ring)
+    if args.test_spectrum:
+        reply = daemon.apply({"cmd": "virtual", "on": True})
+        if not reply.get("ok"):
+            sys.exit(f"sweepd: --test-spectrum: {reply.get('error')}")
     if args.rt:
         _try_realtime()
 
@@ -503,7 +589,7 @@ def main(argv=None) -> None:
                     continue
                 pub.send_multipart(frame)
                 done += 1
-                spare = period - (time.monotonic() - t0)
+                spare = max(period, daemon.min_period_s) - (time.monotonic() - t0)
                 if spare > 0:
                     time.sleep(spare)
             else:
