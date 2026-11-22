@@ -51,7 +51,10 @@ A sweep passes when all of this holds (one line per failed check, with the first
    different base per sweep; with 3 or more sweeps the last one repeats the first base and must equal sweep 1 exactly
 8. pins unchanged: `PIN_STATE.pe_out` (what the engine drives) equals the PE4302 levels read from the pads before the run, and the CE pad level is unchanged, after every sweep
 9. time per sweep: not below the hardware floor `points * (T_MIN_US + T_SETTLE_US + N_AVG) us`, not above
-   `2 * points * (T_MIN_US + T_SETTLE_US + N_AVG + 0.11) us + 50 ms` (Python polling and register access)
+   `1.3 * floor + 2 ms` (sequencer overhead and the 1 ms poll). The time measured is `RegOffload.last_sweep_s`
+   (start pulse to done seen), so the host's readout of the results (`last_read_s`, listed as information) is not part
+   of it. An offload without these times (value 0.0 or no attribute) is timed by the wall clock around `run()` and
+   judged against the older loose ceiling `2 * points * (T_MIN_US + T_SETTLE_US + N_AVG + 0.11) us + 50 ms`
 
 Point time in the hardware (R): FETCH 2 clk + ATT 1 clk + SPI 1 clk (spi_en = 0) + T_MIN + T_SETTLE + N_AVG us + STORE and
 NEXT 2 clk, about `T_MIN + T_SETTLE + N_AVG + 0.11 us`. With T_MIN 20, T_SETTLE 20, N_AVG 4: 44.1 us per point, 17.7 ms

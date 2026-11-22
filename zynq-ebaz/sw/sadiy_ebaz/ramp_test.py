@@ -121,7 +121,7 @@ def diagnose(got: Sequence[int], want: Sequence[int], n_avg: int, base: int) -> 
 def check_sweep(rep: Report, tag: str, res: Optional[OffloadResult], status: dict, *, n_points: int, n_avg: int,
                 base: int, sweep_count_before: Optional[int], previous: Optional[List[int]] = None,
                 elapsed_s: Optional[float] = None, floor_s: Optional[float] = None, ceil_s: Optional[float] = None,
-                raw_words: Optional[Sequence[int]] = None, first_err_index: Optional[int] = None
+                read_s: Optional[float] = None, raw_words: Optional[Sequence[int]] = None, first_err_index: Optional[int] = None
                 ) -> Optional[List[int]]:
     """The pass/fail criteria of one sweep of the ramp table. `res` is None when the run raised. Returns the sums
     when the sweep delivered a result."""
@@ -162,11 +162,12 @@ def check_sweep(rep: Report, tag: str, res: Optional[OffloadResult], status: dic
         rep.check(f"{tag}: not faster than the hardware floor (T_MIN + T_SETTLE + N_AVG us per point)",
                   elapsed_s >= floor_s, f"{elapsed_s * 1e3:.2f} ms for {n_points} points, floor {floor_s * 1e3:.2f} ms")
     if elapsed_s is not None and ceil_s:
-        rep.check(f"{tag}: not slower than 2x the floor plus polling slack", elapsed_s <= ceil_s,
+        rep.check(f"{tag}: not slower than the floor plus sequencer overhead and polling slack", elapsed_s <= ceil_s,
                   f"{elapsed_s * 1e3:.2f} ms for {n_points} points, limit {ceil_s * 1e3:.2f} ms")
     if elapsed_s is not None:
         rep.info.append(f"{tag}: {elapsed_s * 1e3:.1f} ms, {elapsed_s / max(1, n_points) * 1e6:.0f} us per point "
-                        "(incl. Python polling)")
+                        + ("(start to done, incl. up to 1 ms polling" if read_s is not None else "(incl. Python polling")
+                        + (f"; reading the results {read_s * 1e3:.1f} ms)" if read_s is not None else ")"))
     return list(res.sums)
 
 
@@ -223,11 +224,18 @@ def run_selftest(offload: SweepOffload, *, n_points: int = DEFAULT_POINTS, n_avg
             offload.abort()
             continue
         dt = clock() - t0
+        read_s = None
+        sweep_s = getattr(offload, "last_sweep_s", 0.0)            # RegOffload: start to done, and the readout after it
+        if isinstance(sweep_s, float) and sweep_s > 0.0 and isinstance(getattr(offload, "last_read_s", None), float):
+            read_s = offload.last_read_s
+            dt = sweep_s                                           # the hardware time, without the host's readout
+            if floor_s and ceil_s:
+                ceil_s = floor_s * 1.3 + 0.002                     # 30 % sequencer overhead plus the 1 ms poll
         tag = f"{prefix}sweep {k}"
         repeat = set_base is not None and sweeps >= 3 and k == len(bases)
         got = check_sweep(rep, tag, res, offload.status(), n_points=n_points, n_avg=n_avg, base=bk,
                           sweep_count_before=before, previous=first if repeat else None, elapsed_s=dt,
-                          floor_s=floor_s, ceil_s=ceil_s, raw_words=raw_results(n_points) if raw_results else None,
+                          floor_s=floor_s, ceil_s=ceil_s, read_s=read_s, raw_words=raw_results(n_points) if raw_results else None,
                           first_err_index=first_err_index() if first_err_index else None)
         if pins_before is not None and pins_now is not None:
             now = pins_now()

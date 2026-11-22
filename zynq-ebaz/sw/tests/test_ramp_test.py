@@ -125,6 +125,41 @@ def test_run_selftest_passes_against_the_model():
     assert any("sweep 3" in c.name for c in rep.checks)
 
 
+def _timed(sweep_s, read_s):
+    """A model offload whose run reports the given start-to-done and readout times, as RegOffload does on the board."""
+    m, off = _model_offload()
+    real = off.run
+
+    def run(n_avg, timeout_s=10.0):
+        res = real(n_avg, timeout_s)
+        off.last_sweep_s, off.last_read_s = sweep_s, read_s
+        return res
+
+    off.run = run
+    return off
+
+
+def test_timing_uses_the_hardware_time_and_reports_the_readout_separately():
+    # floor 12 ms: 13.5 ms start to done passes however long the readout took
+    rep = rt.run_selftest(_timed(0.0135, 0.020), n_points=10, sweeps=1, floor_s=0.012, ceil_s=1.0)
+    assert rep.ok, rep.lines()
+    assert any("reading the results 20.0 ms" in line for line in rep.info)
+    # the ceiling is floor * 1.3 + 2 ms (17.6 ms here), not the loose one handed in
+    rep = rt.run_selftest(_timed(0.030, 0.001), n_points=10, sweeps=1, floor_s=0.012, ceil_s=1.0)
+    assert not rep.ok and "not slower than" in rep.failed[0].name
+    rep = rt.run_selftest(_timed(0.0110, 0.001), n_points=10, sweeps=1, floor_s=0.012, ceil_s=1.0)
+    assert not rep.ok and "not faster than" in rep.failed[0].name
+
+
+def test_without_hardware_times_the_wall_clock_and_the_given_ceiling_are_used():
+    for ceil_s, ok in ((0.05, True), (0.015, False)):
+        off = _timed(0.0, 0.0)                                      # an offload that has no times to give
+        ticks = iter([0.0, 0.020] * 4)
+        rep = rt.run_selftest(off, n_points=10, sweeps=1, floor_s=0.012, ceil_s=ceil_s, clock=lambda: next(ticks))
+        assert rep.ok is ok, rep.lines()
+        assert all("reading the results" not in line for line in rep.info)
+
+
 def test_run_selftest_catches_a_corrupting_engine():
     m, off = _model_offload()
     real = off.run
