@@ -6,7 +6,10 @@ until bench mode closes.
 """
 from __future__ import annotations
 
+import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import patterns, pinmap
@@ -334,6 +337,92 @@ _STRAP_H = 14.0
 
 def canvas_size(pm: pinmap.PinMap = pinmap.BBB) -> Tuple[float, float]:
     return pm.layout.canvas
+
+
+ADAPTER_FIGURES = {"ebaz": "zynq-ebaz/docs/pinmap-adapter.svg"}      # platform -> picture of the adapter board, from the repo root
+
+
+def adapter_figure(pm: pinmap.PinMap, root: Optional[Path] = None) -> Optional[Path]:
+    """The picture of the adapter board for this platform (made by zynq-ebaz/rtl/scripts/gen_pinmap.py), or None when
+    the platform has none or the file is not there (a GUI that runs away from the checkout)."""
+    rel = ADAPTER_FIGURES.get(pm.name)
+    if rel is None:
+        return None
+    path = (root if root is not None else Path(__file__).resolve().parents[3]) / rel
+    return path if path.is_file() else None
+
+
+@dataclass(frozen=True)
+class AdapterRegion:
+    """A clickable part of the adapter picture: the pin it stands for and its rectangle in picture units."""
+
+    pin_id: str
+    rect: Tuple[float, float, float, float]       # x, y, w, h
+
+    def contains(self, x: float, y: float) -> bool:
+        rx, ry, rw, rh = self.rect
+        return rx <= x <= rx + rw and ry <= y <= ry + rh
+
+
+_BALL_TEXT = re.compile(r"^([A-Z]{1,2}\d{1,2}) \u00b7 bank \d+$")        # "K18 · bank 35": the FPGA ball under a signal name
+_BALL_NAME = re.compile(r"^([A-Z]{1,2}\d{1,2})(\s|$)")
+_SVG = "{http://www.w3.org/2000/svg}"
+
+
+def _union(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]):
+    x0, y0 = min(a[0], b[0]), min(a[1], b[1])
+    return (x0, y0, max(a[0] + a[2], b[0] + b[2]) - x0, max(a[1] + a[3], b[1] + b[3]) - y0)
+
+
+def adapter_regions(svg_path: Path, pm: pinmap.PinMap) -> List[AdapterRegion]:
+    """Clickable regions of the adapter picture made by `gen_pinmap.py`, read from the file itself so that a regenerated
+    picture keeps working: every FPGA ball text ("K18 · bank 35") names a pin of `pm` (pin names start with their ball);
+    its region is that text, the signal name above it and the circle or key next to them."""
+    by_ball = {}
+    for pin in pm.pins.values():
+        m = _BALL_NAME.match(pin.name or "")
+        if m:
+            by_ball[m.group(1)] = pin.id
+    texts, glyphs = [], []
+    for el in ET.parse(svg_path).getroot().iter():
+        tag = el.tag.replace(_SVG, "")
+        if tag == "text":
+            size = float(el.get("font-size", "12"))
+            string = "".join(el.itertext()).strip()
+            width = len(string) * size * 0.62
+            x, y, anchor = float(el.get("x", 0)), float(el.get("y", 0)), el.get("text-anchor", "start")
+            x0 = x - width if anchor == "end" else x - width / 2 if anchor == "middle" else x
+            texts.append({"string": string, "x": x, "y": y, "anchor": anchor, "box": (x0, y - size, width, size + 3)})
+        elif tag == "circle":
+            cx, cy, r = float(el.get("cx")), float(el.get("cy")), float(el.get("r"))
+            if r <= 20:
+                glyphs.append((cx - r, cy - r, 2 * r, 2 * r))
+        elif tag == "rect":
+            w, h = float(el.get("width", 0)), float(el.get("height", 0))
+            if w <= 60 and h <= 60:                                # keys; the connector, LCD and board are bigger
+                glyphs.append((float(el.get("x", 0)), float(el.get("y", 0)), w, h))
+    regions: List[AdapterRegion] = []
+    for i, t in enumerate(texts):
+        m = _BALL_TEXT.match(t["string"])
+        pid = by_ball.get(m.group(1)) if m else None
+        if pid is None:
+            continue
+        box = t["box"]
+        for prev in texts[max(0, i - 3):i]:                         # the signal name sits directly above, same alignment
+            if prev["anchor"] == t["anchor"] and abs(prev["x"] - t["x"]) < 1 and 6 <= t["y"] - prev["y"] <= 16:
+                box = _union(box, prev["box"])
+        for g in glyphs:                                            # the circle or key beside the text block
+            gap = max(g[0] - (box[0] + box[2]), box[0] - (g[0] + g[2]))
+            if gap <= 14 and box[1] - 8 <= g[1] + g[3] / 2 <= box[1] + box[3] + 8:
+                box = _union(box, g)
+        regions.append(AdapterRegion(pid, (box[0] - 2, box[1] - 1, box[2] + 4, box[3] + 2)))
+    return regions
+
+
+def adapter_hit(regions: Sequence[AdapterRegion], x: float, y: float) -> Optional[str]:
+    """The pin at a point of the picture (the smallest region wins where two overlap)."""
+    hits = [r for r in regions if r.contains(x, y)]
+    return min(hits, key=lambda r: r.rect[2] * r.rect[3]).pin_id if hits else None
 
 
 def _block(board: pinmap.BoardBlock, x: float, y: float, w: float, anchor_right: bool,
