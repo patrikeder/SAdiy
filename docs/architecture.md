@@ -83,6 +83,8 @@ The sweep samples the response of the IF filter, so the step must be no larger t
 
 ## Level plan (amp numbers are seller claims, measure them)
 
+**Status 2026-11-23.** The detector figures below describe the original analog chain. The AD8318 module is dead and no replacement is bought; on the EBAZ4205 the IF is to be digitized by an AD9226 module behind two 30 MHz low-pass modules (level plan, anti-alias analysis and open points: `zynq-ebaz/docs/adc-module.md`; register map 1.3 has the front end `FE_*`). With it the full scale is about -2 dBm at the RF input at 0 dB attenuation, so the amp (compression at about -19.5 dBm, below) still limits the top of the range long before the ADC does; the auto-ranging target of -15 dBm at the "detector" will have to be restated for the ADC. Until the ADC is wired, the EBAZ4205 sweeps only test sources (ramp self-test, virtual spectrum) and the BBB path has nothing to read.
+
 - Net gain input to detector at 0 dB attenuation about 22 dB (amp 31, PE4302 1.5, IF filter 6, LPF about 1.5). Detector window -58 to -1 dBm maps to about -80 to -23 dBm at the input.
 - The amp compresses at about -19.5 dBm at the input with 0 dB attenuation. Auto-ranging aims the sweep peak at -15 dBm at the detector (`core/sweep.py: next_atten_db`). Check that this keeps the amp and the AD831 below compression, and lower the target if not.
 - Thermal floor in a 230 kHz RBW is about -117 dBm with the claimed amp noise figure. The detector floor (about -80 dBm) limits sensitivity until the IF gain stage is added.
