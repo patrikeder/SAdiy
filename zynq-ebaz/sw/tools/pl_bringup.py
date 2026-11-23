@@ -637,8 +637,11 @@ def stage_fe(c: Ctx) -> None:
         try:
             rep.info(f"FE_CFG at reset 0x{r.rd('FE_CFG'):08X} (expected 0x00010200: off, 50 MS/s, phase 1), "
                      f"FE_TG_INC 0x{r.rd('FE_TG_INC'):08X} (10.7 MHz at 50 MS/s)")
+            # The counter keeps its last value while the front end is off (only reset and the clear bit zero it),
+            # so after an earlier run it is not 0: clear it first, then it must stay 0 with the front end off.
+            r.wr("FE_CFG", r.rd("FE_CFG") | 1 << fe["clear"].lsb)
             rep.check("front end off at reset (clock pin low, no samples counted)",
-                      r.rd("FE_CFG") == 0x10200 and stat(3)[-1]["count"] == 0)
+                      r.rd("FE_CFG") == 0x10200 and all(x["count"] == 0 for x in stat(3)))
             # ---- tie-off
             r.wr("FE_TIE", 0x123)
             cfg(src=0)
