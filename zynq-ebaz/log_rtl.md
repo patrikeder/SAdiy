@@ -20,7 +20,19 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
 
 ## State in one line
 
-**2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board map 1.0 ran first (57 checks passed, SPI clock verified); on 2026-11-16 map 1.2 passed the stages `lock`, `adc` (17/17, ADC input open) and `if` (11/11, bit-exact); `owner`, `ce`, a real analog input and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
+**2026-11-24: engine with register map 1.3 (sweep sequencer, ADS1115 reader, sample generator, IF path, ADC front end for the AD9226) on the board: `fe` 19/19, full `run.sh` 90 pass / 1 script fix / 1 skip, `lock adc` 17/17 with a real ADF4351 LD, PL sweep without unlock flags, virtual spectrum correct. Merged to main and pushed (88ec24a). Not tested: the AD9226 module and its pins (ADC_PADS build, adapter v2), capture phase, RF through the chain (detector dead), `la`. Decided: the I2C ADC will be removed (not done yet).**
+
+## 2026-11-24 first board run of map 1.3, ADF4351 connected (details: `docs/ebaz-pl-measurements.md`)
+
+- Stage `fe` 19/19; full `run.sh` 90 pass, 1 fail (script assumed a fresh bitstream: counter keeps its value, fixed in `pl_bringup.py`),
+  1 skip (interrupt count). Virtual spectrum: 3 peaks about where expected. `lock adc` 17/17 with a real LD (439 us per point).
+  The PL sweep with the ADF4351 locked ran without unlock flags; the ADF4351 words give the right frequency in integer-N and
+  fractional-N (scope, user). Output level (50 mVpp) unresolved, probe suspected.
+- **User decision 2026-11-24:** `la` on map 1.3 is not needed (SPI known to work), and the **I2C ADC (ADS1115) will be removed**;
+  the AD9226 replaces it. Nothing was removed from the RTL or software yet: the ADS1115 reader (`ADC_CFG`, I2C pin ownership, stage
+  `adc`, detector source `pl`) and the I2C pins on the adapter are still there. Removing it touches the register map and the
+  platform backend (`detector source`), so it needs its own change (map bump) and agreement with session L.
+- Process lesson: the board had an old hand-copied `bringup-pkg` (Nov 14); stages should not assume state left by a reload.
 
 ## 2026-11-23 ADC front end for the AD9226 at 50 MS/s, register map 1.3 (user request: prepare the setup, tie off or generate traffic until the pin mapping is clear)
 

@@ -48,7 +48,20 @@ expected" (user report; the dashed expected trace was not reported). The GUI's D
 sweepd answered the build query only 8 s after connecting, which fits commands being served between sweeps (hypothesis, L's
 side, not confirmed).
 
-Still open: `FE_CFG.phase` against the real module, pins (ADC_PADS build, adapter v2), `la` on map 1.3, `lock adc` with the ADF4351 connected, a sweep against RF.
+### Same day: ADF4351 connected (user runs, outputs pasted)
+
+| Item | Result |
+|---|---|
+| Bench mode (Linux, PS pins) | LO 100.000 MHz (integer-N, INT 128, VCO 3200 MHz, /32) and 110.700 MHz (fractional-N, INT 141, FRAC 87, MOD 125, VCO 3542.4 MHz): LD 1 at both, frequencies match on the scope (user). Output about 50 mVpp into 50 ohm with everything terminated, i.e. -22 dBm against the -4 dBm setting; the user suspects the probe (a 10:1 setting error would be exactly 20 dB) and sees the expected products at the mixer output. Not resolved, not a finding yet. |
+| `sweep.sh` (PL engine) | no `did not lock`, no `read without PLL lock` for the full 30 to 480 MHz sweep (401 points, 4 averages): 3.45 s per sweep (7.47 s while LD was low). Overload flags (126 of 401) are the open ADS1115 input. A 110 kHz span around 255 MHz (502 points, 3 averages, 3.6 s per sweep) also swept without lock flags. |
+| `run.sh lock adc` | 17 passed, 0 failed: LD high (`ld_now` 1), sweep finished without `err_lock` or unlocked flags, 439 us per point (waits 20 + 50 + 20 us plus polling); ADS1115 ACK, 8 conversions, I2C pins handed over and back. |
+| ADS1115 values | 0.914 V, 0.857 V, last 0.532 V: floating input, no information about scaling. |
+
+Read: the engine's lock wait works against the real ADF4351 LD, with the real PL-driven SPI words and the PL reading the ADS1115. The
+ADF4351 register words give the right frequency and lock in both integer-N and fractional-N; the output level is unmeasured
+(probe). Nothing here involves RF through the chain, the detector or the AD9226.
+
+Still open: `FE_CFG.phase` against the real module, pins (ADC_PADS build, adapter v2), the ADF4351 output level with a verified probe setting, a sweep against RF. Dropped by the user's decision (2026-11-24): `la` on map 1.3 (SPI is known to work) and the ADS1115 scaling check (the I2C ADC will be removed; the AD9226 replaces it).
 
 ## 2026-11-16 map 1.2: stage `if` (user run, `sudo ./run.sh if`, script output pasted)
 

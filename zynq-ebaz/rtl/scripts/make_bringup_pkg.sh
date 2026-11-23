@@ -19,7 +19,17 @@ cp "$EBAZ_DIR/sw/tools/pl_bringup.py" "$OUT/pl_bringup.py"
 cp "$EBAZ_DIR/rtl/regmap/regmap.toml" "$OUT/regmap.toml"
 mkdir -p "$OUT/config" && cp "$ROOT/config/default.toml" "$OUT/config/default.toml"
 find "$OUT" -name __pycache__ -type d -prune -exec rm -rf {} +
-[ -f "$BUILD_DIR/fpga/ebaz_sadiy.bit.bin" ] && cp "$BUILD_DIR/fpga/ebaz_sadiy.bit.bin" "$OUT/"
+# Bitstream: BITSTREAM=<file>, else this checkout's build/fpga, else the same path in the sibling RTL worktree (the
+# same list as sw/deploy/deploy_to_board.sh: the build output is git-ignored and only exists where Vivado ran).
+BIT=""
+for cand in "${BITSTREAM:-}" "$BUILD_DIR/fpga/ebaz_sadiy.bit.bin" "$ROOT/../SAdiy-rtl/zynq-ebaz/build/fpga/ebaz_sadiy.bit.bin"; do
+  if [ -n "$cand" ] && [ -f "$cand" ]; then BIT="$cand"; break; fi
+done
+if [ -n "$BIT" ]; then
+  cp "$BIT" "$OUT/ebaz_sadiy.bit.bin"; echo "make_bringup_pkg: bitstream $BIT (md5 $(md5sum "$BIT" | cut -d' ' -f1))"
+else
+  echo "make_bringup_pkg: WARNING no bitstream found (set BITSTREAM=<file> or build one); the package has none"
+fi
 [ -f "$EBAZ_DIR/sw/deploy/sadiy_pl_load.sh" ] && cp "$EBAZ_DIR/sw/deploy/sadiy_pl_load.sh" "$OUT/"
 cat > "$OUT/run.sh" <<'EOS'
 #!/bin/sh
