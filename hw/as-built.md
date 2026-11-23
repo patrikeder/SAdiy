@@ -35,3 +35,10 @@ RF input cable -> PE4302 `RFin`; PE4302 `RFout` -> amp `RFin`; amp `RFout` -> AD
 3. Which ADF4351 output goes to the mixer and what the other output sees.
 4. Polarity marking next to the ADF4351 DC jack.
 5. Whether the ADF4351 board already pulls `CE` and `PDR` high.
+
+## Changes after the photos (2026-11-23)
+
+- **Detector module:** dead; no log detector is bought (AD8310 not ordered either). The analog branch (IF filter, IF amp, detector, ADS1115) has no detector until one is added. Everything above about the detector is kept as the record of the first photos.
+- **Mixer output:** looked at with a scope FFT (session L's bench notes); the AD831 IF port load is still an open question.
+- **Digitizer:** an AD9226 module (12 bit, 65 MS/s, 50 ohm SMA input) is ordered for the EBAZ4205 PL engine, with two 30 MHz low-pass modules in series in front of it. Facts from the seller's listing, nothing measured yet: [boards/ad9226-module.md](boards/ad9226-module.md).
+

@@ -13,18 +13,22 @@
 <rect x="370.0" y="101.0" width="30.9" height="18.0" rx="9" fill="#e8590c" stroke="none" stroke-width="1.5"/>
 <text x="385.4" y="114.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#ffffff">5 V</text>
 <path d="M250.0,325.0 C305.0,325.0 305.0,155.0 360.0,155.0" fill="none" stroke="#495057" stroke-width="2.6" marker-end="url(#a495057)" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="800.0" y="98.0" width="520.0" height="34.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
-<text x="814.0" y="120.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">SBC (BBB or RPi)</text>
-<text x="1306.0" y="120.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">5 V / 2-3 A</text>
-<path d="M680.0,155.0 C740.0,155.0 740.0,115.0 800.0,115.0" fill="none" stroke="#e8590c" stroke-width="2.2" marker-end="url(#ae8590c)" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="800.0" y="138.0" width="520.0" height="34.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
-<text x="814.0" y="160.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">ADF4351 board (DC jack)</text>
-<text x="1306.0" y="160.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">5 V, ~200 mA (AMS1117-3.3 on board)</text>
-<path d="M680.0,155.0 C740.0,155.0 740.0,155.0 800.0,155.0" fill="none" stroke="#e8590c" stroke-width="2.2" marker-end="url(#ae8590c)" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="800.0" y="178.0" width="520.0" height="34.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
-<text x="814.0" y="200.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">Detector board (VCC pad)</text>
-<text x="1306.0" y="200.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">~68 mA, check its regulator</text>
-<path d="M680.0,155.0 C740.0,155.0 740.0,195.0 800.0,195.0" fill="none" stroke="#e8590c" stroke-width="2.2" marker-end="url(#ae8590c)" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="800.0" y="78.0" width="520.0" height="34.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
+<text x="814.0" y="100.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">SBC (BBB or RPi)</text>
+<text x="1306.0" y="100.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">5 V / 2-3 A</text>
+<path d="M680.0,155.0 C740.0,155.0 740.0,95.0 800.0,95.0" fill="none" stroke="#e8590c" stroke-width="2.2" marker-end="url(#ae8590c)" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="800.0" y="118.0" width="520.0" height="34.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
+<text x="814.0" y="140.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">ADF4351 board (DC jack)</text>
+<text x="1306.0" y="140.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">5 V, ~200 mA (AMS1117-3.3 on board)</text>
+<path d="M680.0,155.0 C740.0,155.0 740.0,135.0 800.0,135.0" fill="none" stroke="#e8590c" stroke-width="2.2" marker-end="url(#ae8590c)" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="800.0" y="158.0" width="520.0" height="34.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
+<text x="814.0" y="180.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">Detector board (VCC pad)</text>
+<text x="1306.0" y="180.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">AD8318 module dead, ~68 mA</text>
+<path d="M680.0,155.0 C740.0,155.0 740.0,175.0 800.0,175.0" fill="none" stroke="#e8590c" stroke-width="2.2" marker-end="url(#ae8590c)" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="800.0" y="198.0" width="520.0" height="34.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
+<text x="814.0" y="220.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="12.5" text-anchor="start" font-weight="bold" fill="#212529">AD9226 module (EBAZ only)</text>
+<text x="1306.0" y="220.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="11" text-anchor="end" font-weight="normal" fill="#6c757d">5 V (4.75-5.25), current not given; 3.3 V logic on board</text>
+<path d="M680.0,155.0 C740.0,155.0 740.0,215.0 800.0,215.0" fill="none" stroke="#e8590c" stroke-width="2.2" marker-end="url(#ae8590c)" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="360.0" y="270.0" width="320.0" height="90.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
 <text x="520.0" y="294.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="13" text-anchor="middle" font-weight="bold" fill="#212529">SBC 3.3 V output pin</text>
 <text x="520.0" y="312.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6c757d">BBB P9.3 / P9.4, RPi pin 1 / 17</text>

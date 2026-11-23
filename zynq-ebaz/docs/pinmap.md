@@ -124,6 +124,8 @@ With this adapter the following planned `adc_*` balls are also wired to adapter 
 
 ### Proposal: AD9226 through the HDMI port
 
+**Superseded 2026-11-23:** the user plans a different adapter (adapter v2) without HDMI and LCD that wires the 14 DATA1 signals straight to the AD9226 module (`adc-module.md` section 4). This proposal is not needed any more; kept as a record.
+
 The HDMI port carries four differential pairs (DAT0, DAT1, DAT2, CLK) = 8 FPGA balls, exactly 8 of the 14 planned AD9226 balls. With the 5 free balls of the right connector that makes 13: 12 data bits and the clock; OTR needs one more (the UART header H16 once its jumper is removed, or leave it out). Used as single-ended LVCMOS33. A proposal only: NOT in `pins.toml` (the Linux lane owns that file) and not constrained; the adapter PCB will probably be replaced later, then the pins are chosen again.
 
 | AD9226 signal | Ball | Where | Bank | I/O name |
