@@ -11,6 +11,8 @@
 #   ~/sadiy/zynq-ebaz/sw/tools/      pl_bringup.py, ebaz_pl_probe.py, ebaz_lcd_test.py, ebaz_s4_*.sh, ebaz_baseline.sh
 #   ~/sadiy/{fpga,bench,sweep,sim,status,stop}.sh   the day-to-day scripts (from zynq-ebaz/sw/board/), run from ~/sadiy
 #   ~/sadiy/fpga/                    ebaz_sadiy.bit.bin (the engine bitstream, see BITSTREAM below) and sadiy_pl_load.sh
+# Load it with ~/sadiy/fpga.sh. Packages copied by hand (~/sadiy/bringup-pkg, ~/engine-pkg) are NOT updated; the script warns
+# at the end when their bitstream differs from the deployed one.
 # BITSTREAM=<file> picks the bitstream; default: zynq-ebaz/build/fpga/ebaz_sadiy.bit.bin of this checkout, else the one of
 # the RTL worktree next to it (../SAdiy-rtl). Without any, the code is deployed and ./fpga.sh says what is missing.
 # Run on the board with:  PYTHONPATH=~/sadiy/src:~/sadiy/zynq-ebaz/sw python3 -m sadiy.server.sweepd ...
@@ -41,7 +43,7 @@ for c in "${BITSTREAM:-}" zynq-ebaz/build/fpga/ebaz_sadiy.bit.bin ../SAdiy-rtl/z
 done
 if [ -n "$bit" ]; then
   cp "$bit" "$STAGE/fpga/ebaz_sadiy.bit.bin"
-  echo "bitstream: $bit ($(date -r "$bit" '+%Y-%m-%d %H:%M'), sha256 $(sha256sum "$bit" | cut -c1-12))"
+  echo "bitstream: $bit ($(date -r "$bit" '+%Y-%m-%d %H:%M'), md5 $(md5sum "$bit" | cut -c1-12), sha256 $(sha256sum "$bit" | cut -c1-12))"
 else
   echo "bitstream: none found (set BITSTREAM=<ebaz_sadiy.bit.bin>); the board keeps the one it has, ./fpga.sh will tell"
 fi
@@ -52,4 +54,18 @@ for f in src/sadiy/ui/*.py; do
 done
 tar -czf - --exclude='__pycache__' --exclude='*.pyc' $ex $paths -C "$STAGE" . \
   | ssh "$USER_@$IP" 'mkdir -p ~/sadiy && cd ~/sadiy && tar -xzf - && printf "export PYTHONPATH=\$HOME/sadiy/src:\$HOME/sadiy/zynq-ebaz/sw\n" > env.sh && echo "unpacked to ~/sadiy" && ls ~/sadiy'
+# second ssh call: the first one reads the tar stream on stdin
+ssh "$USER_@$IP" 'sh -s' <<'REMOTE' || true
+# Other copies of the bitstream (R's bringup-pkg, engine-pkg) are not touched by this script: say so when they differ,
+# because sadiy_pl_load.sh run from there loads the OLD engine (a stale bringup-pkg once loaded VERSION 0x10002).
+if command -v sha256sum >/dev/null 2>&1; then
+  new=$(sha256sum ~/sadiy/fpga/ebaz_sadiy.bit.bin 2>/dev/null | cut -d' ' -f1)
+  for f in ~/sadiy/bringup-pkg/ebaz_sadiy.bit.bin ~/engine-pkg/ebaz_sadiy.bit.bin; do
+    [ -f "$f" ] || continue
+    [ "$(sha256sum "$f" | cut -d' ' -f1)" = "$new" ] && continue
+    echo "WARNING: $f is a different (older) bitstream than the one just deployed (~/sadiy/fpga/); do not load it."
+    echo "         Load the deployed one with ./fpga.sh --force from ~/sadiy, or copy the newer package over that folder."
+  done
+fi
+REMOTE
 echo "on the board, from ~/sadiy: ./status.sh | ./fpga.sh | ./bench.sh | ./sweep.sh | ./selftest.sh | ./sim.sh | ./stop.sh   (. ~/sadiy/env.sh sets PYTHONPATH for python -m ...)"
