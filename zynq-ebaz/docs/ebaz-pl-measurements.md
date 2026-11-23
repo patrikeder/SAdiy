@@ -3,8 +3,52 @@
 Newest first. What was measured, with which setup, and what is still open. Source of the numbers: the user's runs on the
 EBAZ4205 with a logic analyzer (recorded by session R from the user's reports, 2026-11-14); no raw captures are in the repo.
 
-Everything below the 2026-11-16 entry was measured with register map 1.0. The 2026-11-16 entry is map 1.2
+The 2026-11-23 entry is map 1.3 (`VERSION` 0x00010003, stage `fe`). Everything below the 2026-11-16 entry was measured with register map 1.0. The 2026-11-16 entry is map 1.2
 (`VERSION` 0x00010002): `lock`, `adc` and `if` have run; `owner`, `ce` and `ctrl` have not been repeated on map 1.2.
+
+## 2026-11-23 map 1.3: stage `fe` (user run, `sudo sh ./bringup-pkg/run.sh fe`, script output pasted)
+
+Setup: bitstream built 2026-11-23 20:06 (md5 11e55973d7dd215d71dd5ae105baa832, `VERSION` 0x00010003), loaded with
+`fpga.sh --force`; package `bringup-pkg` from main, commit 8c474f6. No ADC module, no ADC pins in this build (data lines tied
+off inside the engine). The first attempt ran an old hand-copied `bringup-pkg` (Nov 14, VERSION 0x00010002) and was
+discarded; see the log. Result: 19 passed, 0 failed, 0 skipped (ident checks in the same run also passed).
+
+| Check | Measured |
+|---|---|
+| Reset | `FE_CFG` 0x00010200, `FE_TG_INC` 0x36C8B439, front end off: clock low, no samples counted |
+| Tie-off (`FE_TIE` 0x123) | last code 0x123 four times; sample counter advances (counts 6026, 10110, 11852, 16757 between reads: software timing, not a rate); OTR reaches `last_otr` and sticky `otr_seen`; clear drops both and restarts the counter |
+| Traffic generator | ramp: codes differ read to read; walking one: exactly one bit set every time, all 12 lines seen (1 .. 2048); constant mode shows `FE_TIE`; front end off stops the counter |
+| Pins | source 2 reads 0x800, OTR 0 (nothing wired, as expected) |
+| IF path, tie-off stream | result word 0x023FFE00 = Python reference (bit-exact) |
+| IF path, OTR | OTR reaches result bit 30 |
+| IF path, tone at 50 MS/s | word 0x02BFFED8 (exponent 10, in 9..11, no over-range); a tone two filter nulls away: exponents 10 and 0 (more than 8 lower) |
+
+Read: the clock divider, capture registers, conversion, stream mux, IF path at the 50 MS/s rate and the result word work on the
+board with the generator as the data source. The generator and the capture run in the same fabric clock domain, so this does
+not say anything about the capture phase against a real converter or about the pad timing: that needs the module. The
+bitstream met timing (WNS +1.51 ns) with a thin hold margin (WHS +0.007 ns); the run does not exercise that.
+
+### Same day: full run `sudo sh ./bringup-pkg/run.sh` on map 1.3 (ADF4351 unplugged, ADS1115 connected, input open)
+
+90 passed, 1 failed, 1 skipped. The skip is the interrupt count (no uio line in `/proc/interrupts`, as before). The fail was
+`front end off at reset` in stage `fe`: a wrong assumption of the script, not hardware. The sample counter is cleared only by
+reset or the `clear` bit and keeps its last value while the front end is off, so it is 0 only on a freshly loaded bitstream
+(first run: pass; second run without reload: counter still at the last value). Fixed in `pl_bringup.py` (write `clear` first,
+then the counter must stay 0); the model reproduces it with two `fe` stages in one run. Everything else on map 1.3 passed
+again: `regs`, `gen` (716 to 756 us per point), `push`, `owner`, `ctrl`, `lock`, `adc` (ACK, 8 conversions; the values are an
+open input), `if` (bit-exact, tone 84.08 dB as calculated, second tone 19.99 dB lower, 27 us per point), `fe` (all other checks).
+
+### Same day: sweepd and GUI on map 1.3
+
+`./sweep.sh` (sweepd on the PL engine, commit 8c474f6) with the ADF4351 unplugged and the ADS1115 input open: the normal sweep
+ran (401 points, 4 averages, about 7 s per sweep, a sweep every 14 s), every point flagged `no PLL lock` and the RF outputs
+stayed off (`ADF4351 did not lock`), 4 to 9 points per sweep flagged overload; the GUI trace showed several peaks that are
+noise of the floating input, not signals. With the **Virtual spectrum** button on, the GUI showed 3 peaks, "about where they are
+expected" (user report; the dashed expected trace was not reported). The GUI's Device log said "sweepd sent no log" after 5 fetches:
+sweepd answered the build query only 8 s after connecting, which fits commands being served between sweeps (hypothesis, L's
+side, not confirmed).
+
+Still open: `FE_CFG.phase` against the real module, pins (ADC_PADS build, adapter v2), `la` on map 1.3, `lock adc` with the ADF4351 connected, a sweep against RF.
 
 ## 2026-11-16 map 1.2: stage `if` (user run, `sudo ./run.sh if`, script output pasted)
 
