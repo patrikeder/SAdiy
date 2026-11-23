@@ -27,6 +27,11 @@ user's original `docs/ADC_param.png` is an AVIF file with a .png name and does n
 - Full scale about +24 dBm at the module input (listing). With the chain gain of about 26 dB (amp 31, PE4302 1.5,
   LPF 1.5, mixer about 0, IF filter 1.5 instead of the 6 of the ceramic filter) full scale is about -2 dBm at the RF
   input at 0 dB attenuation, which matches the old detector window. No IF amp is needed to start.
+- **The amp limits the top first** (session L, `docs/architecture.md`): the 30 dB amp compresses at about -19.5 dBm at
+  the RF input, about 17 dB below the ADC's full scale of about -2 dBm. The usable top of the range is therefore the
+  amp's compression point, not the ADC; the old auto-range target (-15 dBm at the detector) has to be restated for
+  the ADC (a level at the ADC input well below full scale, e.g. 10 to 20 dB under, so that the amp stays linear).
+  PE4302 attenuation ahead of the amp (as in the existing sweep) is what protects both.
 - Quantization noise (70 dB SNR over fs/2 = 25 MHz at 50 MS/s) is about -90 dBm in 1 kHz at the module input, so
   about -115 dBm at the RF input; the chain's noise figure (about -104 dBm with 10 dB NF) will dominate. Measure it.
 - Over-range: OTR goes into the result word (bit 30) as for the existing IF path.
