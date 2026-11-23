@@ -19,7 +19,7 @@ step "pytest"
 step "verilator lint"
 if command -v verilator >/dev/null 2>&1; then
   verilator --lint-only -Wall -Wno-SYMRSVDWORD -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL \
-    --top-module sadiy_top "$RTL_DIR"/src/*.sv "$RTL_DIR/regmap/axil_regs.sv" || rc=1
+    --top-module sadiy_top "$RTL_DIR"/src/*.sv "$RTL_DIR/dsp/adc_ad9226.sv" "$RTL_DIR/regmap/axil_regs.sv" || rc=1
   for top in fft_r2 fir_mac iq_power adc_ad9226 adc_spi_sar; do      # standalone DSP modules
     verilator --lint-only -Wall -Wno-SYMRSVDWORD -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL \
       --top-module "$top" "$RTL_DIR"/dsp/*.sv || rc=1

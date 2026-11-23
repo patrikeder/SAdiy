@@ -134,7 +134,7 @@ device(DX, 140, DW, 178, "ADF4351 eval board (LO)", ["25 MHz osc, 5 V DC jack", 
 device(DX, 334, DW, 52, "PE4302 module", ["V1..V6 = 0.5 .. 16 dB, high = in", "adapter pull-ups: 31.5 dB"])
 device(DX, 400, DW, 112, "ADS1115 (I2C 0x48)", ["detector ADC, A0 vs GND", "read by the PL reader or PS I2C0",
                                                 "analog: RF in -> PE4302 ->", "amp -> AD831 -> detector -> A0"])
-device(DX, 896, DW, 48, "ADC adapter (not built)", ["fast IF ADC on det_ext_*"])
+device(DX, 896, DW, 48, "AD9226 module (not wired yet)", ["50 ohm SMA in, 5 V, 3.3 V logic"])
 device(DX, 1090, DW, 44, "Adapter LCD, ST7789", ["SPI1 + DC / RES, Linux fbtft"])
 device(DX, 1138, DW, 92, "Adapter LEDs, keys", ["LEDs 1..3: EMIO outputs", "keys 1..5: active low",
                                                           "Linux only, no PL logic"])
@@ -148,7 +148,7 @@ pad(295, "adf4351_ld", "input, also EMIO n=7", "J19")
 pad(360, "pe4302_v[5:0]", "IOBUF g_pe, EMIO 0..5", "J20 L16 L19 M18 L20 M20")
 pad(425, "i2c_scl", "IOBUF u_scl", "L17")
 pad(490, "i2c_sda", "IOBUF u_sda", "K18")
-pad(920, "det_ext_* stream", "engine port, tied to 0", "no pins yet", dashed=True)
+pad(920, "adc_clk, adc_d, otr", "ADC_PADS build only", "DATA1, adapter v2", dashed=True)
 pad(1112, "lcd_* (5 pins)", "SPI1, EMIO n=8, 9", "R19 P20 T20 R18 N17")
 pad(1160, "led[2:0]", "OBUFT, EMIO n=10..12", "H18  K17  E19")
 pad(1208, "keys[4:0]", "input, EMIO n=13..17", "T19 P19 U20 U19 V20")
@@ -162,8 +162,8 @@ box(280, 120, 150, 500, "u_pins", "pin_mux", [
 inline(300, 665, 100, 52, "input sync", "2-FF, inline")
 
 box(535, 100, 1195, 64, "u_regs", "axil_regs", [], cls="blk regs")
-note(680, 124, "register file generated from regmap.toml by gen_regs.py, map 1.2 (VERSION 0x00010002), 4 KiB at 0x43C0_0000")
-note(680, 140, "CTRL, STATUS, timing, PE4302, DET_CFG, TABLE_ADDR / W0 / W1, RESULT_ADDR / DATA (auto-increment), ADC_*, GEN_*, IF_*", "bt dim")
+note(680, 124, "register file generated from regmap.toml by gen_regs.py, map 1.3 (VERSION 0x00010003), 4 KiB at 0x43C0_0000")
+note(680, 140, "CTRL, STATUS, timing, PE4302, DET_CFG, TABLE_ADDR / W0 / W1, RESULT_ADDR / DATA (auto-increment), ADC_*, GEN_*, IF_*, FE_*", "bt dim")
 
 box(545, 220, 170, 64, "u_spi", "adf4351_spi", ["32-bit word, MSB first"])
 box(545, 330, 170, 64, "u_mbb", "pe4302_mbb", ["make-before-break step"])
@@ -187,6 +187,7 @@ box(1400, 410, 160, 70, "u_result", "sdp_ram", ["results 4096 x 32 bit"])
 inline(1590, 216, 92, 40, "irq gate", "en AND done")
 
 box(545, 780, 145, 110, "u_gen", "sample_gen", ["pattern player"])
+box(545, 900, 145, 100, "u_fe", "adc_fe", ["FE_CFG: clock, phase", "tie-off / traffic gen", "or the pins", "u_adc: adc_ad9226"])
 sub(557, 834, 121, 46, "u_ram : sdp_ram", ["4096 x 16 pattern"], cls="sub inst")
 mux(745, 785, 40, 86, "src", "")
 
@@ -278,7 +279,8 @@ wire([(1140, 625), (1140, 600)], "data", "point power sum", (1146, 617), anchor=
 
 # --- sample stream
 wire([(690, 808), (745, 808)], "data", "test stream", (717, 801))
-wire([(PR, 920), (728, 920), (728, 858), (745, 858)], "data", "adapter sample stream", (470, 914))
+wire([(PR, 920), (545, 920)], "data", "ADC data lines", (350, 914))
+wire([(690, 920), (728, 920), (728, 858), (745, 858)], "data", "front-end stream", (700, 914), anchor="middle")
 wire([(785, 828), (900, 828)], "data", "IF sample stream", (852, 846))
 wire([(830, 828), (830, 650)], "data", "video sample stream", (824, 712), anchor="end")
 dot(830, 828, "data")
@@ -337,7 +339,7 @@ for i, (c, s) in enumerate(LEG):
     x = 30 + 215 * i
     top.append(f'<path class="w w-{c}" d="M{x},{LY - 4} L{x + 34},{LY - 4}"/>')
     top.append(f'<text class="bt" x="{x + 42}" y="{LY}">{esc(s)}</text>')
-top.append(f'<text class="bt dim" x="{30 + 215 * 8 + 20}" y="{LY}">not built yet: ADC adapter on det_ext_*, '
+top.append(f'<text class="bt dim" x="{30 + 215 * 8 + 20}" y="{LY}">not built yet: ADC pads (ADC_PADS), '
            f'FFT, PL access to keys / LEDs</text>')
 
 # =============================================================== output

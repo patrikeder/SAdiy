@@ -48,7 +48,8 @@ module tb_adc;
     .adf4351_ce_o(ce_o), .adf4351_ce_t(ce_t), .adf4351_ce_i(ce_pad),
     .i2c_scl_o(scl_o), .i2c_scl_t(scl_t), .i2c_scl_i(scl_pad),
     .i2c_sda_o(sda_o), .i2c_sda_t(sda_t), .i2c_sda_i(sda_pad),
-    .det_ext_valid(1'b0), .det_ext_data(16'd0), .det_ext_ovr(1'b0)
+    .det_ext_valid(1'b0), .det_ext_data(16'd0), .det_ext_ovr(1'b0),
+    .adc_clk(), .adc_d(12'h800), .adc_otr(1'b0)
   );
 
   task automatic fail(input string why);

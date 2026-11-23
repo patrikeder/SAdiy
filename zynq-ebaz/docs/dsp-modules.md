@@ -125,8 +125,9 @@ integrated, `if_power` could use this module instead.
   Tested with a model whose outputs are undefined from 2 to 7 ns after the clock edge: `div / phase` = 4 / 3,
   2 / 1 and 10 / 6 never sample in that window. **On hardware the right phase depends on the board delay: check
   with a known input and the `ovr` / code pattern, and try the neighbouring phase.**
-- In the board top, put `adc_clk` (through an ODDR) and the first pin register into the I/O cells, and constrain
-  the input delay. The sample rate must keep its harmonics away from the 10.7 MHz IF (plan, F3).
+- Integrated since register map 1.3 through `adc_fe` (rtl-spec.md 8d; `FE_CFG.div` / `phase` are these two ports). In
+  the board top `adc_clk` goes through an OBUF (ADC_PADS build), and `adc_pins.xdc` puts the first pin register into
+  the I/O cells and makes the pads false paths (the capture phase is software-chosen). The sample rate must keep its harmonics away from the 10.7 MHz IF (plan, F3).
 - The AD9226 delivers a sample 7 clock periods after it was taken; that latency is constant and not corrected.
 
 ## `adc_spi_sar`

@@ -13,6 +13,9 @@ Test side of the model (what a testbench drives):
                                                      conversion code, or None when the ADC does not answer
   ext_stream                                         samples of an ADC adapter on the det_ext port (stream format,
                                                      played cyclically from index 0 at every measurement); None: no stream
+  fe_pins(n) -> (code, otr)                          ADC front end, FE_CFG.src = 2: what the module puts on the data lines
+                                                     for the n-th sample (default: nothing wired, the board top ties the
+                                                     lines to 0x800 / 0)
   emio_ce_o / emio_ce_t / pad_ce                     PS side of the CE pin and the level of an undriven pin
   emio_pe_o / emio_pe_t / pad_pe                     PS side of the PE4302 pins (used while the PS owns them)
   spi_words, pe_trace                                everything the engine put on the pins, in order
@@ -25,7 +28,7 @@ from __future__ import annotations
 
 from typing import Callable, Dict, Generator, List, Optional
 
-from .ifpath import OVR_BIT, if_power_ref
+from .ifpath import _ROM, OVR_BIT, if_power_ref
 from .platform import SUM_MASK, UNLOCKED_BIT, W1_USED_MASK, TableEntry
 from .regmap_toml import REGS
 
@@ -33,6 +36,10 @@ IDLE, FETCH, ATT, SPI, WAIT_MIN, WAIT_LOCK, SETTLE, SAMPLE, STORE, NEXT = range(
 
 PE_ALL_IN = 0x3F
 SRC_PUSH, SRC_TEST, SRC_EXT, SRC_ADC = range(4)
+FE_TIE_OFF, FE_GENERATOR = 0, 1                      # FE_CFG.src (2 and 3: the pins)
+FE_RAMP, FE_WALK, FE_TONE, FE_CONST = range(4)       # FE_CFG.tg_mode
+FE_MAX_SAMPLES = 1 << 17                             # longest stream the model builds for one measurement (then cyclic)
+FE_TICK = 17                                         # samples the FE_STAT counter advances per read (stands for time)
 
 _END_NORMAL, _END_STOP_ON_ERR, _END_TABLE_FULL = "normal", "stop_on_err", "table_full"
 
@@ -53,6 +60,7 @@ class PlModel:
         self.adc_code: Optional[Callable[[int], Optional[int]]] = None   # None: no ADC on the bus
         self.emio_ce_o, self.emio_ce_t, self.pad_ce = 0, 1, 1
         self.ext_stream: Optional[List[int]] = None
+        self.fe_pins: Optional[Callable[[int], tuple]] = None
         self.emio_pe_o = PE_ALL_IN       # level the PS drives on the PE4302 lines
         self.emio_pe_t = PE_ALL_IN       # 1 = PS line is an input (not driven)
         self.pad_pe = PE_ALL_IN          # level the board (pull-ups) gives an undriven line
@@ -80,6 +88,9 @@ class PlModel:
         self._gen_addr = 0
         self._if_inc = 0
         self._ovr = False
+        self._stream_ovr = False
+        self._fe_count = 0
+        self._fe_otr_seen = False
         self._reset_sequencer()
 
     def _reset_sequencer(self) -> None:
@@ -123,6 +134,8 @@ class PlModel:
             return self._table_addr
         if name == "RESULT_ADDR":
             return self._result_addr
+        if name == "FE_STAT":
+            self._fe_tick()
         ro = self._ro_values()
         value = 0
         for f in REGS[name].fields.values():
@@ -158,6 +171,11 @@ class PlModel:
             self._gen_addr = (self._gen_addr + 1) & 0xFFF
         elif name == "PE4302":
             self._write_pe4302(value)
+        elif name == "FE_CFG":
+            self._store_rw(name, value)
+            if value >> 6 & 1:                          # clear (w1p)
+                self._fe_count = 0
+                self._fe_otr_seen = False
         else:
             self._store_rw(name, value)
 
@@ -197,7 +215,65 @@ class PlModel:
             ("ENTRY_INDEX", "index"): self._entry,
             ("CAPS", "table_aw"): self.table_aw, ("CAPS", "result_aw"): self.result_aw,
             ("CAPS", "clk_mhz"): self.clk_hz // 1_000_000,
+            ("FE_STAT", "last_code"): self._fe_sample(self._fe_count)[0] if self._rw[("FE_CFG", "enable")] else 0,
+            ("FE_STAT", "last_otr"): int(self._fe_sample(self._fe_count)[1]) if self._rw[("FE_CFG", "enable")] else 0,
+            ("FE_STAT", "otr_seen"): int(self._fe_otr_seen), ("FE_STAT", "count"): self._fe_count,
         }
+
+    # ---- ADC front end (register map 1.3) --------------------------------------------------------------------
+    def _fe_sample(self, n: int) -> tuple:
+        """(raw 12-bit code, otr) the capture sees for the n-th sample of the enabled front end."""
+        src = self._rw[("FE_CFG", "src")]
+        tie, tie_otr = self._rw[("FE_TIE", "code")], bool(self._rw[("FE_TIE", "otr")])
+        if src == FE_TIE_OFF:
+            return tie, tie_otr
+        if src == FE_GENERATOR:
+            mode = self._rw[("FE_CFG", "tg_mode")]
+            if mode == FE_RAMP:
+                code = n & 0xFFF
+                return code, code == 0xFFF
+            if mode == FE_WALK:
+                return 1 << (n % 12), False
+            if mode == FE_TONE:
+                sin = _ROM[((n * self._rw[("FE_TG_INC", "inc")]) & 0xFFFF_FFFF) >> 21]
+                return ((sin >> 4) + 2048) & 0xFFF, False                 # {!sin[15], sin[14:4]}
+            return tie, tie_otr
+        if self.fe_pins is not None:
+            code, otr = self.fe_pins(n)
+            return code & 0xFFF, bool(otr)
+        return 0x800, False
+
+    def _fe_data(self, code: int) -> int:
+        """Stream word (16 bit two's complement) of a raw code, as adc_ad9226.sv converts it."""
+        if self._rw[("FE_CFG", "twos")]:
+            v = code - 4096 if code & 0x800 else code
+        else:
+            v = code - 2048
+        return v << 4
+
+    def _fe_tick(self) -> None:
+        """Stand-in for time: every FE_STAT read of an enabled front end advances the counter by FE_TICK samples."""
+        if not self._rw[("FE_CFG", "enable")]:
+            return
+        for k in range(FE_TICK):
+            self._fe_otr_seen |= self._fe_sample(self._fe_count + k)[1]
+        self._fe_count = (self._fe_count + FE_TICK) & 0xFFFF
+
+    def _fe_stream(self) -> List[int]:
+        """Samples of one measurement (n_avg + skip filter outputs of R samples), from sample 0, cyclic beyond.
+        Sets `_stream_ovr` when any of them has OTR. A tie-off is one constant (cyclic). Tone, ramp and walking one
+        are free-running in the hardware: the start phase there is not sample 0, so only tie-off is bit exact."""
+        n = ((self._rw[("N_AVG", "n")] or 1) + self._rw[("IF_CIC", "skip")] + 1) * max(1, self._rw[("IF_CIC", "r")]) + 8
+        constant = (self._rw[("FE_CFG", "src")] == FE_TIE_OFF
+                    or (self._rw[("FE_CFG", "src")] == FE_GENERATOR and self._rw[("FE_CFG", "tg_mode")] == FE_CONST))
+        n = 1 if constant else min(n, FE_MAX_SAMPLES)
+        out, ovr = [], False
+        for k in range(n):
+            code, otr = self._fe_sample(k)
+            out.append(self._fe_data(code))
+            ovr |= otr
+        self._stream_ovr = ovr
+        return out
 
     # ---- table and results ----------------------------------------------------------------------------------
     def _write_table_w1(self, value: int) -> None:
@@ -338,7 +414,8 @@ class PlModel:
             while stream is None:
                 yield                                   # no samples: forever (abort ends it)
             total, self._ovr = if_power_ref(stream, self._if_inc, self._rw[("IF_CIC", "r")],
-                                            self._rw[("IF_CIC", "shift")], self._rw[("IF_CIC", "skip")], n_avg)
+                                            self._rw[("IF_CIC", "shift")], self._rw[("IF_CIC", "skip")], n_avg,
+                                            self._stream_ovr)
             return total
         if src == SRC_EXT and self._stream() is not None:
             stream = self._stream()                     # video path: negative samples count as 0
@@ -364,7 +441,11 @@ class PlModel:
         if self._rw[("DET_CFG", "stream")]:
             if not self._rw[("GEN_CFG", "enable")]:
                 return None
+            self._stream_ovr = False
             return self._gen_mem[:self._rw[("GEN_CFG", "len_m1")] + 1]
+        if self._rw[("FE_CFG", "enable")]:
+            return self._fe_stream()
+        self._stream_ovr = False
         return self.ext_stream
 
     def _adc_sample(self, index: int) -> int:

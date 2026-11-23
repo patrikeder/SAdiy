@@ -1,13 +1,13 @@
 <!-- generated from regmap.toml by gen_regs.py, do not edit -->
 # Register map
 
-Map `sadiy`, version 0x00010002, 12-bit address, 32-bit registers. Writes are full words (WSTRB ignored); bits without a field read 0.
+Map `sadiy`, version 0x00010003, 12-bit address, 32-bit registers. Writes are full words (WSTRB ignored); bits without a field read 0.
 Registers marked *ext* are implemented outside `axil_regs.sv`.
 
 | Offset | Name | Reset | Description |
 |---|---|---|---|
 | 0x000 | ID | 0x53410001 | Magic number, identifies the core. |
-| 0x004 | VERSION | 0x00010002 | Register map version (major << 16 \| minor). Equals [map] version. |
+| 0x004 | VERSION | 0x00010003 | Register map version (major << 16 \| minor). Equals [map] version. |
 | 0x008 | CTRL | 0x00000000 | Control. Pulse bits read 0. |
 | 0x00C | STATUS | 0x00000000 | Status, read-only. |
 | 0x010 | N_ENTRIES | 0x00000000 | Number of table entries one sweep executes (1 .. 2^TABLE_AW). |
@@ -44,6 +44,10 @@ Registers marked *ext* are implemented outside `axil_regs.sv`.
 | 0x0B0 | IF_NCO | 0x00000000 | IF path: NCO phase increment of the first point of a sweep (f = inc * fs / 2^32, two's complement for negative frequencies). |
 | 0x0B4 | IF_NCO_STEP | 0x00000000 | IF path: added to the NCO increment at every further measured point of the sweep (digital sweep inside the IF window). 0 = the same IF for all points. |
 | 0x0B8 | IF_CIC | 0x040B0010 | IF path: decimating filter. The resolution bandwidth is about fs / r. |
+| 0x0C0 | FE_CFG | 0x00010200 | ADC front end (AD9226 module): clock output, capture, and what the data lines carry. Samples reach the IF path / detector as the sample stream when enable = 1 and DET_CFG.stream = 0 (rtl-spec.md section 8d, adc-module.md). |
+| 0x0C4 | FE_TIE | 0x00000800 | ADC front end tie-off and constant code. |
+| 0x0C8 | FE_TG_INC | 0x36C8B439 | ADC front end traffic generator, tone mode: phase increment per ADC clock (f = inc * fs / 2^32). |
+| 0x0CC | FE_STAT | 0x00000000 | ADC front end status. |
 
 ## ID (0x000)
 
@@ -59,7 +63,7 @@ Register map version (major << 16 \| minor). Equals [map] version.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
-| 31:0 | version | const | 0x10002 | must equal map.version (gen_regs.py checks) |
+| 31:0 | version | const | 0x10003 | must equal map.version (gen_regs.py checks) |
 
 ## CTRL (0x008)
 
@@ -391,3 +395,45 @@ IF path: decimating filter. The resolution bandwidth is about fs / r.
 | 27:24 | skip | rw | 0x4 | Filter outputs dropped at the start of every measurement (settling; at least 3). |
 | 21:16 | shift | rw | 0xB | Arithmetic right shift after the filter, before the saturation to 18 bit; about 3 * log2(r) - 1. |
 | 15:0 | r | rw | 0x10 | Decimation factor of the 3-stage CIC (1 .. 65535; 0 is treated as 1). Gain r^3. |
+
+## FE_CFG (0x0C0)
+
+ADC front end (AD9226 module): clock output, capture, and what the data lines carry. Samples reach the IF path / detector as the sample stream when enable = 1 and DET_CFG.stream = 0 (rtl-spec.md section 8d, adc-module.md).
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 23:16 | phase | rw | 0x1 | Clock cycle of the ADC clock period (0 = the cycle in which adc_clk rises) in which the data lines are taken; choose it away from the output transition of the ADC (adc_ad9226.sv). Below div. Reset 1 = the value the module tests of adc_ad9226 recommend for div 2; the right one depends on the board delay (bench). |
+| 15:8 | div | rw | 0x2 | Clock cycles per ADC clock period (sample rate = fabric clock / div; values below 2 act as 2). Reset 2 = 50 MS/s at 100 MHz (adc-module.md: the first build rate). |
+| 6 | clear | w1p | 0x0 | Clear FE_STAT.count and FE_STAT.otr_seen. |
+| 5:4 | tg_mode | rw | 0x0 | Traffic generator (src = 1), one code per ADC clock: 0 = ramp 0..4095 (OTR high on code 4095), 1 = walking one (1 << (n mod 12): finds swapped data lines), 2 = tone (FE_TG_INC, full scale), 3 = constant FE_TIE.code. |
+| 3 | twos | rw | 0x0 | 1 = the ADC is strapped for two's complement output (the AD9226 module is offset binary: 0). |
+| 2:1 | src | rw | 0x0 | What the capture sees on the data lines: 0 = tie-off (FE_TIE.code, FE_TIE.otr), 1 = traffic generator (FE_CFG.tg_mode), 2 = the adc_d / adc_otr pins (3 reads as 2). Tie-off and generator need no pins and no module. |
+| 0 | enable | rw | 0x0 | 1 = the adc_clk output runs and the captured samples are the external stream; 0 = the clock pin is low and the stream input of the engine (det_ext_*) is used. |
+
+## FE_TIE (0x0C4)
+
+ADC front end tie-off and constant code.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 16 | otr | rw | 0x0 | OTR level of the tie-off source. |
+| 11:0 | code | rw | 0x800 | 12-bit code of the tie-off source (FE_CFG.src = 0) and of the constant generator mode. Reset 0x800 = mid scale (sample 0 for the offset binary AD9226). |
+
+## FE_TG_INC (0x0C8)
+
+ADC front end traffic generator, tone mode: phase increment per ADC clock (f = inc * fs / 2^32).
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 31:0 | inc | rw | 0x36C8B439 | Reset 919123001 = 10.7 MHz at 50 MS/s. |
+
+## FE_STAT (0x0CC)
+
+ADC front end status.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 31:16 | count | ro | 0x0 | Captured samples since the last FE_CFG.clear (wraps at 65536). Counts while FE_CFG.enable = 1; stops when the clock is off. |
+| 13 | otr_seen | ro | 0x0 | Sticky: OTR was set in a captured sample since the last FE_CFG.clear. |
+| 12 | last_otr | ro | 0x0 | OTR of the last captured sample. |
+| 11:0 | last_code | ro | 0x0 | Raw 12-bit code of the last captured sample. |

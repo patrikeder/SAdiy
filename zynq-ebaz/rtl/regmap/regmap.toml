@@ -21,7 +21,7 @@
 name = "sadiy"
 data_width = 32
 addr_width = 12
-version = 0x00010002        # major << 16 | minor; bump on every incompatible change
+version = 0x00010003        # major << 16 | minor; bump on every incompatible change
 
 [[reg]]
 name = "ID"
@@ -42,7 +42,7 @@ doc = "Register map version (major << 16 | minor). Equals [map] version."
   name = "version"
   bits = "31:0"
   access = "const"
-  reset = 0x00010002
+  reset = 0x00010003
   doc = "must equal map.version (gen_regs.py checks)"
 
 [[reg]]
@@ -646,3 +646,97 @@ doc = "IF path: decimating filter. The resolution bandwidth is about fs / r."
   access = "rw"
   reset = 4
   doc = "Filter outputs dropped at the start of every measurement (settling; at least 3)."
+
+[[reg]]
+name = "FE_CFG"
+offset = 0x0C0
+doc = "ADC front end (AD9226 module): clock output, capture, and what the data lines carry. Samples reach the IF path / detector as the sample stream when enable = 1 and DET_CFG.stream = 0 (rtl-spec.md section 8d, adc-module.md)."
+  [[reg.field]]
+  name = "enable"
+  bits = "0"
+  access = "rw"
+  doc = "1 = the adc_clk output runs and the captured samples are the external stream; 0 = the clock pin is low and the stream input of the engine (det_ext_*) is used."
+  [[reg.field]]
+  name = "src"
+  bits = "2:1"
+  access = "rw"
+  doc = "What the capture sees on the data lines: 0 = tie-off (FE_TIE.code, FE_TIE.otr), 1 = traffic generator (FE_CFG.tg_mode), 2 = the adc_d / adc_otr pins (3 reads as 2). Tie-off and generator need no pins and no module."
+  [[reg.field]]
+  name = "twos"
+  bits = "3"
+  access = "rw"
+  doc = "1 = the ADC is strapped for two's complement output (the AD9226 module is offset binary: 0)."
+  [[reg.field]]
+  name = "tg_mode"
+  bits = "5:4"
+  access = "rw"
+  doc = "Traffic generator (src = 1), one code per ADC clock: 0 = ramp 0..4095 (OTR high on code 4095), 1 = walking one (1 << (n mod 12): finds swapped data lines), 2 = tone (FE_TG_INC, full scale), 3 = constant FE_TIE.code."
+  [[reg.field]]
+  name = "clear"
+  bits = "6"
+  access = "w1p"
+  doc = "Clear FE_STAT.count and FE_STAT.otr_seen."
+  [[reg.field]]
+  name = "div"
+  bits = "15:8"
+  access = "rw"
+  reset = 2
+  doc = "Clock cycles per ADC clock period (sample rate = fabric clock / div; values below 2 act as 2). Reset 2 = 50 MS/s at 100 MHz (adc-module.md: the first build rate)."
+  [[reg.field]]
+  name = "phase"
+  bits = "23:16"
+  access = "rw"
+  reset = 1
+  doc = "Clock cycle of the ADC clock period (0 = the cycle in which adc_clk rises) in which the data lines are taken; choose it away from the output transition of the ADC (adc_ad9226.sv). Below div. Reset 1 = the value the module tests of adc_ad9226 recommend for div 2; the right one depends on the board delay (bench)."
+
+[[reg]]
+name = "FE_TIE"
+offset = 0x0C4
+doc = "ADC front end tie-off and constant code."
+  [[reg.field]]
+  name = "code"
+  bits = "11:0"
+  access = "rw"
+  reset = 0x800
+  doc = "12-bit code of the tie-off source (FE_CFG.src = 0) and of the constant generator mode. Reset 0x800 = mid scale (sample 0 for the offset binary AD9226)."
+  [[reg.field]]
+  name = "otr"
+  bits = "16"
+  access = "rw"
+  doc = "OTR level of the tie-off source."
+
+[[reg]]
+name = "FE_TG_INC"
+offset = 0x0C8
+doc = "ADC front end traffic generator, tone mode: phase increment per ADC clock (f = inc * fs / 2^32)."
+  [[reg.field]]
+  name = "inc"
+  bits = "31:0"
+  access = "rw"
+  reset = 919123001
+  doc = "Reset 919123001 = 10.7 MHz at 50 MS/s."
+
+[[reg]]
+name = "FE_STAT"
+offset = 0x0CC
+doc = "ADC front end status."
+  [[reg.field]]
+  name = "last_code"
+  bits = "11:0"
+  access = "ro"
+  doc = "Raw 12-bit code of the last captured sample."
+  [[reg.field]]
+  name = "last_otr"
+  bits = "12"
+  access = "ro"
+  doc = "OTR of the last captured sample."
+  [[reg.field]]
+  name = "otr_seen"
+  bits = "13"
+  access = "ro"
+  doc = "Sticky: OTR was set in a captured sample since the last FE_CFG.clear."
+  [[reg.field]]
+  name = "count"
+  bits = "31:16"
+  access = "ro"
+  doc = "Captured samples since the last FE_CFG.clear (wraps at 65536). Counts while FE_CFG.enable = 1; stops when the clock is off."

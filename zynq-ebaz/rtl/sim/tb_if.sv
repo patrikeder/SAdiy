@@ -9,7 +9,7 @@ module tb_if;
   localparam logic [11:0] CTRL = 12'h008, STATUS = 12'h00C, N_ENTRIES = 12'h010, N_AVG = 12'h014,
     T_MIN = 12'h020, T_SETTLE = 12'h02C, DET_CFG = 12'h038, POINT_COUNT = 12'h048,
     TABLE_ADDR = 12'h060, TABLE_W0 = 12'h064, TABLE_W1 = 12'h068, RESULT_ADDR = 12'h070,
-    RESULT_DATA = 12'h074, GEN_CFG = 12'h0A0, GEN_ADDR = 12'h0A4, GEN_DATA = 12'h0A8,
+    RESULT_DATA = 12'h074, FE_CFG = 12'h0C0, FE_TIE = 12'h0C4, GEN_CFG = 12'h0A0, GEN_ADDR = 12'h0A4, GEN_DATA = 12'h0A8,
     IF_NCO = 12'h0B0, IF_NCO_STEP = 12'h0B4, IF_CIC = 12'h0B8;
   localparam logic [31:0] C_START = 32'h01, C_OWNER = 32'h10, S_BUSY = 32'h01, S_DONE = 32'h02;
   localparam logic [31:0] D_SRC2 = 32'h002, D_MODE_IF = 32'h010, D_STREAM_GEN = 32'h100;
@@ -42,7 +42,8 @@ module tb_if;
     .pe4302_v_o(), .pe4302_v_t(), .pe4302_v_i(6'h3F),
     .adf4351_ce_o(), .adf4351_ce_t(), .adf4351_ce_i(1'b1),
     .i2c_scl_o(), .i2c_scl_t(), .i2c_scl_i(1'b1), .i2c_sda_o(), .i2c_sda_t(), .i2c_sda_i(1'b1),
-    .det_ext_valid(ext_valid), .det_ext_data(ext_data), .det_ext_ovr(ext_ovr)
+    .det_ext_valid(ext_valid), .det_ext_data(ext_data), .det_ext_ovr(ext_ovr),
+    .adc_clk(), .adc_d(12'h800), .adc_otr(1'b0)
   );
 
   task automatic fail(input string why);
@@ -177,6 +178,33 @@ module tb_if;
     if (!d[30]) fail("over-range of the stream not in result bit 30");
     // DC 16384 * cos(0) = 16383 per sample, CIC gain 64, >> 5: I = 32766, Q = 0: power 32766^2 = 0x3FFE0004
     if ((d & 32'h0FFF_FFFF) !== ((32'd8 << 22) | (32'h3FFE0004 >> 8))) fail($sformatf("ext IF result %08x", d));
+    // ---- ADC front end (map 1.3) as the stream: tie-off code = the constant of the det_ext test above
+    wr(DET_CFG, D_MODE_IF);
+    wr(FE_TIE, 32'h0000_0C00);                              // code 0xC00: (0xC00 - 0x800) << 4 = 16384
+    wr(FE_CFG, 32'h0000_0201);                              // enable, tie-off source, div 2
+    wr(IF_NCO, 0); wr(IF_NCO_STEP, 0); wr(IF_CIC, (4 << 24) | (5 << 16) | 4);
+    wr(N_AVG, 1); load_points(1);
+    wr(CTRL, C_OWNER | C_START);
+    wait_done("FE tie-off IF sweep");
+    wr(RESULT_ADDR, 0); rd(RESULT_DATA, d);
+    if (d[30]) fail("FE tie-off: over-range without OTR");
+    if ((d & 32'h0FFF_FFFF) !== ((32'd8 << 22) | (32'h3FFE0004 >> 8))) fail($sformatf("FE tie-off IF result %08x", d));
+    wr(FE_TIE, 32'h0001_0C00);                              // OTR level high
+    wr(CTRL, C_OWNER | C_START);
+    wait_done("FE tie-off OTR");
+    wr(RESULT_ADDR, 0); rd(RESULT_DATA, d);
+    if (!d[30]) fail("FE OTR not in result bit 30");
+    // traffic generator tone at the NCO frequency: the mixer gives DC of half the amplitude whatever the phase
+    wr(FE_TIE, 32'h0000_0800);
+    wr(FE_CFG, 32'h0000_0223);                              // enable, generator, tone, div 2
+    wr(IF_NCO, 32'h36C8_B439); wr(IF_CIC, (4 << 24) | (16 << 16) | 64);
+    wr(N_AVG, 1); load_points(1);
+    wr(CTRL, C_OWNER | C_START);
+    wait_done("FE tone IF sweep");
+    wr(RESULT_ADDR, 0); rd(RESULT_DATA, d);
+    // I = 32752 / 2 * 64^3 >> 16 = 65504 -> power 4.29e9 = 2^32: mantissa 22 bit, exponent about 10
+    if (d[30] || d[27:22] < 6'd9 || d[27:22] > 6'd11) fail($sformatf("FE tone result %08x", d));
+    wr(FE_CFG, 32'h0000_0200);                              // front end off again
     ext_valid <= 0; ext_ovr <= 0;
 
     // ---- free-running generator (no sync): a result still arrives and is plausible (not bit-exact)
