@@ -168,6 +168,7 @@ The list follows what `sweepd` reports (RF range, IF, injection, PFD), so anothe
 ## Known limits
 
 - The RBW is fixed by the IF filter (in the simulator, `[sim] rbw_hz`). The RBW box is only for the display and the points rule, there is no RBW command.
+- With the detector module dead (2026-11-23) a sweep has no real signal source yet: the Virtual spectrum and the ramp self-test are the sources on the EBAZ4205 until the AD9226 is wired (`zynq-ebaz/docs/adc-module.md`).
 - Reference level and dB/div do not change the attenuator: auto-ranging keeps the sweep peak at -15 dBm at the detector (`core/sweep.py`), same as before.
 - A command with no answer blocks the window for up to 0.5 s (the REQ timeout). Sync after connecting uses 0.15 s tries.
 - The low-IF image 21.4 MHz away shows up as a second copy of every signal (also in the simulator) unless **Image reject** is ticked: `sweepd` then sweeps twice with the LO above and below and keeps the lower reading, so a trace takes twice as long and the info line shows `IMG REJ`. Points below about 45 MHz can not be done that way and keep their image (flag `[image not suppressed]` at a marker; the daemon logs where suppression starts). Not verified on the real mixer.
