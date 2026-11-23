@@ -73,14 +73,12 @@ def test_probe_without_fpga_manager_and_without_registers(tmp_path):
 
 
 # ------------------------------------------------------------------ deploy and scripts
-@pytest.fixture
-def board(tmp_path):
-    """deploy_to_board.sh into tmp_path/home/sadiy through a stub ssh."""
-    home = tmp_path / "home"
-    home.mkdir()
+def _deploy(tmp_path, home):
+    """Run deploy_to_board.sh into `home`/sadiy through a stub ssh (the second call, `sh -s`, reads the script on stdin)."""
     stub = tmp_path / "bin"
-    stub.mkdir()
-    (stub / "ssh").write_text(f'#!/bin/sh\ncd "{home}" && mkdir -p sadiy && cd sadiy && tar -xzf - && ls >/dev/null\n')
+    stub.mkdir(exist_ok=True)
+    (stub / "ssh").write_text(f'#!/bin/sh\nexport HOME="{home}"\n[ "$2" = "sh -s" ] && exec sh -s\n'
+                              f'cd "{home}" && mkdir -p sadiy && cd sadiy && tar -xzf - && ls >/dev/null\n')
     (stub / "ssh").chmod(0o755)
     bit = tmp_path / "ebaz_sadiy.bit.bin"
     bit.write_bytes(b"\x00bitstream")
@@ -88,7 +86,31 @@ def board(tmp_path):
     out = subprocess.run(["sh", str(SW / "deploy" / "deploy_to_board.sh"), "1.2.3.4"], cwd=ROOT, env=env,
                          capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr
+    return out
+
+
+@pytest.fixture
+def board(tmp_path):
+    """deploy_to_board.sh into tmp_path/home/sadiy through a stub ssh."""
+    home = tmp_path / "home"
+    home.mkdir()
+    out = _deploy(tmp_path, home)
     return home / "sadiy", out.stdout
+
+
+def test_deploy_warns_about_a_stale_bitstream_in_a_hand_copied_package(tmp_path):
+    home = tmp_path / "home"
+    (home / "sadiy" / "bringup-pkg").mkdir(parents=True)
+    (home / "sadiy" / "bringup-pkg" / "ebaz_sadiy.bit.bin").write_bytes(b"\x00older engine")
+    out = _deploy(tmp_path, home)
+    assert "WARNING" in out.stdout and "bringup-pkg" in out.stdout and "./fpga.sh --force" in out.stdout
+
+
+def test_deploy_is_quiet_when_the_package_has_the_same_bitstream(tmp_path):
+    home = tmp_path / "home"
+    (home / "sadiy" / "bringup-pkg").mkdir(parents=True)
+    (home / "sadiy" / "bringup-pkg" / "ebaz_sadiy.bit.bin").write_bytes(b"\x00bitstream")
+    assert "WARNING" not in _deploy(tmp_path, home).stdout
 
 
 def sh(board_dir, script, tmp_path, *args, **plenv):
