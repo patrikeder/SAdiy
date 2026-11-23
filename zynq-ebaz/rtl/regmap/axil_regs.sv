@@ -203,7 +203,29 @@ module axil_regs (
   // IF_CIC @ 0x0B8
   output logic [15:0] if_cic_r,
   output logic [5:0] if_cic_shift,
-  output logic [3:0] if_cic_skip
+  output logic [3:0] if_cic_skip,
+
+  // FE_CFG @ 0x0C0
+  output logic fe_cfg_enable,
+  output logic [1:0] fe_cfg_src,
+  output logic fe_cfg_twos,
+  output logic [1:0] fe_cfg_tg_mode,
+  output logic fe_cfg_clear,
+  output logic [7:0] fe_cfg_div,
+  output logic [7:0] fe_cfg_phase,
+
+  // FE_TIE @ 0x0C4
+  output logic [11:0] fe_tie_code,
+  output logic fe_tie_otr,
+
+  // FE_TG_INC @ 0x0C8
+  output logic [31:0] fe_tg_inc_inc,
+
+  // FE_STAT @ 0x0CC
+  input  logic [11:0] fe_stat_last_code,
+  input  logic fe_stat_last_otr,
+  input  logic fe_stat_otr_seen,
+  input  logic [15:0] fe_stat_count
 );
 
   // ---- write channel
@@ -250,6 +272,7 @@ module axil_regs (
     result_data_wr <= 1'b0;
     gen_addr_wr <= 1'b0;
     gen_data_wr <= 1'b0;
+    fe_cfg_clear <= 1'b0;
     if (!resetn) begin
       ctrl_irq_en <= 1'h0;
       ctrl_pin_owner <= 1'h0;
@@ -283,6 +306,15 @@ module axil_regs (
       if_cic_r <= 16'h10;
       if_cic_shift <= 6'hB;
       if_cic_skip <= 4'h4;
+      fe_cfg_enable <= 1'h0;
+      fe_cfg_src <= 2'h0;
+      fe_cfg_twos <= 1'h0;
+      fe_cfg_tg_mode <= 2'h0;
+      fe_cfg_div <= 8'h2;
+      fe_cfg_phase <= 8'h1;
+      fe_tie_code <= 12'h800;
+      fe_tie_otr <= 1'h0;
+      fe_tg_inc_inc <= 32'h36C8B439;
     end else if (wr_phase) begin
       case (waddr_q[11:2])
         10'h002: begin  // CTRL
@@ -385,6 +417,22 @@ module axil_regs (
           if_cic_shift <= wdata_q[21:16];
           if_cic_skip <= wdata_q[27:24];
         end
+        10'h030: begin  // FE_CFG
+          fe_cfg_enable <= wdata_q[0];
+          fe_cfg_src <= wdata_q[2:1];
+          fe_cfg_twos <= wdata_q[3];
+          fe_cfg_tg_mode <= wdata_q[5:4];
+          fe_cfg_clear <= wdata_q[6];
+          fe_cfg_div <= wdata_q[15:8];
+          fe_cfg_phase <= wdata_q[23:16];
+        end
+        10'h031: begin  // FE_TIE
+          fe_tie_code <= wdata_q[11:0];
+          fe_tie_otr <= wdata_q[16];
+        end
+        10'h032: begin  // FE_TG_INC
+          fe_tg_inc_inc <= wdata_q[31:0];
+        end
         default: ;
       endcase
     end
@@ -417,7 +465,7 @@ module axil_regs (
         rd_mux[31:0] = 32'h53410001;
       end
       10'h001: begin  // VERSION
-        rd_mux[31:0] = 32'h10002;
+        rd_mux[31:0] = 32'h10003;
       end
       10'h002: begin  // CTRL
         rd_mux[3] = ctrl_irq_en;
@@ -560,6 +608,27 @@ module axil_regs (
         rd_mux[15:0] = if_cic_r;
         rd_mux[21:16] = if_cic_shift;
         rd_mux[27:24] = if_cic_skip;
+      end
+      10'h030: begin  // FE_CFG
+        rd_mux[0] = fe_cfg_enable;
+        rd_mux[2:1] = fe_cfg_src;
+        rd_mux[3] = fe_cfg_twos;
+        rd_mux[5:4] = fe_cfg_tg_mode;
+        rd_mux[15:8] = fe_cfg_div;
+        rd_mux[23:16] = fe_cfg_phase;
+      end
+      10'h031: begin  // FE_TIE
+        rd_mux[11:0] = fe_tie_code;
+        rd_mux[16] = fe_tie_otr;
+      end
+      10'h032: begin  // FE_TG_INC
+        rd_mux[31:0] = fe_tg_inc_inc;
+      end
+      10'h033: begin  // FE_STAT
+        rd_mux[11:0] = fe_stat_last_code;
+        rd_mux[12] = fe_stat_last_otr;
+        rd_mux[13] = fe_stat_otr_seen;
+        rd_mux[31:16] = fe_stat_count;
       end
       default: ;
     endcase

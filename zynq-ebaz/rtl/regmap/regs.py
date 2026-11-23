@@ -4,7 +4,7 @@ generated from regmap.toml by gen_regs.py, do not edit.
 """
 
 ADDR_WIDTH = 12
-MAP_VERSION = 0x00010002
+MAP_VERSION = 0x00010003
 ID_MAGIC = 0x53410001
 
 
@@ -28,7 +28,7 @@ ID_MAGIC_WIDTH = 32
 ID_MAGIC_MASK = 0xFFFFFFFF
 
 VERSION = 0x004
-VERSION_RESET = 0x00010002
+VERSION_RESET = 0x00010003
 VERSION_VERSION_LSB = 0
 VERSION_VERSION_WIDTH = 32
 VERSION_VERSION_MASK = 0xFFFFFFFF
@@ -378,6 +378,60 @@ IF_CIC_SKIP_LSB = 24
 IF_CIC_SKIP_WIDTH = 4
 IF_CIC_SKIP_MASK = 0x0F000000
 
+FE_CFG = 0x0C0
+FE_CFG_RESET = 0x00010200
+FE_CFG_ENABLE_LSB = 0
+FE_CFG_ENABLE_WIDTH = 1
+FE_CFG_ENABLE_MASK = 0x00000001
+FE_CFG_SRC_LSB = 1
+FE_CFG_SRC_WIDTH = 2
+FE_CFG_SRC_MASK = 0x00000006
+FE_CFG_TWOS_LSB = 3
+FE_CFG_TWOS_WIDTH = 1
+FE_CFG_TWOS_MASK = 0x00000008
+FE_CFG_TG_MODE_LSB = 4
+FE_CFG_TG_MODE_WIDTH = 2
+FE_CFG_TG_MODE_MASK = 0x00000030
+FE_CFG_CLEAR_LSB = 6
+FE_CFG_CLEAR_WIDTH = 1
+FE_CFG_CLEAR_MASK = 0x00000040
+FE_CFG_DIV_LSB = 8
+FE_CFG_DIV_WIDTH = 8
+FE_CFG_DIV_MASK = 0x0000FF00
+FE_CFG_PHASE_LSB = 16
+FE_CFG_PHASE_WIDTH = 8
+FE_CFG_PHASE_MASK = 0x00FF0000
+
+FE_TIE = 0x0C4
+FE_TIE_RESET = 0x00000800
+FE_TIE_CODE_LSB = 0
+FE_TIE_CODE_WIDTH = 12
+FE_TIE_CODE_MASK = 0x00000FFF
+FE_TIE_OTR_LSB = 16
+FE_TIE_OTR_WIDTH = 1
+FE_TIE_OTR_MASK = 0x00010000
+
+FE_TG_INC = 0x0C8
+FE_TG_INC_RESET = 0x36C8B439
+FE_TG_INC_INC_LSB = 0
+FE_TG_INC_INC_WIDTH = 32
+FE_TG_INC_INC_MASK = 0xFFFFFFFF
+
+FE_STAT = 0x0CC
+FE_STAT_RESET = 0x00000000
+FE_STAT_LAST_CODE_LSB = 0
+FE_STAT_LAST_CODE_WIDTH = 12
+FE_STAT_LAST_CODE_MASK = 0x00000FFF
+FE_STAT_LAST_OTR_LSB = 12
+FE_STAT_LAST_OTR_WIDTH = 1
+FE_STAT_LAST_OTR_MASK = 0x00001000
+FE_STAT_OTR_SEEN_LSB = 13
+FE_STAT_OTR_SEEN_WIDTH = 1
+FE_STAT_OTR_SEEN_MASK = 0x00002000
+FE_STAT_COUNT_LSB = 16
+FE_STAT_COUNT_WIDTH = 16
+FE_STAT_COUNT_MASK = 0xFFFF0000
+
 
 REGISTERS = {
     "ID": {
@@ -391,7 +445,7 @@ REGISTERS = {
         "offset": 0x004,
         "ext": False,
         "fields": {
-            "version": {"lsb": 0, "width": 32, "access": "const", "reset": 0x00010002},
+            "version": {"lsb": 0, "width": 32, "access": "const", "reset": 0x00010003},
         },
     },
     "CTRL": {
@@ -687,6 +741,44 @@ REGISTERS = {
             "r": {"lsb": 0, "width": 16, "access": "rw", "reset": 0x00000010},
             "shift": {"lsb": 16, "width": 6, "access": "rw", "reset": 0x0000000B},
             "skip": {"lsb": 24, "width": 4, "access": "rw", "reset": 0x00000004},
+        },
+    },
+    "FE_CFG": {
+        "offset": 0x0C0,
+        "ext": False,
+        "fields": {
+            "enable": {"lsb": 0, "width": 1, "access": "rw", "reset": 0x00000000},
+            "src": {"lsb": 1, "width": 2, "access": "rw", "reset": 0x00000000},
+            "twos": {"lsb": 3, "width": 1, "access": "rw", "reset": 0x00000000},
+            "tg_mode": {"lsb": 4, "width": 2, "access": "rw", "reset": 0x00000000},
+            "clear": {"lsb": 6, "width": 1, "access": "w1p", "reset": 0x00000000},
+            "div": {"lsb": 8, "width": 8, "access": "rw", "reset": 0x00000002},
+            "phase": {"lsb": 16, "width": 8, "access": "rw", "reset": 0x00000001},
+        },
+    },
+    "FE_TIE": {
+        "offset": 0x0C4,
+        "ext": False,
+        "fields": {
+            "code": {"lsb": 0, "width": 12, "access": "rw", "reset": 0x00000800},
+            "otr": {"lsb": 16, "width": 1, "access": "rw", "reset": 0x00000000},
+        },
+    },
+    "FE_TG_INC": {
+        "offset": 0x0C8,
+        "ext": False,
+        "fields": {
+            "inc": {"lsb": 0, "width": 32, "access": "rw", "reset": 0x36C8B439},
+        },
+    },
+    "FE_STAT": {
+        "offset": 0x0CC,
+        "ext": False,
+        "fields": {
+            "last_code": {"lsb": 0, "width": 12, "access": "ro", "reset": 0x00000000},
+            "last_otr": {"lsb": 12, "width": 1, "access": "ro", "reset": 0x00000000},
+            "otr_seen": {"lsb": 13, "width": 1, "access": "ro", "reset": 0x00000000},
+            "count": {"lsb": 16, "width": 16, "access": "ro", "reset": 0x00000000},
         },
     },
 }

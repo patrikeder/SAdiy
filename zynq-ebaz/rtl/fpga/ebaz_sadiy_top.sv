@@ -76,6 +76,13 @@ module ebaz_sadiy_top (
     output [0:0]  ENET0_GMII_TX_EN_0,
     output [3:0]  ENET0_GMII_TXD_P,
     output        enet0_phy_clk
+`ifdef ADC_PADS
+    ,
+    // AD9226 module (constraints/adc_pins.xdc; build with SADIY_ADC_PADS=1 once the mapping is decided)
+    output        adc_clk,
+    input  [11:0] adc_d,
+    input         adc_otr
+`endif
 );
 
   // ---- block design side ----
@@ -132,6 +139,20 @@ module ebaz_sadiy_top (
       .ENET0_GMII_TXD_P(ENET0_GMII_TXD_P), .enet0_phy_clk(enet0_phy_clk)
   );
 
+  // ---- ADC pins: real pads only in a build with ADC_PADS (SADIY_ADC_PADS=1); otherwise the data lines are tied
+  //      to mid scale and the clock goes nowhere. The ADC front end (FE_CFG) works either way: its tie-off and
+  //      traffic generator sources need no pins.
+  wire [11:0] fe_pad_d;
+  wire        fe_pad_otr, fe_pad_clk;
+`ifdef ADC_PADS
+  assign fe_pad_d   = adc_d;
+  assign fe_pad_otr = adc_otr;
+  OBUF u_adc_clk (.I(fe_pad_clk), .O(adc_clk));
+`else
+  assign fe_pad_d   = 12'h800;
+  assign fe_pad_otr = 1'b0;
+`endif
+
   // ---- the engine ----
   wire [5:0] pe4302_v_o, pe4302_v_t, pe4302_v_i;
   wire       eng_irq;
@@ -158,7 +179,8 @@ module ebaz_sadiy_top (
       .adf4351_ce_o(ce_o), .adf4351_ce_t(ce_t), .adf4351_ce_i(emio_tri_i[6]),
       .i2c_scl_o(scl_o), .i2c_scl_t(scl_t), .i2c_scl_i(scl_i),
       .i2c_sda_o(sda_o), .i2c_sda_t(sda_t), .i2c_sda_i(sda_i),
-      .det_ext_valid(1'b0), .det_ext_data(16'h0000), .det_ext_ovr(1'b0)
+      .det_ext_valid(1'b0), .det_ext_data(16'h0000), .det_ext_ovr(1'b0),
+      .adc_clk(fe_pad_clk), .adc_d(fe_pad_d), .adc_otr(fe_pad_otr)
   );
   // m_axil_awprot / arprot are not used by the engine (AXI-lite protection is ignored).
   assign irq_f2p[0] = eng_irq;

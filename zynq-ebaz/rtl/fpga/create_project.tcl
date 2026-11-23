@@ -54,6 +54,8 @@ if {[file exists $rtl/regmap/axil_regs.sv]} {
 } else {
   puts "CREATE_PROJECT: WARNING $rtl/regmap/axil_regs.sv not found (generated file); sadiy_top may not elaborate"
 }
+# AD9226 converter used by src/adc_fe.sv (lives in dsp/ with the other standalone modules)
+lappend rtl_files $rtl/dsp/adc_ad9226.sv
 puts "CREATE_PROJECT: RTL from $srcdir ([llength $rtl_files] files)"
 
 create_project -force $pname $pdir -part $part
@@ -70,6 +72,12 @@ add_files -norecurse -fileset sources_1 [list $here/ebaz_sadiy_top.sv]
 set_property include_dirs [list $srcdir] [get_filesets sources_1]
 
 add_files -fileset constrs_1 -norecurse $here/constraints/eth.xdc $pins $here/constraints/timing.xdc $here/constraints/adapter_ui.xdc
+# SADIY_ADC_PADS=1: real pads for the AD9226 module (adc_clk, adc_d[11:0], adc_otr), constraints/adc_pins.xdc
+if {[info exists ::env(SADIY_ADC_PADS)] && $::env(SADIY_ADC_PADS) eq "1"} {
+  add_files -fileset constrs_1 -norecurse $here/constraints/adc_pins.xdc
+  set_property verilog_define {ADC_PADS=1} [get_filesets sources_1]
+  puts "CREATE_PROJECT: ADC pads enabled (adc_pins.xdc)"
+}
 set_property top ebaz_sadiy_top [current_fileset]
 update_compile_order -fileset sources_1
 

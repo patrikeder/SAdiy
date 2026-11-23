@@ -112,6 +112,14 @@ module tb_axil_regs;
   logic [15:0] if_cic_r;
   logic [5:0]  if_cic_shift;
   logic [3:0]  if_cic_skip;
+  logic fe_cfg_enable, fe_cfg_twos, fe_cfg_clear, fe_tie_otr;
+  logic [1:0]  fe_cfg_src, fe_cfg_tg_mode;
+  logic [7:0]  fe_cfg_div, fe_cfg_phase;
+  logic [11:0] fe_tie_code;
+  logic [31:0] fe_tg_inc_inc;
+  logic [11:0] fe_stat_last_code = 12'hABC;
+  logic fe_stat_last_otr = 1'b1, fe_stat_otr_seen = 1'b1;
+  logic [15:0] fe_stat_count = 16'hBEEF;
 
   axil_regs dut (.*);
 
@@ -335,11 +343,11 @@ module tb_axil_regs;
 
     // ---- constants
     rd_expect(A_ID, 32'h5341_0001, "ID");
-    rd_expect(A_VERSION, 32'h0001_0002, "VERSION");
+    rd_expect(A_VERSION, 32'h0001_0003, "VERSION");
     axi_write(A_ID, 32'h0, 0, 0, 0);
     axi_write(A_VERSION, 32'hFFFF_FFFF, 0, 0, 0);
     rd_expect(A_ID, 32'h5341_0001, "ID after write");
-    rd_expect(A_VERSION, 32'h0001_0002, "VERSION after write");
+    rd_expect(A_VERSION, 32'h0001_0003, "VERSION after write");
 
     // ---- rw fields: read back, unused bits read 0
     axi_write(A_SPI_DIV, 32'hFFFF_FFFF);
@@ -444,6 +452,23 @@ module tb_axil_regs;
     rd_expect(12'h0B8, 32'h040B_0010, "IF_CIC reset");
     axi_write(12'h0B8, 32'hFFFF_FFFF);
     rd_expect(12'h0B8, 32'h0F3F_FFFF, "IF_CIC all ones");
+    // ---- ADC front end registers (map 1.3)
+    rd_expect(12'h0C0, 32'h0001_0200, "FE_CFG reset");
+    axi_write(12'h0C0, 32'hFFFF_FFFF);
+    rd_expect(12'h0C0, 32'h00FF_FF3F, "FE_CFG all ones (clear reads 0)");
+    if (!fe_cfg_enable || fe_cfg_src !== 2'd3 || !fe_cfg_twos || fe_cfg_tg_mode !== 2'd3 || fe_cfg_div !== 8'hFF || fe_cfg_phase !== 8'hFF)
+      fail("FE_CFG outputs");
+    axi_write(12'h0C0, 32'h0001_0200);
+    rd_expect(12'h0C4, 32'h0000_0800, "FE_TIE reset");
+    axi_write(12'h0C4, 32'hFFFF_FFFF);
+    rd_expect(12'h0C4, 32'h0001_0FFF, "FE_TIE all ones");
+    if (fe_tie_code !== 12'hFFF || !fe_tie_otr) fail("FE_TIE outputs");
+    rd_expect(12'h0C8, 32'h36C8_B439, "FE_TG_INC reset");
+    axi_write(12'h0C8, 32'hFFFF_FFFF);
+    rd_expect(12'h0C8, 32'hFFFF_FFFF, "FE_TG_INC all ones");
+    rd_expect(12'h0CC, 32'hBEEF_3ABC, "FE_STAT");
+    axi_write(12'h0CC, 32'h0);
+    rd_expect(12'h0CC, 32'hBEEF_3ABC, "FE_STAT is read-only");
     axi_write(12'h038, 32'hFFFF_FFFF);
     rd_expect(12'h038, 32'h0000_0113, "DET_CFG all ones");
     if (!det_cfg_mode || !det_cfg_stream) fail("DET_CFG mode / stream outputs");

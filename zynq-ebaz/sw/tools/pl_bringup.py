@@ -51,7 +51,7 @@ ID_MAGIC = 0x53410001
 SRC_PUSH, SRC_TEST = 0, 1
 ALL_IN = 0x3F                                        # PE4302 levels V1..V6: every stage in (31.5 dB)
 SAFE_WORDS = [0xA5A5A5A7, 0x5A5A5A5F, 0x00000007, 0xFFFFFFFF]   # control bits 111: no ADF4351 register
-AUTO = ["ident", "regs", "gen", "push", "owner", "ctrl", "lock", "adc", "if"]
+AUTO = ["ident", "regs", "gen", "push", "owner", "ctrl", "lock", "adc", "if", "fe"]
 SRC_ADC = 3
 LA_STAGES = ["spi", "att"]
 
@@ -608,6 +608,127 @@ def stage_if(c: Ctx) -> None:
             c.reset()
 
 
+def stage_fe(c: Ctx) -> None:
+    """ADC front end (register map 1.3): clock, capture, tie-off, traffic generator and the IF path behind them.
+    Needs no ADC and no pins: the data lines are the tie-off or the generator. The pins source is only reported."""
+    from sadiy_ebaz import ifpath
+
+    r, rep = c.r, c.rep
+    if r.rd("VERSION") & 0xFFFF < 3 or "FE_CFG" not in REGS:
+        rep.skip("this bitstream has no ADC front end (register map before 1.3)")
+        return
+    fe = REGS["FE_CFG"].fields
+
+    def cfg(enable=1, src=0, tg_mode=0, twos=0, div=2, phase=1):
+        r.wr("FE_CFG", fe["enable"].put(enable) | fe["src"].put(src) | fe["tg_mode"].put(tg_mode)
+             | fe["twos"].put(twos) | fe["div"].put(div) | fe["phase"].put(phase))
+
+    def stat(n=1):
+        out = []
+        for _ in range(n):
+            w = r.rd("FE_STAT")
+            f = REGS["FE_STAT"].fields
+            out.append({k: f[k].get(w) for k in f})
+        return out
+
+    c.reset()
+    with Saved(r, ["FE_CFG", "FE_TIE", "FE_TG_INC", "DET_CFG", "N_AVG", "T_MIN_US", "T_SETTLE_US", "IF_NCO",
+                   "IF_NCO_STEP", "IF_CIC"]):
+        try:
+            rep.info(f"FE_CFG at reset 0x{r.rd('FE_CFG'):08X} (expected 0x00010200: off, 50 MS/s, phase 1), "
+                     f"FE_TG_INC 0x{r.rd('FE_TG_INC'):08X} (10.7 MHz at 50 MS/s)")
+            rep.check("front end off at reset (clock pin low, no samples counted)",
+                      r.rd("FE_CFG") == 0x10200 and stat(3)[-1]["count"] == 0)
+            # ---- tie-off
+            r.wr("FE_TIE", 0x123)
+            cfg(src=0)
+            s = stat(4)
+            rep.check("tie-off: last code is FE_TIE.code", all(x["last_code"] == 0x123 for x in s[1:]),
+                      f"{[hex(x['last_code']) for x in s]}")
+            rep.check("tie-off: sample counter advances (clock runs, capture works)",
+                      len({x["count"] for x in s}) > 1, f"counts {[x['count'] for x in s]}")
+            r.wr("FE_TIE", 0x1_0123)
+            time.sleep(0.001)
+            s = stat(2)
+            rep.check("tie-off OTR reaches last_otr and the sticky otr_seen", s[-1]["last_otr"] == 1 and s[-1]["otr_seen"] == 1)
+            r.wr("FE_TIE", 0x123)
+            r.wr("FE_CFG", r.rd("FE_CFG") | fe["clear"].put(1))
+            time.sleep(0.001)
+            s = stat(2)
+            rep.check("clear drops otr_seen and the counter restarts", s[0]["otr_seen"] == 0 and s[0]["last_otr"] == 0,
+                      f"{s[0]}")
+            # ---- traffic generator
+            cfg(src=1, tg_mode=0)
+            s = stat(20)
+            codes = [x["last_code"] for x in s]
+            rep.check("ramp generator: codes change from read to read", len(set(codes)) > 10, f"{codes[:8]}")
+            cfg(src=1, tg_mode=1)
+            s = stat(40)
+            rep.check("walking one: every code has exactly one bit set",
+                      all(bin(x["last_code"]).count("1") == 1 for x in s[2:]), f"{[hex(x['last_code']) for x in s[2:10]]}")
+            seen = {x["last_code"] for x in s}
+            rep.check("walking one: several different data lines seen (no line stuck)", len(seen) >= 4, f"{sorted(seen)}")
+            cfg(src=1, tg_mode=3)
+            r.wr("FE_TIE", 0x5A5)
+            time.sleep(0.001)
+            rep.check("constant generator mode shows FE_TIE.code", stat(2)[-1]["last_code"] == 0x5A5)
+            # ---- clock off: the counter stops
+            cfg(enable=0)
+            a, b = stat(2)
+            rep.check("front end off: counter stops", a["count"] == b["count"])
+            # ---- pins: reported only
+            cfg(src=2)
+            s = stat(3)[-1]
+            rep.info(f"pins source: last code 0x{s['last_code']:03X}, OTR {s['last_otr']} (0x800 / 0 when the build has no ADC "
+                     f"pads or no module is wired)")
+            # ---- IF path behind the front end
+            cic = REGS["IF_CIC"].fields
+            det = REGS["DET_CFG"].fields
+            if not rep.check("engine takes the pins", c.take_pins()):
+                return
+            r.wr("T_MIN_US", 5)
+            r.wr("T_SETTLE_US", 5)
+            r.wr("DET_CFG", det["mode"].put(1) | det["src"].put(2))
+            r.wr("IF_NCO_STEP", 0)
+            r.wr("N_AVG", 1)
+            entries = [TableEntry(word=0, measure=True, skip_lock=True)]
+            r.wr("FE_TIE", 0xC00)
+            cfg(src=0)
+            r.wr("IF_NCO", 0)
+            r.wr("IF_CIC", cic["r"].put(4) | cic["shift"].put(5) | cic["skip"].put(4))
+            ok, _ = c.sweep(entries, timeout=5.0)
+            if not rep.check("IF sweep on the tie-off stream finished", ok):
+                r.ctrl(abort=1)
+                return
+            want, _ = ifpath.if_power_ref([16384], 0, 4, 5, 4, 1)
+            got = c.results(1)[0]
+            rep.check("tie-off stream: result word equals the Python reference (bit-exact)", got & 0x0FFFFFFF == want,
+                      f"0x{got:08X}, reference 0x{want:08X}")
+            r.wr("FE_TIE", 0x1_0C00)
+            ok, _ = c.sweep(entries, timeout=5.0)
+            got = c.results(1)[0] if ok else 0
+            rep.check("OTR of the front end reaches the result word (bit 30)", ok and got >> ifpath.OVR_BIT & 1 == 1)
+            r.wr("FE_TIE", 0x800)
+            cfg(src=1, tg_mode=2)
+            inc = r.rd("FE_TG_INC")
+            r.wr("IF_NCO", inc)
+            r.wr("IF_CIC", cic["r"].put(64) | cic["shift"].put(16) | cic["skip"].put(4))
+            ok, _ = c.sweep(entries, timeout=5.0)
+            on = c.results(1)[0] if ok else 0
+            r.wr("IF_NCO", (inc + (1 << 27)) & 0xFFFFFFFF)
+            ok2, _ = c.sweep(entries, timeout=5.0)
+            off = c.results(1)[0] if ok2 else 0
+            e_on, e_off = on >> 22 & 0x3F, off >> 22 & 0x3F
+            rep.check("tone generator at the NCO frequency: strong, no over-range (exponent 9..11)",
+                      ok and 9 <= e_on <= 11 and not on >> ifpath.OVR_BIT & 1, f"word 0x{on:08X}")
+            rep.check("tone two filter nulls (fs / R) away: at least 8 powers of two lower",
+                      ok2 and e_off <= e_on - 8, f"exponents {e_on} and {e_off}")
+        finally:
+            cfg(enable=0)
+            c.release_pins()
+            c.reset()
+
+
 def stage_ce(c: Ctx) -> None:
     r, rep = c.r, c.rep
     if "ADF_PINS" not in REGS or r.rd("VERSION") & 0xFFFF < 1:
@@ -692,7 +813,7 @@ def stage_att(c: Ctx) -> None:
 
 
 STAGES = {"ident": stage_ident, "regs": stage_regs, "gen": stage_gen, "push": stage_push, "owner": stage_owner,
-          "ctrl": stage_ctrl, "lock": stage_lock, "adc": stage_adc, "if": stage_if, "ce": stage_ce,
+          "ctrl": stage_ctrl, "lock": stage_lock, "adc": stage_adc, "if": stage_if, "fe": stage_fe, "ce": stage_ce,
           "spi": stage_spi,
           "att": stage_att}
 

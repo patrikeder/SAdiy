@@ -61,7 +61,11 @@ module sadiy_top #(
   // sample stream of an ADC adapter (spec section 8b): 16 bit two's complement, full scale +/-32767
   input  wire logic        det_ext_valid,
   input  wire logic [15:0] det_ext_data,
-  input  wire logic        det_ext_ovr
+  input  wire logic        det_ext_ovr,
+  // AD9226 module (spec section 8d): clock out, data in. Tie adc_d / adc_otr low while no module is wired.
+  output      logic        adc_clk,
+  input  wire logic [11:0] adc_d,
+  input  wire logic        adc_otr
 );
   localparam int CLK_PER_US = CLK_HZ / 1_000_000;
   localparam int TBL_DW     = 44;        // {w1[11:0], w0[31:0]}; the other w1 bits are not stored
@@ -107,6 +111,15 @@ module sadiy_top #(
   logic        gen_sync, gen_enable, gen_addr_wr, gen_data_wr, gen_valid;
   logic signed [15:0] gen_data, s_data;
   logic        s_valid, s_ovr;
+  // ADC front end (AD9226 module)
+  logic        fe_enable, fe_twos, fe_clear, fe_valid, fe_ovr, fe_last_otr, fe_otr_seen;
+  logic [1:0]  fe_src, fe_tg_mode;
+  logic [7:0]  fe_div, fe_phase;
+  logic [11:0] fe_tie_code, fe_last_code;
+  logic        fe_tie_otr;
+  logic [31:0] fe_tg_inc;
+  logic [15:0] fe_count;
+  logic signed [15:0] fe_data;
   logic [31:0] if_nco, if_nco_step;
   logic [15:0] if_r;
   logic [5:0]  if_shift;
@@ -219,6 +232,20 @@ module sadiy_top #(
     .gen_data_wr            (gen_data_wr),
     .gen_data_rd            (),
     .gen_data_rdata         (32'd0),
+    .fe_cfg_enable          (fe_enable),
+    .fe_cfg_src             (fe_src),
+    .fe_cfg_twos            (fe_twos),
+    .fe_cfg_tg_mode         (fe_tg_mode),
+    .fe_cfg_clear           (fe_clear),
+    .fe_cfg_div             (fe_div),
+    .fe_cfg_phase           (fe_phase),
+    .fe_tie_code            (fe_tie_code),
+    .fe_tie_otr             (fe_tie_otr),
+    .fe_tg_inc_inc          (fe_tg_inc),
+    .fe_stat_last_code      (fe_last_code),
+    .fe_stat_last_otr       (fe_last_otr),
+    .fe_stat_otr_seen       (fe_otr_seen),
+    .fe_stat_count          (fe_count),
     .if_nco_inc             (if_nco),
     .if_nco_step_step       (if_nco_step),
     .if_cic_r               (if_r),
@@ -372,9 +399,32 @@ module sadiy_top #(
     .data     (gen_data)
   );
 
-  assign s_valid = det_stream ? gen_valid : det_ext_valid;
-  assign s_data  = det_stream ? gen_data  : $signed(det_ext_data);
-  assign s_ovr   = det_stream ? 1'b0      : det_ext_ovr;
+  adc_fe u_fe (
+    .clk, .resetn,
+    .enable   (fe_enable),
+    .src      (fe_src),
+    .twos     (fe_twos),
+    .tg_mode  (fe_tg_mode),
+    .clear    (fe_clear),
+    .div      (fe_div),
+    .phase    (fe_phase),
+    .tie_code (fe_tie_code),
+    .tie_otr  (fe_tie_otr),
+    .tg_inc   (fe_tg_inc),
+    .adc_clk, .adc_d, .adc_otr,
+    .valid    (fe_valid),
+    .data     (fe_data),
+    .ovr      (fe_ovr),
+    .last_code(fe_last_code),
+    .last_otr (fe_last_otr),
+    .otr_seen (fe_otr_seen),
+    .count    (fe_count)
+  );
+
+  // stream: generator (DET_CFG.stream), else the ADC front end when enabled, else the port of another adapter
+  assign s_valid = det_stream ? gen_valid : (fe_enable ? fe_valid : det_ext_valid);
+  assign s_data  = det_stream ? gen_data  : (fe_enable ? fe_data  : $signed(det_ext_data));
+  assign s_ovr   = det_stream ? 1'b0      : (fe_enable ? fe_ovr   : det_ext_ovr);
 
   if_power u_if (
     .clk, .resetn,

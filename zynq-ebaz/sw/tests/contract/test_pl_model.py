@@ -73,7 +73,7 @@ def test_reset_values():
         for f in reg.fields.values():
             if f.access in ("rw", "const"):
                 assert g.f(reg.name, f.name) == f.reset, (reg.name, f.name)
-    assert g.r("ID") == 0x53410001 and g.r("VERSION") == 0x00010002
+    assert g.r("ID") == 0x53410001 and g.r("VERSION") == 0x00010003
     assert g.r("PE4302") == 0x13F
     assert g.r("STATUS") == 0
     assert (g.r("N_AVG"), g.r("SPI_DIV"), g.r("T_ATT_GAP_CYC")) == (1, 5, 100)

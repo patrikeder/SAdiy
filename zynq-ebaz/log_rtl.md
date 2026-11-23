@@ -22,6 +22,37 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
 
 **2026-11-15: engine with register map 1.2 (sweep sequencer, ADS1115 reader in the PL, sample generator, IF path) committed and merged to main (77c6d61 / 0681729), bitstream built, timing met. On the board map 1.0 ran first (57 checks passed, SPI clock verified); on 2026-11-16 map 1.2 passed the stages `lock`, `adc` (17/17, ADC input open) and `if` (11/11, bit-exact); `owner`, `ce`, a real analog input and sweepd on the engine are untested there. Standalone DSP modules (`rtl/dsp/`: FFT, FIR, bin power, ADC adapters) are built and tested in isolation, not in the bitstream. Session L's bench mode (`--bench-only`, PS owns the pins) is merged. Not pushed.**
 
+## 2026-11-23 ADC front end for the AD9226 at 50 MS/s, register map 1.3 (user request: prepare the setup, tie off or generate traffic until the pin mapping is clear)
+
+`rtl/src/adc_fe.sv` wraps the standalone `adc_ad9226` (now in the build; `create_project.tcl` adds it) and chooses what
+the data lines carry: tie-off (`FE_TIE`), a traffic generator (ramp, walking one, tone from the IF path's sine ROM,
+constant), or the pins. `FE_CFG` (enable, src, twos, tg_mode, clear, div = 2 -> 50 MS/s, phase = 1), `FE_TIE`,
+`FE_TG_INC` (10.7 MHz at 50 MS/s), `FE_STAT` (last code, OTR, sticky OTR, sample counter). `VERSION` 0x00010003 (no
+CAPS bit: CAPS is full; software checks VERSION). The stream goes to the IF path / video path when `FE_CFG.enable` and
+`DET_CFG.stream = 0`; the generator of 8b keeps priority. Pins: the ports `adc_clk` / `adc_d` / `adc_otr` exist only
+with `ADC_PADS` (`SADIY_ADC_PADS=1` at project creation, `rtl/fpga/constraints/adc_pins.xdc` with the DATA1 balls of
+pins.toml, valid only for adapter v2); the default build ties the data lines to 0x800. `sadiy_top` got three ports
+(testbenches connect them). Tests: `tb_adc_fe` (new; four deliberate RTL breakages caught after the src 3 case was
+added to the pin loop), `tb_if` (front end through the engine at 50 MS/s: tie-off bit-exact, OTR bit, tone),
+`tb_axil_regs`, `test_adc_fe_model.py` (14; the model has the same sources; four breakages caught), `pl_bringup.py fe`
+(19 checks against the model; part of `auto`). The model's `FE_STAT` counter advances 17 samples per read as a
+stand-in for time; tone / ramp results of the hardware are free-running and not bit-exact against the model, the
+tie-off is. Build 2026-11-23 (default build, no ADC pads): WNS +1.51 ns, WHS +0.007 ns (met, but a thin hold margin: watch it when
+the pads are added), 3003 LUT (17 %), 3290 FF, 12.5 BRAM tiles, 4 DSP; `build/fpga/ebaz_sadiy.bit(.bin)` are the
+map 1.3 bitstream, the bring-up package was NOT remade. Block diagram and rtl-spec 8d
+updated. Not done: bring-up package remake (only when asked), run on the board, ADC_PADS build (needs adapter v2).
+Also: `rtl/scripts/test.sh` lint now includes `dsp/adc_ad9226.sv` for `sadiy_top`; `test_adc_pins_xdc.py` checks
+`adc_pins.xdc` against pins.toml.
+
+## 2026-11-23 AD9226 module and IF filter recorded (user decision: AD9226 ordered, no AD8310)
+
+New `docs/adc-module.md` with the facts from the listing (50 ohm SMA input, 10 Vpp, 5 V supply, 3.3 V logic,
+320 MHz bandwidth, no clock on the module), the level plan, adapter v2 requirements and open checks. The only
+low-pass offered is 30 MHz (7th order Chebyshev, 1 dB ripple): it does nothing at 25 or 40 MS/s, so the first build
+uses 50 MS/s (divide-by-2) and two modules in series (about 62 dB over the fold band, ideal); 65 MS/s needs its own
+clock. The 50 MS/s IF path is not yet simulated. `rtl-spec.md` points to the file; the plan's appendix E still has the
+old 8.4 dB line (shared file, not edited).
+
 ## 2026-11-22 virtual spectrum: three peaks and drift from the engine itself (user request, built with L)
 
 `sadiy_ebaz/virtual_spectrum.py`: `VirtualSweep(offload, detector, cal)` has the call of `OffloadSweep`
