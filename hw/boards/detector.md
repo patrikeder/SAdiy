@@ -1,5 +1,7 @@
 # Log detector board (AD8318 class, 1 to 8000 MHz, 25 mV/dB)
 
+**Status 2026-11-23: the module is dead and is not replaced; no log detector is bought.** The EBAZ4205 digitizes the IF instead ([ad9226-module.md](ad9226-module.md)). The page stays as the record of the module and for a later replacement.
+
 | Item | Value |
 |---|---|
 | Part | AD8318 (confirm the marking on the board) |

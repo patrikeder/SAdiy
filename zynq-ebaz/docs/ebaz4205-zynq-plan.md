@@ -268,7 +268,7 @@ Balls from the community pinout table. All LVCMOS33.
 
 ## Appendix E: ADC selection and LVDS notes (from v1)
 - Recommended: AD9226 module. 12 bit, 65 MSPS, parallel CMOS; datasheet SNR 69 dB @ 31 MHz, ENOB 11.1 @ 10 MHz; 5 V analog supply, 3 V or 5 V driver supply; pin-compatible family AD9220..AD9225. An EBAZ4205 project already uses it as a 0 to 32 MHz spectrum viewer (FPGA supplies the 64 MHz clock, 16384-sample frames, zoom DDCs from 10 MHz down to 10 kHz).
-- Check DRVDD = 3.3 V; the module attenuates its input by about 8.4 dB (one user modified it for gain).
+- Superseded 2026-11-23 by `adc-module.md`: the module is bought (AD9226_01, listing: 3.3 V logic, 50 ohm SMA, 10 Vpp full scale; DRVDD and the real input attenuation are still to check on the bench). The "about 8.4 dB" came from another project.
 - LVDS is not needed for a 10.7 MHz IF. On 3.3 V HR banks LVDS_25 works as an input only; on-chip DIFF_TERM needs a matching VCCO, so terminate with 100 ohm externally. TMDS_33 does not fit ADC LVDS outputs (needs about 2.7 to 3.23 V common mode). The FPGA cannot drive an LVDS sample clock here. Vivado may warn about LVDS_25 and LVCMOS33 in one bank (verify, test early).
 - No cheap LVDS ADC breakout found; known options are eval boards (TI ADS4122/ADS4222 class, ADI AD9253, Digilent Zmod) needing adapters, SYZYGY or FMC. A custom serial-LVDS board needs only a few pairs, but one lane at 12 bit x 65 MSPS is 780 Mb/s, probably near the HR-bank limit (verify in DS187); use two lanes or 40 MSPS.
 

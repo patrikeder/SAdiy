@@ -595,21 +595,23 @@ def hierarchy(path: Path) -> None:
     svg.label(700, 208, "Ethernet / ZeroMQ: PUB 5556 (sweeps + log), REP 5557", color=n)
     cy, ch, cw = 450, 84, 300
     kids = [
-        (110, "PE4302 board", "6-bit attenuator, parallel control\n6 GPIO lines V1..V6", "gpio", "GPIO x6", "v33", "3.3 V"),
-        (550, "ADF4351 board", "LO synthesizer (eval board, 25 MHz osc.)\nSPI + lock-detect GPIO", "spi", "SPI + LD", "v5", "5 V jack"),
-        (990, "Detector board", "log detector, analog out\nvia RC + clamp to the ADS1115", "analog", "analog in", "v5", "5 V"),
+        (30, "PE4302 board", "6-bit attenuator, parallel control\n6 GPIO lines V1..V6", "gpio", "GPIO x6", "v33", "3.3 V"),
+        (365, "ADF4351 board", "LO synthesizer (eval board, 25 MHz osc.)\nSPI + lock-detect GPIO", "spi", "SPI + LD", "v5", "5 V jack"),
+        (700, "Detector board (AD8318: dead)", "log detector, analog out via RC + clamp\nto the ADS1115; not replaced", "analog", "analog in", "v5", "5 V"),
+        (1035, "AD9226 module (EBAZ PL only)", "12 bit ADC, 50 MS/s used, 50 ohm SMA in\n12 data + OTR in, clock out (DATA1)", "gpio", "DATA1 x14", "v5", "5 V"),
     ]
     for x, t, s_, kind, lab, rail, rtxt in kids:
         box(svg, x, cy, cw, ch, t, s_, badge=(rtxt, rail))
         c = PAL[kind][0]
-        wire(svg, (700, 334), (x + cw / 2, cy), c, lab, arrow_end=(kind != "analog"), arrow_start=(kind == "analog"))
+        wire(svg, (700, 334), (x + cw / 2, cy), c, lab, arrow_end=(kind != "analog" and "AD9226" not in t),
+             arrow_start=(kind == "analog" or "AD9226" in t))
     svg.text(24, 568, "ADF4351 board: 5 V on its DC jack, regulated to 3.3 V on the board (AMS1117-3.3). Check the polarity marking next to the jack.",
              size=11, fill=MUTED)
     svg.rect(40, 600, 1320, 160, fill="#f8f9fa", stroke="#adb5bd", sw=1.5, rx=10, dash="2 4")
     svg.text(56, 624, "RF-only boards: no link to the SBC (signal chain in rf-chain.svg)", size=13, weight="bold", fill=MUTED)
     items = [("30 dB amp", "module", False, ("6-12 V", "v10")), ("AD831 mixer", "module", False, ("9-11 V", "v10")),
              ("500 MHz LPF", "TODO", True, None), ("LO LPF + pad", "TODO", True, None),
-             ("10.7 MHz IF filter", "TODO", True, None), ("IF amp", "TODO", True, ("TBD", "v10"))]
+             ("IF low-pass 30 MHz x2", "7th order, SMA, in series", True, None), ("IF amp", "only if needed", True, ("TBD", "v10"))]
     x = 56
     for t, s_, todo, bd in items:
         box(svg, x, 652, 200, 80, t, s_, todo=todo, badge=bd)
@@ -618,8 +620,8 @@ def hierarchy(path: Path) -> None:
 
 
 def rf_chain(path: Path) -> None:
-    svg = Svg(1480, 640, "RF signal chain",
-              "Nominal gains are estimates; amp figures are seller claims. Levels in dBm refer to the analyzer input.")
+    svg = Svg(1480, 800, "RF signal chain",
+              "Nominal gains are estimates; amp figures are seller claims. Levels in dBm refer to the analyzer input. Top branch: analog detector (AD8318 module dead, not replaced); bottom branch: digital IF (AD9226).")
     n = PAL["net"][0]
     bw, bh, gap = 170, 72, 46
     x0 = 40
@@ -645,7 +647,7 @@ def rf_chain(path: Path) -> None:
     iy = 430
     chain = [("10.7 MHz IF filter", "ceramic 150-280 kHz\n(sets RBW), -6 dB", True, None),
              ("IF amp", "+15..20 dB, variable", True, None),
-             ("Detector", "-58..-1 dBm window\n-24.5 mV/dB", False, None),
+             ("Detector (AD8318)", "module dead, not replaced\n-58..-1 dBm, -24.5 mV/dB", False, None),
              ("RC + clamp", "adapter: 1k, 100 nF, clamp", False, None),
              ("ADS1115", "I2C 0x48, main ADC\n(BBB AIN0: cross-check)", False, ("analog", "analog"))]
     for i, (t, s_, todo, bd) in enumerate(chain):
@@ -657,8 +659,21 @@ def rf_chain(path: Path) -> None:
     svg.path(f"M{mx},{ry + bh + 8} L{mx},{iy - 40} L{bx(0) + bw / 2},{iy - 40} L{bx(0) + bw / 2},{iy}", n, 2.4,
              arrow_end=True)
     svg.label(mx - 330, iy - 40, "IF = 10.7 MHz (LO = RF + 10.7 MHz)", color=n)
-    svg.text(24, 580, "Gain budget at 0 dB attenuation: -1.5 (PE4302) -1.5 (LPF) +31 (amp) 0 (mixer) -6 (IF filter) = about 22 dB to the detector, before the IF amp.", size=11.5, fill=MUTED)
-    svg.text(24, 600, "Low IF gives an image 21.4 MHz above each RF; every tone appears twice. The amp compresses near -19.5 dBm at the input with 0 dB attenuation.", size=11.5, fill=MUTED)
+    dy = 590
+    dchain = [("IF low-pass x2", "30 MHz, 7th order Cheb.\n50 ohm SMA, 1-2 dB each", True, None),
+              ("AD9226 module", "12 bit, 50 MS/s, 50 ohm in\n10 Vpp = +24 dBm full scale", False, ("DATA1", "gpio")),
+              ("adc_fe (PL)", "clock, capture, OTR\ntie-off / traffic gen / pins", False, None),
+              ("IF path (PL)", "NCO, mixer, CIC by R\nI^2 + Q^2 = digital RBW", False, None),
+              ("Result memory", "4096 points -> sweepd\n(register map 1.3)", False, None)]
+    for i, (t, s_, todo, bd) in enumerate(dchain):
+        box(svg, bx(i), dy, bw, bh + 8, t, s_, todo=todo, badge=bd)
+        if i < len(dchain) - 1:
+            svg.path(f"M{bx(i) + bw},{dy + 40} L{bx(i + 1)},{dy + 40}", PAL["gpio"][0] if i == 1 else n, 2.4, arrow_end=True)
+    svg.path(f"M{mx},{iy - 40} L{mx},{dy - 40} L{bx(0) + bw / 2},{dy - 40} L{bx(0) + bw / 2},{dy}", n, 2.4, arrow_end=True)
+    svg.label(mx - 330, dy - 40, "digital IF branch: fs = 50 MS/s", color=n)
+    svg.text(24, 700, "Gain budget at 0 dB attenuation: -1.5 (PE4302) -1.5 (LPF) +31 (amp) 0 (mixer) -6 (IF filter) = about 22 dB to the detector, before the IF amp.", size=11.5, fill=MUTED)
+    svg.text(24, 720, "Digital branch: -1.5 -1.5 +31 0 -1.5 (IF low-pass) = about 26 dB to the module, so the +24 dBm full scale is about -2 dBm at the input; the fold of fs - 10.7 MHz needs two 30 MHz low-pass modules at 50 MS/s (about 62 dB).", size=11.5, fill=MUTED)
+    svg.text(24, 740, "Low IF gives an image 21.4 MHz above each RF; every tone appears twice. The amp compresses near -19.5 dBm at the input with 0 dB attenuation.", size=11.5, fill=MUTED)
     svg.save(path)
 
 
@@ -671,7 +686,8 @@ def power_tree(path: Path) -> None:
         ("v5", "5 V buck", "feeds SBC, ADF4351 board, detector\nBBB up to 2 A", "12V", True,
          [("SBC (BBB or RPi)", "5 V / 2-3 A"),
           ("ADF4351 board (DC jack)", "5 V, ~200 mA (AMS1117-3.3 on board)"),
-          ("Detector board (VCC pad)", "~68 mA, check its regulator")]),
+          ("Detector board (VCC pad)", "AD8318 module dead, ~68 mA"),
+          ("AD9226 module (EBAZ only)", "5 V (4.75-5.25), current not given; 3.3 V logic on board")]),
         ("v33", "SBC 3.3 V output pin", "BBB P9.3 / P9.4, RPi pin 1 / 17\ntiny loads only", "5V", False,
          [("PE4302 board (VDD pad)", "3.3 V required, tiny"),
           ("ADS1115", "tiny"),

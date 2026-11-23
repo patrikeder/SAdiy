@@ -14,11 +14,19 @@ RF in -> DC block/ESD -> PE4302 -> 500 MHz LPF -> 30 dB amp -> AD831 mixer -> 10
 ADF4351 (LO = RF + 10.7 MHz) -> LPF + pad -----------------------+
 ```
 
-Built so far: PE4302, amp, AD831, detector and ADF4351. The missing stages are listed in priority order in [hw/todo-parts.md](hw/todo-parts.md).
+The log detector end of this chain is the original plan; the AD8318 module is dead and no replacement is bought. On the EBAZ4205 the IF is digitized instead:
+
+```
+AD831 IF out -> 30 MHz LPF module x2 (in series) -> AD9226 module (12 bit, 50 MS/s) -> PL: IF path (10.7 MHz down-conversion, CIC = RBW) -> PS -> sweepd
+```
+
+Facts and open points of the digital branch: [zynq-ebaz/docs/adc-module.md](zynq-ebaz/docs/adc-module.md). The BBB has no PL and cannot use it.
+
+Built so far: PE4302, amp, AD831, ADF4351 (the detector module is dead). Ordered: AD9226 module. The missing stages are listed in priority order in [hw/todo-parts.md](hw/todo-parts.md).
 
 - **Range:** 30 to 480 MHz by default (`config/default.toml`). The AD831 LO limit puts the ceiling at about 489 MHz.
 - **Image:** the low IF puts an image 21.4 MHz above each RF, so every signal also shows a copy 21.4 MHz lower on the sweep axis. The optional **Image reject** setting (two sweeps per trace with the LO on both sides, lower reading kept) removes it above about 45 MHz at twice the sweep time; tested in the simulator only.
-- **ADC:** an ADS1115 on I2C reads the detector. The BBB on-chip AIN0 stays wired as an optional cross-check.
+- **ADC:** an ADS1115 on I2C reads the detector (analog path; the detector is dead for now). The BBB on-chip AIN0 stays wired as an optional cross-check. On the EBAZ4205 the AD9226 module (parallel, 50 MS/s) feeds the PL IF path instead.
 
 ## Quick start (PC, no hardware)
 

@@ -17,11 +17,13 @@ Keep every RF link a short coax (SMA), 50 ohm. Mark each cable with its name.
 | RF_4 | 30 dB amp out | AD831 RF in | |
 | LO_1 | ADF4351 RFOUT | LO LPF + pad (TODO) | unused output terminated in 50 ohm |
 | LO_2 | LO LPF + pad | AD831 LO in | about -10 dBm |
-| IF_1 | AD831 IF out | 10.7 MHz IF filter (TODO) | |
-| IF_2 | IF filter | IF amp (TODO) | |
-| IF_3 | IF amp | detector RF in | check the detector input coupling and 50 ohm termination |
-| DET | detector VOUT | RC + clamp (1k, 100 nF) on the adapter board | analog, short and away from the LO and RF cables |
-| ADC | RC + clamp | ADS1115 A0 (BBB: AIN0 too, through a divider, as a cross-check) |
+| IF_1 | AD831 IF out | IF low-pass 30 MHz, first module (TODO) | digital IF branch; check what load the AD831 IF port wants |
+| IF_2 | first low-pass | second low-pass (SMA-SMA adapter) | two modules in series: about 62 dB at the alias band at 50 MS/s |
+| IF_3 | second low-pass | AD9226 module SMA in (TODO) | 50 ohm, 10 Vpp full scale (about +24 dBm); coupling AC or DC not known yet |
+| ADC_BUS | AD9226 module header | adapter v2 (DATA1, 14 signals) | 12 data lines + OTR in, clock out; short cable, series resistors on the adapter (`../zynq-ebaz/docs/adc-module.md` section 4) |
+| IF_A | AD831 IF out | 10.7 MHz IF filter, IF amp, detector RF in | **analog branch, optional**: the AD8318 module is dead and not replaced |
+| DET | detector VOUT | RC + clamp (1k, 100 nF) on the adapter board | analog branch, only with a working detector; short and away from the LO and RF cables |
+| ADC | RC + clamp | ADS1115 A0 (BBB: AIN0 too, through a divider, as a cross-check) | analog branch |
 
 ## Practical rules
 
