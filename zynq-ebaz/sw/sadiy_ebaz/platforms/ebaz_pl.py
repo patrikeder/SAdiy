@@ -1,19 +1,17 @@
 """EBAZ4205 with the PL sweep engine, register access only (`[platform] name = "ebaz-pl"`).
 
 Everything goes through the engine's registers at 0x43C0_0000 (/dev/mem): SPI words to the ADF4351, the PE4302
-pins, CE, lock detect and the detector samples. No spidev, GPIO or I2C device of Linux is needed, and the
-engine owns the pins for as long as sweepd runs.
+attenuator (through the PCF8574 on the I2C bus, register map 2.0), CE, lock detect and the detector samples. No
+spidev, GPIO or I2C device of Linux is needed, and the engine owns the pins and the I2C bus for as long as sweepd
+runs.
 
 Detector source, `[platform] detector`:
-  "pl"    (default) the ADS1115 reader of the PL takes the samples (DET_CFG.src = 3): no software in the loop
-  "ps"    Linux reads the ADS1115 over I2C0 and pushes every sample (DET_CFG.src = 0): bring-up, comparison
-  "test"  the test generator of the PL (DET_CFG.src = 1): no ADC needed
+  "test"  (default) the test generator of the PL (DET_CFG.src = 1): a ramp, no RF. The ADS1115 is gone (map 2.0);
+          the detector of the real chain will be the IF path behind the AD9226 front end (not wired yet).
 
-Other `[platform]` keys: `base` (register base), `ads1115_sps` (default 860 for "pl", `[adc] ads1115_sps` for
-"ps"), `i2c_bus` and
-`ads1115_address` (detector "ps" and the address for "pl"), `require_lock` (default true: without lock detect
-the RF outputs stay off), `det_test_base`.
-Needs a bitstream with register map 1.1 or later for "pl".
+PCF8574 (`[attenuator]`): `pcf8574_address` (default 0x27), `pcf8574_backlight` (P3, default 1 = LED on).
+Other `[platform]` keys: `base` (register base), `require_lock` (default true: without lock detect the RF outputs
+stay off), `det_test_base`. Needs a bitstream with register map 2.x.
 """
 from __future__ import annotations
 
@@ -24,28 +22,19 @@ from typing import Callable, List, Optional
 from sadiy.core.cal import Cal
 from sadiy.core.detector import Detector
 from sadiy.core.sweep import SweepEngine
-from sadiy.drivers.adc import Adc, Ads1115
+from sadiy.drivers.adc import Adc
 from sadiy.drivers.adf4351 import Adf4351, Outputs
 from sadiy.drivers.pe4302 import PE4302, STEP_DB
-from sadiy.hal.base import GpioLine, I2cBus, SpiBus
+from sadiy.hal.base import GpioLine, SpiBus
 
 from ..offload_sweep import OffloadSweep
 from ..platform import Capabilities
-from ..reg_offload import SRC_ADC, SRC_PUSH, SRC_TEST, RegOffload
+from ..reg_offload import SRC_TEST, RegOffload
 from ..regmap_toml import REGS
 
 log = logging.getLogger("sadiy.ebaz_pl")
-DETECTORS = {"pl": SRC_ADC, "ps": SRC_PUSH, "test": SRC_TEST}
-
-
-class _NoI2c(I2cBus):
-    """Placeholder bus: only `Ads1115.config_word` is used, nothing is transferred."""
-
-    def write(self, data: bytes) -> None:
-        raise RuntimeError("no I2C bus here")
-
-    def read(self, count: int) -> bytes:
-        raise RuntimeError("no I2C bus here")
+DETECTORS = {"test": SRC_TEST}
+REMOVED_DETECTORS = ("pl", "ps")         # the ADS1115 (PL reader or Linux) until register map 1.3
 
 
 class PlSpi(SpiBus):
@@ -62,7 +51,7 @@ class PlSpi(SpiBus):
 
 
 class PlLine(GpioLine):
-    """One PE4302 pin through `PE4302.manual`; the engine changes the pins make-before-break."""
+    """One PE4302 control line through `PE4302.manual`; the engine sends it to the PCF8574 make-before-break."""
 
     def __init__(self, port: "PlAttenPort", bit: int) -> None:
         self._port, self._bit = port, bit
@@ -71,7 +60,7 @@ class PlLine(GpioLine):
         self._port.set_bit(self._bit, value)
 
     def read(self) -> int:
-        return (self._port.pad_levels() >> self._bit) & 1
+        return (self._port.levels() >> self._bit) & 1
 
     def set_direction(self, output: bool, initial: int = 0) -> None:
         if output:
@@ -89,8 +78,9 @@ class PlAttenPort:
         if new != cur:
             self._offload.set_att_pins(new)
 
-    def pad_levels(self) -> int:
-        return REGS["PIN_STATE"].fields["pe_in"].get(self._rd(REGS["PIN_STATE"].offset))
+    def levels(self) -> int:
+        """Levels the engine sent to the PCF8574 last (the PCF8574 cannot be read back by the engine)."""
+        return self._offload.pin_levels()
 
 
 class PlAdc(Adc):
@@ -105,27 +95,27 @@ class PlAdc(Adc):
 
 class EbazPlPlatform:
     def __init__(self, reg_read: Callable[[int], int], reg_write: Callable[[int, int], None], *,
-                 detector: str = "pl", full_scale_v: float = 4.096, sps: int = 860, channel: int = 0,
-                 address: int = 0x48, det_test_base: int = 10000,
-                 ps_sample_source: Optional[Callable[[], int]] = None, poll_s: float = 0.001,
+                 detector: str = "test", full_scale_v: float = 4.096, det_test_base: int = 10000,
+                 pcf8574_address: int = 0x27, backlight: int = 1, poll_s: float = 0.001,
                  close: Optional[Callable[[], None]] = None) -> None:
+        if detector in REMOVED_DETECTORS:
+            raise ValueError(f"[platform] detector {detector!r}: the ADS1115 was removed (register map 2.0); "
+                             f"use one of {', '.join(DETECTORS)}")
         if detector not in DETECTORS:
             raise ValueError(f"[platform] detector must be one of {', '.join(DETECTORS)}, not {detector!r}")
-        if detector == "ps" and ps_sample_source is None:
-            raise ValueError('detector "ps" needs a sample source (the ADS1115 on the PS I2C bus)')
         self.detector_kind = detector
         self._rd, self._close = reg_read, close
-        self._offload = RegOffload(reg_read, reg_write, sample_source=ps_sample_source,
-                                   volts_per_count=full_scale_v / 32768.0, det_src=DETECTORS[detector],
-                                   det_test_base=det_test_base, poll_s=poll_s)
+        self._offload = RegOffload(reg_read, reg_write, volts_per_count=full_scale_v / 32768.0,
+                                   det_src=DETECTORS[detector], det_test_base=det_test_base, poll_s=poll_s)
         o = self._offload
         self.capabilities = Capabilities("ebaz_pl", True, 16, o.max_entries, o.max_points)
-        if detector == "pl":
-            adc = Ads1115(_NoI2c(), full_scale_v=full_scale_v, sps=sps, channel=channel)
-            o.configure_adc(adc.config_word(channel), address, t_conv_us=int(1.1e6 / sps) + 150)
+        o.configure_att(pcf8574_address, p3=int(bool(backlight)))
         o.set_ce(1)
         if not o.status()["pin_owner_act"]:
-            o.acquire_pins()                      # from the levels the pins show: no step in attenuation
+            o.acquire_pins()                      # sends PE4302.manual (reset: all stages in, 31.5 dB)
+        if o.wait_att()["err_nack"]:
+            log.warning("PCF8574 attenuator does not answer at I2C address 0x%02X: the attenuation is not set "
+                        "(wiring, pull-ups, address; [attenuator] pcf8574_address)", pcf8574_address)
         self._spi = PlSpi(o)
         self._port = PlAttenPort(o, reg_read)
         self._adc = PlAdc(o)
@@ -205,25 +195,13 @@ def build_engine(cfg: dict) -> SweepEngine:
     from ..devmem import DEFAULT_BASE, DevMemRegs
 
     pcfg = cfg.get("platform", {})
-    acfg = cfg["adc"]
-    detector = str(pcfg.get("detector", "pl"))
-    address = int(pcfg.get("ads1115_address", 0x48))
-    full_scale = float(acfg.get("ads1115_full_scale_v", 4.096))
-    # the PL reader waits one conversion per sample: 860 SPS unless the config says otherwise; the PS path keeps
-    # the rate of [adc]
-    sps = int(pcfg.get("ads1115_sps", 860 if detector == "pl" else acfg.get("ads1115_sps", 860)))
-    channel = int(acfg.get("channel", 0))
+    att = cfg.get("attenuator", {})
+    detector = str(pcfg.get("detector", "test"))
     regs = DevMemRegs(int(pcfg.get("base", DEFAULT_BASE)))
-    source = None
-    if detector == "ps":
-        from sadiy.hal.linux import LinuxI2c
-
-        ps_adc = Ads1115(LinuxI2c(int(pcfg.get("i2c_bus", 0)), address), full_scale_v=full_scale, sps=sps,
-                         channel=channel)
-        source = lambda: max(0, ps_adc.convert(channel))  # noqa: E731
-    plat = EbazPlPlatform(regs.read, regs.write, detector=detector, full_scale_v=full_scale, sps=sps,
-                          channel=channel, address=address, det_test_base=int(pcfg.get("det_test_base", 10000)),
-                          ps_sample_source=source, close=regs.close)
+    plat = EbazPlPlatform(regs.read, regs.write, detector=detector,
+                          det_test_base=int(pcfg.get("det_test_base", 10000)),
+                          pcf8574_address=int(att.get("pcf8574_address", 0x27)),
+                          backlight=int(att.get("pcf8574_backlight", 1)), close=regs.close)
     log.info("EBAZ PL engine: register map %d.%d, detector source %s", plat.offload().version >> 16,
              plat.offload().version & 0xFFFF, detector)
     return engine_on(plat, cfg)

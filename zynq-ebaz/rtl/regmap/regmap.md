@@ -1,24 +1,24 @@
 <!-- generated from regmap.toml by gen_regs.py, do not edit -->
 # Register map
 
-Map `sadiy`, version 0x00010003, 12-bit address, 32-bit registers. Writes are full words (WSTRB ignored); bits without a field read 0.
+Map `sadiy`, version 0x00020000, 12-bit address, 32-bit registers. Writes are full words (WSTRB ignored); bits without a field read 0.
 Registers marked *ext* are implemented outside `axil_regs.sv`.
 
 | Offset | Name | Reset | Description |
 |---|---|---|---|
 | 0x000 | ID | 0x53410001 | Magic number, identifies the core. |
-| 0x004 | VERSION | 0x00010003 | Register map version (major << 16 \| minor). Equals [map] version. |
+| 0x004 | VERSION | 0x00020000 | Register map version (major << 16 \| minor). Equals [map] version. |
 | 0x008 | CTRL | 0x00000000 | Control. Pulse bits read 0. |
 | 0x00C | STATUS | 0x00000000 | Status, read-only. |
 | 0x010 | N_ENTRIES | 0x00000000 | Number of table entries one sweep executes (1 .. 2^TABLE_AW). |
 | 0x014 | N_AVG | 0x00000001 | Detector samples summed per measured point (1 .. 4095). 0 is treated as 1. |
 | 0x018 | SPI_DIV | 0x00000005 | ADF4351 SPI half bit period in clk cycles (f_sclk = f_clk / (2 * div)). Values below 2 are treated as 2. Reset 5 = 10 MHz at 100 MHz. |
-| 0x01C | T_ATT_GAP_CYC | 0x00000064 | PE4302 make-before-break: clk cycles the intermediate (make) state is held, and again after the final state before the entry continues. |
+| 0x01C | T_ATT_GAP_CYC | 0x00000064 | Attenuator: clk cycles of hold after the PCF8574 transaction (final state on the pins) before the entry continues. The make state itself is held one I2C byte (9 SCL periods) inside the transaction. |
 | 0x020 | T_MIN_US | 0x000000C8 | Microseconds after the last SPI word of a measured entry during which lock detect is ignored (VCO band selection). |
 | 0x024 | T_LOCK_STABLE_US | 0x00000032 | Lock detect must stay high for this long without a break to count as locked. |
 | 0x028 | T_LOCK_TIMEOUT_US | 0x00002710 | Give up waiting for lock after this long (counted from the end of T_MIN_US). |
 | 0x02C | T_SETTLE_US | 0x000001F4 | Detector settling time between lock (or timeout) and the first sample. |
-| 0x030 | PE4302 | 0x0000013F | PE4302 pin control of the engine. Reset state = all stages in (31.5 dB) for an active-high module. |
+| 0x030 | PE4302 | 0x0000013F | PE4302 attenuator of the engine, written through the PCF8574 (ATT_* registers). Reset state = all stages in (31.5 dB) for an active-high module. |
 | 0x034 | PIN_STATE | 0x00000000 | Live pins after the pin mux, synchronised to clk. |
 | 0x038 | DET_CFG | 0x00000000 | Detector sample source. |
 | 0x03C | DET_TEST | 0x00000000 | Test generator: sample = (base + low 8 bits of the result index) mod 65536, one sample per microsecond tick while the sequencer is in SAMPLE. |
@@ -33,10 +33,9 @@ Registers marked *ext* are implemented outside `axil_regs.sv`.
 | 0x070 | RESULT_ADDR (ext) | 0x00000000 | Result index for the next RESULT_DATA read. Read / write; increments by one on every RESULT_DATA read. |
 | 0x074 | RESULT_DATA (ext) | 0x00000000 | Result word at RESULT_ADDR (read-only, read increments RESULT_ADDR). Wait at least 2 clk cycles after writing RESULT_ADDR (always true from the PS). |
 | 0x078 | CAPS | 0x00000000 | Build parameters. |
-| 0x080 | ADC_CFG | 0x0048C3E3 | ADS1115 reader (DET_CFG.src = 3): what is written to the ADC for every sample. |
-| 0x084 | ADC_I2C_DIV | 0x00000046 | ADS1115 reader: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 70 = 357 kHz at 100 MHz (t_low 1.4 us). |
-| 0x088 | ADC_T_CONV_US | 0x00000578 | ADS1115 reader: microseconds between the config write (conversion start) and the read. Must exceed the conversion time of the data rate in ADC_CFG.config plus its 10 % tolerance. Reset 1400 for 860 SPS. |
-| 0x08C | ADC_STAT | 0x00000000 | ADS1115 reader status, read-only. |
+| 0x080 | ATT_I2C | 0x00000327 | PCF8574 port expander that drives the PE4302 (P0..P2 = V1..V3, P3 = backlight LED, P4..P6 = V4..V6, P7 spare). New values apply with the next attenuator write. |
+| 0x084 | ATT_I2C_DIV | 0x000000FA | PCF8574 bus: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 250 = 100 kHz at 100 MHz, the PCF8574 maximum. |
+| 0x088 | ATT_STAT | 0x00000000 | Attenuator status, read-only. |
 | 0x090 | ADF_PINS | 0x00000001 | ADF4351 pins outside the SPI, driven while the engine owns the pins. |
 | 0x0A0 | GEN_CFG | 0x400003E8 | Sample generator: plays the pattern written through GEN_ADDR / GEN_DATA as a sample stream, in place of an ADC. |
 | 0x0A4 | GEN_ADDR (ext) | 0x00000000 | Pattern index for the next GEN_DATA write. Read / write; increments by one on every GEN_DATA write. |
@@ -63,7 +62,7 @@ Register map version (major << 16 \| minor). Equals [map] version.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
-| 31:0 | version | const | 0x10003 | must equal map.version (gen_regs.py checks) |
+| 31:0 | version | const | 0x20000 | must equal map.version (gen_regs.py checks) |
 
 ## CTRL (0x008)
 
@@ -121,7 +120,7 @@ ADF4351 SPI half bit period in clk cycles (f_sclk = f_clk / (2 * div)). Values b
 
 ## T_ATT_GAP_CYC (0x01C)
 
-PE4302 make-before-break: clk cycles the intermediate (make) state is held, and again after the final state before the entry continues.
+Attenuator: clk cycles of hold after the PCF8574 transaction (final state on the pins) before the entry continues. The make state itself is held one I2C byte (9 SCL periods) inside the transaction.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
@@ -161,12 +160,12 @@ Detector settling time between lock (or timeout) and the first sample.
 
 ## PE4302 (0x030)
 
-PE4302 pin control of the engine. Reset state = all stages in (31.5 dB) for an active-high module.
+PE4302 attenuator of the engine, written through the PCF8574 (ATT_* registers). Reset state = all stages in (31.5 dB) for an active-high module.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
 | 8 | active_high | rw | 0x1 | 1 = a high pin switches the stage in (make state = old OR new). 0 = low switches in (make state = old AND new). |
-| 5:0 | manual | rw | 0x3F | Pin levels V1..V6 (bit 0 = V1). A write while the engine owns the pins and is idle moves the pins there, make-before-break, if they differ. A write at any other time only stores the value. Taking the pins loads this value directly. |
+| 5:0 | manual | rw | 0x3F | Levels V1..V6 (bit 0 = V1). A write while the engine owns the pins and is idle sends them to the PCF8574, make-before-break, if they differ from ATT_STAT.levels. A write at any other time only stores the value. Taking the pins sends this value as one byte. |
 
 ## PIN_STATE (0x034)
 
@@ -174,9 +173,7 @@ Live pins after the pin mux, synchronised to clk.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
-| 29:24 | pe_t | ro | 0x0 | 1 = that PE4302 pin is not driven (PS owner with the GPIO line as input). |
-| 21:16 | pe_out | ro | 0x0 | Levels driven on the PE4302 pins (meaningful where pe_t = 0). |
-| 15 | i2c_pl | ro | 0x0 | 1 = the ADS1115 reader of the PL owns the I2C pins (engine owns the pins and DET_CFG.src = 3); 0 = PS I2C0. |
+| 15 | i2c_pl | ro | 0x0 | 1 = the engine's I2C master (PCF8574 attenuator) owns the I2C pins: whenever the engine owns the pins (STATUS.pin_owner_act); 0 = PS I2C0. |
 | 14 | sda | ro | 0x0 | i2c_sda pad level |
 | 13 | scl | ro | 0x0 | i2c_scl pad level |
 | 12 | ce | ro | 0x0 | adf4351_ce pad level |
@@ -184,7 +181,6 @@ Live pins after the pin mux, synchronised to clk.
 | 10 | clk | ro | 0x0 | adf4351_clk as driven |
 | 9 | le | ro | 0x0 | adf4351_le as driven |
 | 8 | ld | ro | 0x0 | adf4351_ld |
-| 5:0 | pe_in | ro | 0x0 | Levels read back from the PE4302 pins. |
 
 ## DET_CFG (0x038)
 
@@ -194,7 +190,7 @@ Detector sample source.
 |---|---|---|---|---|
 | 8 | stream | rw | 0x0 | Sample stream for src = 2 and for the IF path: 0 = det_ext_* port of sadiy_top (an ADC adapter), 1 = sample generator (GEN_* registers). |
 | 4 | mode | rw | 0x0 | 0 = video path: a result is the sum of N_AVG detector samples. 1 = IF path: the sample stream goes through NCO, mixer, CIC and power detector (IF_* registers); a result is {exp[5:0], mant[21:0]} of the power sum, bit 30 = over-range. |
-| 1:0 | src | rw | 0x0 | Video path (mode = 0): 0 = PS push (DET_PUSH), 1 = test generator (DET_TEST), 2 = sample stream selected by `stream` (negative samples count as 0), 3 = ADS1115 reader in the PL (ADC_* registers; the engine then owns the I2C pins while it owns the other pins). |
+| 1:0 | src | rw | 0x0 | Video path (mode = 0): 0 = PS push (DET_PUSH), 1 = test generator (DET_TEST), 2 = sample stream selected by `stream` (negative samples count as 0), 3 = same as 2 (was the ADS1115 reader before register map 2.0). |
 
 ## DET_TEST (0x03C)
 
@@ -299,41 +295,35 @@ Build parameters.
 | 15:8 | result_aw | ro | 0x0 | result depth = 2^result_aw points |
 | 7:0 | table_aw | ro | 0x0 | table depth = 2^table_aw entries |
 
-## ADC_CFG (0x080)
+## ATT_I2C (0x080)
 
-ADS1115 reader (DET_CFG.src = 3): what is written to the ADC for every sample.
-
-| Bits | Name | Access | Reset | Description |
-|---|---|---|---|---|
-| 22:16 | addr | rw | 0x48 | I2C address of the ADS1115 (0x48 = ADDR pin to GND). |
-| 15:0 | config | rw | 0xC3E3 | ADS1115 config register word, written before every sample; must have OS = 1 and MODE = 1 (single shot). Reset: AIN0 to GND, +/-4.096 V, 860 SPS, comparator off. |
-
-## ADC_I2C_DIV (0x084)
-
-ADS1115 reader: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 70 = 357 kHz at 100 MHz (t_low 1.4 us).
+PCF8574 port expander that drives the PE4302 (P0..P2 = V1..V3, P3 = backlight LED, P4..P6 = V4..V6, P7 spare). New values apply with the next attenuator write.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
-| 11:0 | div | rw | 0x46 |  |
+| 9 | p7 | rw | 0x1 | Level written to P7 (not used; 1 = the quasi-bidirectional high of power-up). |
+| 8 | p3 | rw | 0x1 | Level written to P3 (backlight LED of the LCD adapter board; 1 = on, the power-up state). |
+| 6:0 | addr | rw | 0x27 | 7-bit I2C address (0x27 = PCF8574 with A2..A0 open on the usual LCD adapter; a PCF8574A answers at 0x3F). |
 
-## ADC_T_CONV_US (0x088)
+## ATT_I2C_DIV (0x084)
 
-ADS1115 reader: microseconds between the config write (conversion start) and the read. Must exceed the conversion time of the data rate in ADC_CFG.config plus its 10 % tolerance. Reset 1400 for 860 SPS.
-
-| Bits | Name | Access | Reset | Description |
-|---|---|---|---|---|
-| 19:0 | us | rw | 0x578 |  |
-
-## ADC_STAT (0x08C)
-
-ADS1115 reader status, read-only.
+PCF8574 bus: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 250 = 100 kHz at 100 MHz, the PCF8574 maximum.
 
 | Bits | Name | Access | Reset | Description |
 |---|---|---|---|---|
-| 31:24 | count | ro | 0x0 | Conversions read since reset, wraps. |
-| 17 | busy | ro | 0x0 | A sample (bus transaction or conversion wait) is in progress. |
-| 16 | err_nack | ro | 0x0 | Sticky: the ADC did not acknowledge (missing, wrong address, bus held). That sample was delivered as 0. Cleared by start and soft_reset. |
-| 15:0 | last | ro | 0x0 | Conversion register of the last sample as read from the ADC (two's complement). |
+| 11:0 | div | rw | 0xFA |  |
+
+## ATT_STAT (0x088)
+
+Attenuator status, read-only.
+
+| Bits | Name | Access | Reset | Description |
+|---|---|---|---|---|
+| 31:24 | count | ro | 0x0 | Transactions finished since reset, wraps. |
+| 17 | busy | ro | 0x0 | An attenuator transaction or its hold is in progress. |
+| 16 | err_nack | ro | 0x0 | Sticky: the PCF8574 did not acknowledge (missing, wrong address, no pull-ups): the attenuation may be wrong. Cleared by start and soft_reset. |
+| 15:8 | byte | ro | 0x0 | Last port byte sent (final state, P7..P0). |
+| 5:0 | levels | ro | 0x0 | PE4302 levels V1..V6 the engine sent last (final state of the last transaction; reset 0x3F = PCF8574 power-up). |
 
 ## ADF_PINS (0x090)
 

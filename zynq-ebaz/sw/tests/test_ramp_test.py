@@ -276,7 +276,7 @@ def test_engine_that_stops_writing_results_fails_even_when_the_old_ones_fit(writ
 def test_pins_must_stay_as_they_were():
     off = MemoryOffload(50, 10000)
     rep = rt.run_selftest(off, n_points=50, sweeps=1, pins_before=(0x2A, 1), pins_now=lambda: (0x3F, 1))
-    assert [c.name for c in rep.failed] == ["sweep 1: pins unchanged (PE4302 levels the engine drives, CE)"]
+    assert [c.name for c in rep.failed] == ["sweep 1: pins unchanged (attenuator levels the engine sent, CE)"]
     rep = rt.run_selftest(off, n_points=50, sweeps=1, pins_before=(0x2A, 1), pins_now=lambda: (0x2A, 1))
     assert rep.ok
 

@@ -2,23 +2,26 @@
 
 Reference: `zynq-ebaz/docs/rtl-spec.md` (the text wins over this file). Register offsets and fields come from
 `regmap.toml` through `regmap_toml`. What is NOT modelled: time (the microsecond waits just take no time), the
-SPI bit stream, the AXI handshakes. What is: every value the registers show, the SPI words in order, the
-PE4302 pin states in order, results, flags and the pause of the sequencer while it waits for detector samples.
+SPI bit stream, the I2C bit stream, the AXI handshakes. What is: every value the registers show, the SPI words in
+order, the attenuator states and the PCF8574 transactions in order (register map 2.0: the PE4302 hangs on a PCF8574
+on I2C), results, flags and the pause of the sequencer while it waits for detector samples.
 
 Test side of the model (what a testbench drives):
   lock_model(result_index, last_spi_word) -> bool    lock reached before the timeout (default: always)
   ld_now                                             level of the lock detect pin (STATUS.ld_now)
   ext_samples(result_index) -> int                   one sample of the external stream (DET_CFG.src = 2)
-  adc_code(result_index) -> int or None              ADS1115 behind the PL reader (DET_CFG.src = 3): the signed
-                                                     conversion code, or None when the ADC does not answer
   ext_stream                                         samples of an ADC adapter on the det_ext port (stream format,
                                                      played cyclically from index 0 at every measurement); None: no stream
   fe_pins(n) -> (code, otr)                          ADC front end, FE_CFG.src = 2: what the module puts on the data lines
                                                      for the n-th sample (default: nothing wired, the board top ties the
                                                      lines to 0x800 / 0)
   emio_ce_o / emio_ce_t / pad_ce                     PS side of the CE pin and the level of an undriven pin
-  emio_pe_o / emio_pe_t / pad_pe                     PS side of the PE4302 pins (used while the PS owns them)
-  spi_words, pe_trace                                everything the engine put on the pins, in order
+  pcf_address                                        7-bit address the PCF8574 answers at (None: nothing on the bus)
+  spi_words                                          every SPI word the engine sent, in order
+  pe_trace                                           attenuator levels V1..V6 of every byte the engine sent, in order
+                                                     (a decrease: make state, then final state; otherwise one state)
+  att_bytes                                          every PCF8574 transaction as a tuple of port bytes (P7..P0),
+                                                     only those the PCF8574 acknowledged
 
 A `start` write runs the whole sweep inside `write()`, except when it must wait for detector samples that only
 the caller can supply (DET_CFG.src = 0: DET_PUSH writes; src = 2 without a stream: never): then the model stays in
@@ -35,7 +38,8 @@ from .regmap_toml import REGS
 IDLE, FETCH, ATT, SPI, WAIT_MIN, WAIT_LOCK, SETTLE, SAMPLE, STORE, NEXT = range(10)
 
 PE_ALL_IN = 0x3F
-SRC_PUSH, SRC_TEST, SRC_EXT, SRC_ADC = range(4)
+SRC_PUSH, SRC_TEST, SRC_EXT = range(3)              # DET_CFG.src; 3 = 2 (was the ADS1115 reader up to map 1.3)
+PCF8574_ADDR = 0x27
 FE_TIE_OFF, FE_GENERATOR = 0, 1                      # FE_CFG.src (2 and 3: the pins)
 FE_RAMP, FE_WALK, FE_TONE, FE_CONST = range(4)       # FE_CFG.tg_mode
 FE_MAX_SAMPLES = 1 << 17                             # longest stream the model builds for one measurement (then cyclic)
@@ -57,16 +61,14 @@ class PlModel:
         self.lock_model: Callable[[int, int], bool] = _always_locked
         self.ld_now = False
         self.ext_samples: Optional[Callable[[int], int]] = None
-        self.adc_code: Optional[Callable[[int], Optional[int]]] = None   # None: no ADC on the bus
         self.emio_ce_o, self.emio_ce_t, self.pad_ce = 0, 1, 1
         self.ext_stream: Optional[List[int]] = None
         self.fe_pins: Optional[Callable[[int], tuple]] = None
-        self.emio_pe_o = PE_ALL_IN       # level the PS drives on the PE4302 lines
-        self.emio_pe_t = PE_ALL_IN       # 1 = PS line is an input (not driven)
-        self.pad_pe = PE_ALL_IN          # level the board (pull-ups) gives an undriven line
+        self.pcf_address: Optional[int] = PCF8574_ADDR
         self.emio_adf = (0, 0, 1)        # clk, dat, le as the PS drives them
         self.spi_words: List[int] = []
         self.pe_trace: List[int] = []
+        self.att_bytes: List[tuple] = []
         self._reset()
 
     # ---- reset ----------------------------------------------------------------------------------------------
@@ -77,13 +79,13 @@ class PlModel:
         self._results = [0] * (1 << self.result_aw)
         self._table_addr = 0
         self._result_addr = 0
-        self._pe_engine = PE_ALL_IN       # reset value of the engine's PE4302 state: all stages in
+        self._pe_engine = PE_ALL_IN       # levels the engine sent last; reset = PCF8574 power-up (all ports high)
+        self._att_last_byte = 0xFF
+        self._att_count = 0
+        self._att_err = False
         self._pin_owner_act = 0
         self._last_spi_word = 0
         self._sweep_count = 0
-        self._adc_last = 0
-        self._adc_count = 0
-        self._adc_err = False
         self._gen_mem = [0] * 4096
         self._gen_addr = 0
         self._if_inc = 0
@@ -110,7 +112,7 @@ class PlModel:
             self._gen.close()
         self._reset_sequencer()
         self._sweep_count = 0
-        self._adc_err = False
+        self._att_err = False
         self._update_owner()
 
     @property
@@ -193,8 +195,6 @@ class PlModel:
         return None
 
     def _ro_values(self) -> Dict[tuple, int]:
-        pe_out, pe_t = self._pe_pins()
-        pe_in = (pe_out & ~pe_t | self.pad_pe & pe_t) & 0x3F
         clk, dat, le = (0, 0, 1) if self._engine_owns() else self.emio_adf
         return {
             ("STATUS", "busy"): int(self._busy), ("STATUS", "done"): int(self._done),
@@ -202,13 +202,13 @@ class PlModel:
             ("STATUS", "ld_now"): int(self.ld_now), ("STATUS", "wait_sample"): int(self._state == SAMPLE),
             ("STATUS", "err_table"): int(self._err_table), ("STATUS", "pin_owner_act"): self._pin_owner_act,
             ("STATUS", "state"): self._state,
-            ("PIN_STATE", "pe_in"): pe_in, ("PIN_STATE", "ld"): int(self.ld_now),
+            ("PIN_STATE", "ld"): int(self.ld_now),
             ("PIN_STATE", "le"): le, ("PIN_STATE", "clk"): clk, ("PIN_STATE", "dat"): dat,
-            ("PIN_STATE", "pe_out"): pe_out, ("PIN_STATE", "pe_t"): pe_t,
             ("PIN_STATE", "ce"): self._ce_pin(), ("PIN_STATE", "scl"): 1, ("PIN_STATE", "sda"): 1,
-            ("PIN_STATE", "i2c_pl"): int(self._engine_owns() and self._rw[("DET_CFG", "src")] == SRC_ADC),
-            ("ADC_STAT", "last"): self._adc_last, ("ADC_STAT", "err_nack"): int(self._adc_err),
-            ("ADC_STAT", "busy"): 0, ("ADC_STAT", "count"): self._adc_count & 0xFF,
+            ("PIN_STATE", "i2c_pl"): int(self._engine_owns()),
+            ("ATT_STAT", "levels"): self._pe_engine, ("ATT_STAT", "byte"): self._att_last_byte,
+            ("ATT_STAT", "err_nack"): int(self._att_err), ("ATT_STAT", "busy"): 0,
+            ("ATT_STAT", "count"): self._att_count & 0xFF,
             ("FIRST_ERR_INDEX", "index"): self._first_err_index,
             ("POINT_COUNT", "count"): self._point_count,
             ("SWEEP_COUNT", "count"): self._sweep_count,
@@ -309,7 +309,7 @@ class PlModel:
         if self._busy:
             return
         self._done = self._err_lock = self._aborted = self._err_table = False
-        self._adc_err = False
+        self._att_err = False
         self._point_count = 0
         self._first_err_index = 0
         n = self._rw[("N_ENTRIES", "n")]
@@ -417,6 +417,8 @@ class PlModel:
                                             self._rw[("IF_CIC", "shift")], self._rw[("IF_CIC", "skip")], n_avg,
                                             self._stream_ovr)
             return total
+        if src == 3:
+            src = SRC_EXT                               # 3 = 2 since map 2.0
         if src == SRC_EXT and self._stream() is not None:
             stream = self._stream()                     # video path: negative samples count as 0
             return sum(max(0, stream[k % len(stream)]) for k in range(n_avg))
@@ -425,8 +427,6 @@ class PlModel:
             return n_avg * ((base + (index & 0xFF)) & 0xFFFF)
         if src == SRC_EXT and self.ext_samples is not None:
             return sum(self.ext_samples(index) & 0xFFFF for _ in range(n_avg))
-        if src == SRC_ADC:
-            return sum(self._adc_sample(index) for _ in range(n_avg))
         self._samples = []
         self._samples_needed = n_avg
         while src == SRC_EXT or len(self._samples) < n_avg:
@@ -448,16 +448,6 @@ class PlModel:
         self._stream_ovr = False
         return self.ext_stream
 
-    def _adc_sample(self, index: int) -> int:
-        """One sample of the ADS1115 reader: negative codes count as 0; no answer = 0 and ADC_STAT.err_nack."""
-        raw = self.adc_code(index) if self.adc_code is not None else None
-        if raw is None:
-            self._adc_err = True
-            return 0
-        self._adc_last = raw & 0xFFFF
-        self._adc_count += 1
-        return max(0, min(0x7FFF, raw))
-
     def _ce_pin(self) -> int:
         if self._engine_owns():
             return self._rw[("ADF_PINS", "ce")]
@@ -471,25 +461,36 @@ class PlModel:
         if len(self._samples) >= self._samples_needed:
             self._advance()
 
-    # ---- PE4302 and pin owner -------------------------------------------------------------------------------
+    # ---- PE4302 through the PCF8574, and pin owner ----------------------------------------------------------
     def _engine_owns(self) -> bool:
         return bool(self._pin_owner_act)
-
-    def _pe_pins(self):
-        """(levels driven, tri-state mask) after the pin mux."""
-        if self._engine_owns():
-            return self._pe_engine, 0
-        return self.emio_pe_o & 0x3F, self.emio_pe_t & 0x3F
 
     def _make_state(self, old: int, new: int) -> int:
         return (old | new) if self._rw[("PE4302", "active_high")] else (old & new)
 
+    def port_byte(self, levels: int) -> int:
+        """PCF8574 port byte of V1..V6 levels: P0..P2 = V1..V3, P3 = ATT_I2C.p3, P4..P6 = V4..V6, P7 = ATT_I2C.p7."""
+        p3, p7 = self._rw[("ATT_I2C", "p3")], self._rw[("ATT_I2C", "p7")]
+        return (p7 << 7) | ((levels >> 3 & 7) << 4) | (p3 << 3) | (levels & 7)
+
+    def _send(self, states: List[int]) -> None:
+        """One PCF8574 transaction with one byte per state. Without an answer at ATT_I2C.addr: ATT_STAT.err_nack,
+        nothing reaches the port; ATT_STAT.levels follows anyway (as in the RTL)."""
+        self.pe_trace.extend(states)
+        acked = self.pcf_address is not None and self.pcf_address == self._rw[("ATT_I2C", "addr")]
+        if acked:
+            self.att_bytes.append(tuple(self.port_byte(s) for s in states))
+        else:
+            self._att_err = True
+        self._pe_engine = states[-1]
+        self._att_last_byte = self.port_byte(states[-1])
+        self._att_count += 1
+
     def _change_pe(self, new: int) -> None:
-        """Make-before-break: the make state, then the new state (both appear in the trace)."""
+        """Make-before-break: the make state, then the new state, in one transaction; one byte when they agree."""
         new &= 0x3F
-        self.pe_trace.append(self._make_state(self._pe_engine, new))
-        self.pe_trace.append(new)
-        self._pe_engine = new
+        make = self._make_state(self._pe_engine, new)
+        self._send([make, new] if make != new else [new])
 
     def _write_pe4302(self, value: int) -> None:
         f = REGS["PE4302"].fields
@@ -500,7 +501,7 @@ class PlModel:
             self._change_pe(manual)
 
     def _update_owner(self) -> None:
-        """pin_owner_act follows CTRL.pin_owner while idle; taking the pins loads PE4302.manual directly."""
+        """pin_owner_act follows CTRL.pin_owner while idle; taking the pins sends PE4302.manual as one byte."""
         if self._busy:
             return
         wanted = self._rw[("CTRL", "pin_owner")]
@@ -508,5 +509,4 @@ class PlModel:
             return
         self._pin_owner_act = wanted
         if wanted:
-            self._pe_engine = self._rw[("PE4302", "manual")]
-            self.pe_trace.append(self._pe_engine)
+            self._send([self._rw[("PE4302", "manual")]])

@@ -41,11 +41,11 @@ EOS
 cat > "$OUT/sweepd.sh" <<'EOS'
 #!/bin/sh
 # sweepd on the EBAZ4205 with the PL sweep engine (registers through /dev/mem, run as root).
-#   ./sweepd.sh                 PL reads the ADS1115 itself ([platform] detector = "pl", the default)
+#   ./sweepd.sh                 PL engine with the test ramp as detector ([platform] detector = "test"; no ADS1115 since map 2.0)
 #   ./sweepd.sh -v              more log
 #   ./sweepd.sh --bench-only    wiring tests instead of sweeps: Linux owns the pins (session L's PS backend)
-# Other detector sources ("ps" = Linux reads the ADC and pushes, "test" = test generator): set
-# [platform] detector in config/default.toml. GUI on the PC: python -m sadiy.ui.sa_gui --host <ip> --connect
+# The PE4302 is written through the PCF8574 ([attenuator] pcf8574_address, default 0x27).
+# GUI on the PC: python -m sadiy.ui.sa_gui --host <ip> --connect
 cd "$(dirname "$0")"
 export PYTHONPATH="$PWD" SADIY_REGMAP_TOML="$PWD/regmap.toml"
 exec python3 -m sadiy.server.sweepd --platform ebaz --config "$PWD/config/default.toml" "$@"

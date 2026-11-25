@@ -16,7 +16,7 @@ Run it ON THE BOARD (as root, no sweepd running; ~/sadiy/selftest.sh does both c
 
 Exit code: 0 all checks passed | 1 a check failed | 2 the sweep core was not found / PL not ready.
 The table has `points` measure-only entries (no SPI word, lock wait skipped), so the ADF4351 is not touched.
-The PE4302 pins are handed to the engine for the run (it keeps the levels they show) and given back at the end.
+The pins and the I2C bus are handed to the engine for the run (the attenuator keeps the levels it was sent last) and given back at the end.
 """
 from __future__ import annotations
 
@@ -192,8 +192,8 @@ def run_selftest(offload: SweepOffload, *, n_points: int = DEFAULT_POINTS, n_avg
     uses `base`, which cannot tell fresh results from stale ones (the checks still run). `floor_s` is the shortest time
     a sweep can take (T_MIN_US + T_SETTLE_US + N_AVG us per point), `ceil_s` the longest that still passes.
     `sweep_count()`, `raw_results(n)` (the unmasked result words) and `first_err_index()` are optional register reads.
-    Pin neutrality: `pins_before` = (PE4302 levels read from the pads, CE level) taken before the engine owns the
-    pins, `pins_now()` = (PIN_STATE.pe_out, PIN_STATE.ce) while it does; they must be equal after every sweep."""
+    Pin neutrality: `pins_before` = (attenuator levels ATT_STAT.levels, CE level) taken before the sweeps,
+    `pins_now()` = the same while the engine sweeps; they must be equal after every sweep."""
     rep = report if report is not None else Report()
     try:
         offload.upload(ramp_table(n_points))
@@ -239,7 +239,7 @@ def run_selftest(offload: SweepOffload, *, n_points: int = DEFAULT_POINTS, n_avg
                           first_err_index=first_err_index() if first_err_index else None)
         if pins_before is not None and pins_now is not None:
             now = pins_now()
-            rep.check(f"{tag}: pins unchanged (PE4302 levels the engine drives, CE)", now == pins_before,
+            rep.check(f"{tag}: pins unchanged (attenuator levels the engine sent, CE)", now == pins_before,
                       f"before pe=0x{pins_before[0]:02X} ce={pins_before[1]}, now pe=0x{now[0]:02X} ce={now[1]}")
         if first is None:
             first = got
@@ -300,10 +300,10 @@ def run_on_core(off, *, points: int = DEFAULT_POINTS, runs: Sequence[tuple] = ((
                       fld("DET_CFG", "mode", cfg) == 0 and fld("DET_CFG", "src", cfg) == SRC_TEST
                       and fld("DET_CFG", "stream", cfg) == 0, f"DET_CFG = 0x{cfg:X}")
             rep.check("DET_TEST.base reads back", fld("DET_TEST", "base", rd("DET_TEST")) == base & 0xFFFF)
-            # pin neutral: the engine takes the PE4302 levels the pads show now (RegOffload.acquire_pins) and, set here,
-            # the CE level of the pad; `pins_now` proves after every sweep that it drives the same
+            # pin neutral: the ramp table has no attenuator entries, so the attenuator keeps the levels it has
+            # (ATT_STAT.levels) and, set here, CE the level of the pad; `pins_now` proves both after every sweep
             pin_state = rd("PIN_STATE")
-            before = (fld("PIN_STATE", "pe_in", pin_state), fld("PIN_STATE", "ce", pin_state))
+            before = (fld("ATT_STAT", "levels", rd("ATT_STAT")), fld("PIN_STATE", "ce", pin_state))
             if not fld("STATUS", "pin_owner_act", rd("STATUS")):     # an owning engine drives ADF_PINS.ce already: leave it
                 wr("ADF_PINS", regs["ADF_PINS"].fields["ce"].put(before[1]))
             tmin, tsettle = rd("T_MIN_US") & 0xFFFFF, rd("T_SETTLE_US") & 0xFFFFF
@@ -318,8 +318,7 @@ def run_on_core(off, *, points: int = DEFAULT_POINTS, runs: Sequence[tuple] = ((
                 return [rd("RESULT_DATA") for _ in range(n)]
 
             def pins_now() -> tuple:
-                st = rd("PIN_STATE")
-                return fld("PIN_STATE", "pe_out", st), fld("PIN_STATE", "ce", st)
+                return fld("ATT_STAT", "levels", rd("ATT_STAT")), fld("PIN_STATE", "ce", rd("PIN_STATE"))
 
             try:
                 run_selftest(off, n_points=points, n_avg=n_avg, base=base, sweeps=sweeps,

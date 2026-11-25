@@ -47,7 +47,7 @@ class Rig:
 
 def test_reset_values_and_version():
     rig = Rig()
-    assert rig.rd("VERSION") == 0x00010003
+    assert rig.rd("VERSION") == 0x00020000
     assert rig.rd("FE_CFG") == 0x0001_0200                     # div 2 = 50 MS/s, phase 1, everything else off
     assert rig.rd("FE_TIE") == 0x0000_0800
     assert rig.rd("FE_TG_INC") == TONE_INC

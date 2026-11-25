@@ -73,7 +73,7 @@ def test_reset_values():
         for f in reg.fields.values():
             if f.access in ("rw", "const"):
                 assert g.f(reg.name, f.name) == f.reset, (reg.name, f.name)
-    assert g.r("ID") == 0x53410001 and g.r("VERSION") == 0x00010003
+    assert g.r("ID") == 0x53410001 and g.r("VERSION") == 0x00020000
     assert g.r("PE4302") == 0x13F
     assert g.r("STATUS") == 0
     assert (g.r("N_AVG"), g.r("SPI_DIV"), g.r("T_ATT_GAP_CYC")) == (1, 5, 100)
@@ -251,7 +251,8 @@ def test_att_en_without_change_still_traces():
     g.m.pe_trace.clear()
     g.load([TableEntry(0, att=0x3F, att_en=True)])
     g.start()
-    assert g.m.pe_trace == [0x3F, 0x3F]
+    assert g.m.pe_trace == [0x3F]                             # one byte: nothing to make before
+    assert g.m.att_bytes[-1] == (0xFF,)
 
 
 def test_att_applied_before_the_spi_word():
@@ -514,13 +515,15 @@ def test_pin_owner_act_follows_request_only_while_idle():
     assert g.f("STATUS", "pin_owner_act") == 1
 
 
-def test_taking_ownership_loads_manual_without_make_before_break():
+def test_taking_ownership_sends_manual_as_one_byte():
     g = Rig()
     g.w("PE4302", 0x15 | 1 << 8)                              # PS owner: no engine action
-    assert g.m.pe_trace == []
+    assert g.m.pe_trace == [] and g.m.att_bytes == []
     g.own()
     assert g.m.pe_trace == [0x15]
-    assert g.f("PIN_STATE", "pe_out") == 0x15 and g.f("PIN_STATE", "pe_t") == 0
+    assert g.m.att_bytes == [(0b1010_1101,)]                  # V1 V3 V5 -> P0 P2 P5, P3 and P7 high
+    assert g.f("ATT_STAT", "levels") == 0x15 and g.f("ATT_STAT", "byte") == 0b1010_1101
+    assert g.f("ATT_STAT", "count") == 1 and g.f("PIN_STATE", "i2c_pl") == 1
 
 
 def test_manual_change_while_idle_and_owner_is_make_before_break():
@@ -552,7 +555,7 @@ def test_manual_write_without_ownership_or_while_busy_does_not_touch_pins():
     g2.start()
     before = list(g2.m.pe_trace)
     g2.w("PE4302", 0x02 | 1 << 8)
-    assert g2.m.pe_trace == before and g2.f("PIN_STATE", "pe_out") == 0x3F
+    assert g2.m.pe_trace == before and g2.f("ATT_STAT", "levels") == 0x3F
 
 
 def test_engine_value_resets_to_all_stages_in():
@@ -560,20 +563,60 @@ def test_engine_value_resets_to_all_stages_in():
     g.w("PE4302", 0x01 | 1 << 8)
     g.own()
     g.w("PE4302", 0x3F | 1 << 8)
-    assert g.f("PIN_STATE", "pe_out") == 0x3F
-    assert Rig().m._pe_engine == 0x3F
+    assert g.f("ATT_STAT", "levels") == 0x3F
+    assert Rig().m._pe_engine == 0x3F and Rig().f("ATT_STAT", "byte") == 0xFF
 
 
-def test_pin_state_shows_ps_pins_for_ps_owner_and_engine_pins_otherwise():
+def test_pin_state_and_the_i2c_bus_follow_the_owner():
     g = Rig()
-    g.m.emio_pe_o, g.m.emio_pe_t, g.m.pad_pe = 0x05, 0x30, 0x3F
-    assert g.f("PIN_STATE", "pe_out") == 0x05 and g.f("PIN_STATE", "pe_t") == 0x30
-    assert g.f("PIN_STATE", "pe_in") == 0x05 | 0x30
+    assert g.f("PIN_STATE", "i2c_pl") == 0
     g.m.ld_now = True
     assert g.f("PIN_STATE", "ld") == 1 and g.f("STATUS", "ld_now") == 1
     assert (g.f("PIN_STATE", "le"), g.f("PIN_STATE", "clk")) == (1, 0)
     g.own()
-    assert g.f("PIN_STATE", "pe_t") == 0 and g.f("PIN_STATE", "pe_in") == g.f("PIN_STATE", "pe_out") == 0x3F
+    assert g.f("PIN_STATE", "i2c_pl") == 1
+    g.w("CTRL", 0)
+    assert g.f("PIN_STATE", "i2c_pl") == 0
+
+
+def test_pcf8574_port_mapping_and_fixed_bits():
+    g = Rig()
+    g.own()
+    g.m.att_bytes.clear()
+    for v in range(6):                                        # V1..V6 -> P0, P1, P2, P4, P5, P6
+        g.w("PE4302", 1 << 8 | 0x3F)
+        g.w("PE4302", 1 << 8 | 1 << v)
+    finals = [t[-1] for t in g.m.att_bytes if t[-1] != 0xFF]
+    assert finals == [0x88 | p for p in (0x01, 0x02, 0x04, 0x10, 0x20, 0x40)]
+    g.w("ATT_I2C", 0x27)                                      # P3 (backlight) and P7 low
+    g.w("PE4302", 1 << 8 | 0x3F)
+    assert g.m.att_bytes[-1] == (0x77,)
+
+
+def test_pcf8574_decrease_is_one_transaction_with_make_and_final():
+    g = Rig()
+    g.own()
+    g.m.att_bytes.clear()
+    g.w("PE4302", 1 << 8 | 0b001001)                          # 0x3F -> 0x09: make 0x3F, then 0x09
+    assert g.m.att_bytes == [(0xFF, 0b1001_1001)]
+    g.w("PE4302", 1 << 8 | 0b001011)                          # only switched in: one byte
+    assert g.m.att_bytes[-1] == (0b1001_1011,)
+
+
+def test_pcf8574_missing_sets_err_nack_until_start():
+    g = Rig()
+    g.m.pcf_address = None
+    g.own()
+    assert g.f("ATT_STAT", "err_nack") == 1 and g.m.att_bytes == []
+    assert g.f("ATT_STAT", "levels") == 0x3F                  # the engine's state follows anyway (as the RTL)
+    g.m.pcf_address = 0x27
+    g.w("DET_CFG", 1)                                         # test generator: the sweep ends by itself
+    g.load([TableEntry(0, measure=True, skip_lock=True)])
+    g.start()
+    assert g.f("ATT_STAT", "err_nack") == 0
+    g.w("ATT_I2C", 0x326)                                     # wrong address
+    g.w("PE4302", 1 << 8 | 0x01)
+    assert g.f("ATT_STAT", "err_nack") == 1
 
 
 @pytest.mark.parametrize("active_high", [True, False])
@@ -607,5 +650,5 @@ def test_mbb_trace_equals_the_pe4302_driver_for_all_transitions(active_high):
             make = state if make is None else make
             g.m.pe_trace.clear()
             g.w("PE4302", ah | new)
-            expect = [] if new == old else [make, new]
+            expect = [] if new == old else [make, new] if make != new else [new]
             assert g.m.pe_trace == expect, (old, new)

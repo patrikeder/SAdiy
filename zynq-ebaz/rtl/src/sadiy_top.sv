@@ -31,8 +31,6 @@ module sadiy_top #(
   input  wire logic        emio_adf_clk,
   input  wire logic        emio_adf_dat,
   input  wire logic        emio_adf_le,
-  input  wire logic [5:0]  emio_pe_o,
-  input  wire logic [5:0]  emio_pe_t,
   input  wire logic        emio_ce_o,       // EMIO GPIO 6
   input  wire logic        emio_ce_t,
   input  wire logic        emio_scl_o,      // PS I2C0
@@ -46,13 +44,10 @@ module sadiy_top #(
   output      logic        adf4351_dat,
   output      logic        adf4351_le,
   input  wire logic        adf4351_ld,
-  output      logic [5:0]  pe4302_v_o,
-  output      logic [5:0]  pe4302_v_t,
-  input  wire logic [5:0]  pe4302_v_i,
   output      logic        adf4351_ce_o,
   output      logic        adf4351_ce_t,
   input  wire logic        adf4351_ce_i,
-  output      logic        i2c_scl_o,       // ADS1115 bus: PS I2C0 or the reader of the PL
+  output      logic        i2c_scl_o,       // PCF8574 bus: PS I2C0, or the engine while it owns the pins
   output      logic        i2c_scl_t,
   input  wire logic        i2c_scl_i,
   output      logic        i2c_sda_o,
@@ -93,17 +88,15 @@ module sadiy_top #(
 
   // ---- pins, synchronised inputs ----
   logic [1:0]  ld_sync;
-  logic [5:0]  pe_in_meta, pe_in_sync;
   logic        ld;
   logic [1:0]  ce_sync, scl_sync, sda_sync;
-  // ADS1115 reader
-  logic [15:0] adc_config, adc_last, adc_data;
-  logic [6:0]  adc_addr;
-  logic [11:0] adc_div;
-  logic [19:0] adc_t_conv_us;
-  logic        adc_err_nack, adc_busy, adc_valid, adc_scl_t, adc_sda_t, adc_run;
-  logic [7:0]  adc_count;
+  // PCF8574 attenuator
+  logic [6:0]  att_addr;
+  logic        att_p3, att_p7, att_err_nack, att_scl_t, att_sda_t;
+  logic [11:0] att_div;
+  logic [7:0]  att_byte, att_count;
   logic        adf_ce, i2c_pl;
+  logic        mbb_load, mbb_set, mbb_busy;
   // sample stream, generator, IF path
   logic        det_mode, det_stream;
   logic [15:0] gen_div;
@@ -131,8 +124,6 @@ module sadiy_top #(
 
   always_ff @(posedge clk) begin
     ld_sync    <= {ld_sync[0], adf4351_ld};
-    pe_in_meta <= pe4302_v_i;
-    pe_in_sync <= pe_in_meta;
     ce_sync    <= {ce_sync[0], adf4351_ce_i};
     scl_sync   <= {scl_sync[0], i2c_scl_i};
     sda_sync   <= {sda_sync[0], i2c_sda_i};
@@ -175,7 +166,6 @@ module sadiy_top #(
     .pe4302_manual          (pe_manual),
     .pe4302_active_high     (pe_active_high),
     .pe4302_wr              (pe4302_wr),
-    .pin_state_pe_in        (pe_in_sync),
     .pin_state_ld           (ld),
     .pin_state_le           (adf4351_le),
     .pin_state_clk          (adf4351_clk),
@@ -184,8 +174,6 @@ module sadiy_top #(
     .pin_state_scl          (scl_sync[1]),
     .pin_state_sda          (sda_sync[1]),
     .pin_state_i2c_pl       (i2c_pl),
-    .pin_state_pe_out       (pe4302_v_o),
-    .pin_state_pe_t         (pe4302_v_t),
     .det_cfg_src            (det_src),
     .det_cfg_mode           (det_mode),
     .det_cfg_stream         (det_stream),
@@ -213,14 +201,15 @@ module sadiy_top #(
     .caps_table_aw          (8'(TABLE_AW)),
     .caps_result_aw         (8'(RESULT_AW)),
     .caps_clk_mhz           (16'(CLK_PER_US)),
-    .adc_cfg_config         (adc_config),
-    .adc_cfg_addr           (adc_addr),
-    .adc_i2c_div_div        (adc_div),
-    .adc_t_conv_us_us       (adc_t_conv_us),
-    .adc_stat_last          (adc_last),
-    .adc_stat_err_nack      (adc_err_nack),
-    .adc_stat_busy          (adc_busy),
-    .adc_stat_count         (adc_count),
+    .att_i2c_addr           (att_addr),
+    .att_i2c_p3             (att_p3),
+    .att_i2c_p7             (att_p7),
+    .att_i2c_div_div        (att_div),
+    .att_stat_levels        (eng_pe),
+    .att_stat_byte          (att_byte),
+    .att_stat_err_nack      (att_err_nack),
+    .att_stat_busy          (mbb_busy),
+    .att_stat_count         (att_count),
     .adf_pins_ce            (adf_ce),
     .gen_cfg_div            (gen_div),
     .gen_cfg_len_m1         (gen_len_m1),
@@ -300,7 +289,6 @@ module sadiy_top #(
   // ---- sequencer and its helpers ----
   logic        spi_start, spi_busy;
   logic [31:0] spi_word;
-  logic        mbb_load, mbb_set, mbb_busy;
   logic [5:0]  mbb_value;
   logic        det_run, det_done;
   logic [27:0] det_sum;
@@ -363,16 +351,30 @@ module sadiy_top #(
     .le    (eng_le)
   );
 
-  pe4302_mbb u_mbb (
+  // PE4302 through the PCF8574 (spec section 9). The engine's I2C master owns the bus whenever the engine owns
+  // the pins; pin_owner_act changes only while the attenuator is idle, so a transaction is never cut.
+  pcf8574_att u_att (
     .clk, .resetn,
     .gap         (t_att_gap),
     .active_high (pe_active_high),
     .load        (mbb_load),
     .set         (mbb_set),
     .value       (mbb_value),
-    .pins        (eng_pe),
-    .busy        (mbb_busy)
+    .addr        (att_addr),
+    .p3          (att_p3),
+    .p7          (att_p7),
+    .div         (att_div),
+    .err_clear   (ctrl_start || ctrl_soft_reset),
+    .levels      (eng_pe),
+    .busy        (mbb_busy),
+    .err_nack    (att_err_nack),
+    .last_byte   (att_byte),
+    .count       (att_count),
+    .scl_t       (att_scl_t),
+    .sda_t       (att_sda_t),
+    .sda_i       (i2c_sda_i)
   );
+  assign i2c_pl = st_owner;
 
   // ---- sample stream (spec 8b): generator or ADC adapter port; video path or IF path (DET_CFG.mode) ----
   always_ff @(posedge clk) begin
@@ -457,54 +459,23 @@ module sadiy_top #(
     .push_data    (reg_wdata[15:0]),
     .ext_valid    (s_valid && det_run_d),           // not in the first clock: a restarted generator starts at sample 0
     .ext_data     (s_data[15] ? 16'd0 : 16'(s_data)),
-    .adc_valid    (adc_valid),
-    .adc_data     (adc_data),
     .sum          (vid_sum),
     .done         (vid_done)
-  );
-
-  // ---- ADS1115 reader (DET_CFG.src = 3) ----
-  // It runs only while the sampler wants samples; the I2C pins change hands only between samples.
-  assign adc_run = det_run && !det_done && (det_src == 2'd3) && i2c_pl;
-
-  always_ff @(posedge clk) begin
-    if (!resetn)        i2c_pl <= 1'b0;
-    else if (!adc_busy) i2c_pl <= st_owner && (det_src == 2'd3);
-  end
-
-  ads1115_reader #(.CLK_PER_US(CLK_PER_US)) u_adc (
-    .clk, .resetn,
-    .run       (adc_run),
-    .addr      (adc_addr),
-    .cfg       (adc_config),
-    .div       (adc_div),
-    .t_conv_us (adc_t_conv_us),
-    .err_clear (ctrl_start || ctrl_soft_reset),
-    .valid     (adc_valid),
-    .data      (adc_data),
-    .last_raw  (adc_last),
-    .err_nack  (adc_err_nack),
-    .count     (adc_count),
-    .busy      (adc_busy),
-    .scl_t     (adc_scl_t),
-    .sda_t     (adc_sda_t),
-    .sda_i     (i2c_sda_i)
   );
 
   pin_mux u_pins (
     .clk, .resetn,
     .owner        (st_owner),
-    .emio_adf_clk, .emio_adf_dat, .emio_adf_le, .emio_pe_o, .emio_pe_t,
+    .emio_adf_clk, .emio_adf_dat, .emio_adf_le,
     .emio_ce_o, .emio_ce_t, .emio_scl_o, .emio_scl_t, .emio_sda_o, .emio_sda_t, .emio_scl_i, .emio_sda_i,
     .eng_adf_clk  (eng_clk),
     .eng_adf_dat  (eng_dat),
     .eng_adf_le   (eng_le),
-    .eng_pe       (eng_pe),
     .eng_ce       (adf_ce),
     .i2c_pl       (i2c_pl),
-    .eng_scl_t    (adc_scl_t),
-    .eng_sda_t    (adc_sda_t),
-    .adf4351_clk, .adf4351_dat, .adf4351_le, .pe4302_v_o, .pe4302_v_t,
+    .eng_scl_t    (att_scl_t),
+    .eng_sda_t    (att_sda_t),
+    .adf4351_clk, .adf4351_dat, .adf4351_le,
     .adf4351_ce_o, .adf4351_ce_t, .i2c_scl_o, .i2c_scl_t, .i2c_sda_o, .i2c_sda_t, .i2c_scl_i, .i2c_sda_i
   );
 endmodule
