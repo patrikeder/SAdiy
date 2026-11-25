@@ -123,16 +123,25 @@ class SweepClient:
         out, self._logs = self._logs, []
         return out
 
-    def fetch_log(self, since: int = 0, timeout_ms: int = 500) -> Optional[Tuple[List[LogEntry], str, int]]:
-        """Ask the daemon for the records it kept after `since`: (entries, boot, last_seq), or None when
-        it does not answer (or is an older sweepd without the `log` command)."""
-        r = self.request({"cmd": "log", "since": int(since), "level": "debug"}, timeout_ms)
+    @staticmethod
+    def log_command(since: int = 0) -> dict:
+        return {"cmd": "log", "since": int(since), "level": "debug"}
+
+    @staticmethod
+    def parse_log_reply(r: Optional[dict]) -> Optional[Tuple[List[LogEntry], str, int]]:
+        """(entries, boot, last_seq) from a `log` reply, or None when there is no usable reply."""
         if not r or not r.get("ok"):
             return None
         try:
             return [LogEntry.from_dict(d) for d in r["entries"]], str(r.get("boot", "")), int(r["last_seq"])
         except (KeyError, TypeError, ValueError):
             return None
+
+    def fetch_log(self, since: int = 0, timeout_ms: int = 500) -> Optional[Tuple[List[LogEntry], str, int]]:
+        """Ask the daemon for the records it kept after `since`: (entries, boot, last_seq), or None when
+        it does not answer (or is an older sweepd without the `log` command). Blocks up to `timeout_ms`; the GUI
+        uses `log_command` with `request_async` instead, because a sweepd on the PL engine answers only between sweeps."""
+        return self.parse_log_reply(self.request(self.log_command(since), timeout_ms))
 
     def request_async(self, cmd: dict, timeout_ms: int) -> Optional[AsyncRequest]:
         """Start a command that may take long; None when not connected. Poll the returned object."""

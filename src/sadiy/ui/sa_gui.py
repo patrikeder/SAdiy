@@ -32,6 +32,7 @@ from .sim_runner import SimRunner
 from .sweep_client import SweepClient
 from .synth_tab import SynthTab
 
+LOG_FETCH_TIMEOUT_MS = 30000     # a sweepd on the PL engine answers between sweeps, 14 s apart at worst
 C_BG = "#000000"
 C_GRID = "#1f6f1f"
 C_TRACE_A = "#ffe600"
@@ -254,6 +255,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dev_log = log_core.LogBuffer()  # what sweepd said (and what the GUI noted), Advanced tab
         self.dev_log_level = log_core.DEFAULT_LEVEL
         self._log_fetch_tries = 0
+        self._log_silent = 0
+        self._log_req = None                # AsyncRequest of the log history fetch, polled by _fetch_dev_log
         self._bad_seen = 0
         self._build_noted = False           # sweepd's build is written to the device log once per connection
         self._last_note = None
@@ -844,15 +847,34 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if not self.dev_log.gap:
             self._show_log_entries(self.dev_log.add_live(live))
-        elif self.synced and self._tick % 10 == 0 and self._log_fetch_tries < 5:
-            got = self.client.fetch_log(self.dev_log.last_seq, 150)
-            if got is None:
-                self._log_fetch_tries += 1
-                if self._log_fetch_tries == 5:
-                    self._dev_note(logging.WARNING, "sweepd sent no log: it may be an older version without one")
-            else:
+        elif self.synced:
+            self._fetch_dev_log()
+
+    def _fetch_dev_log(self) -> None:
+        """Fetch the log history without blocking: sweepd answers commands only between sweeps, which takes seconds
+        with the PL engine, so the request has its own socket and a long timeout, and is polled from the GUI timer.
+        No answer is not "older sweepd": only a reply that says `log` is unknown is."""
+        req = self._log_req
+        if req is not None:
+            done, reply = req.poll()
+            if not done:
+                return
+            self._log_req = None
+            got = self.client.parse_log_reply(reply)
+            if got is not None:
                 self._log_fetch_tries = 0
+                self._log_silent = 0
                 self._show_log_entries(self.dev_log.add_fetched(*got))
+            elif reply is None:                   # timeout: sweepd is busy or gone; the link check reports a lost daemon
+                self._log_silent += 1
+                if self._log_silent == 3:
+                    self._dev_note(logging.WARNING, f"sweepd did not answer the log request for {3 * LOG_FETCH_TIMEOUT_MS // 1000} s")
+            else:                                 # answered, but not with a log: an older sweepd
+                self._log_fetch_tries += 1
+                if self._log_fetch_tries == 3:
+                    self._dev_note(logging.WARNING, "sweepd sent no log: it may be an older version without one")
+        elif self._tick % 10 == 0 and self._log_fetch_tries < 3:
+            self._log_req = self.client.request_async(self.client.log_command(self.dev_log.last_seq), LOG_FETCH_TIMEOUT_MS)
 
     def _save_dev_log(self) -> None:
         default = str(Path("captures") / time.strftime("devlog-%Y%m%d-%H%M%S.txt"))
@@ -1376,6 +1398,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_tries = 0
         self.dev_log.gap = True                 # fetch what sweepd said before we came
         self._log_fetch_tries = 0
+        self._log_silent = 0
+        if self._log_req is not None:
+            self._log_req.close()
+            self._log_req = None
         self._build_noted = False
         self._dev_note(logging.INFO, f"connecting to {self.host_edit.text().strip() or '127.0.0.1'}")
         self._try_sync()
@@ -1481,6 +1507,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pins.shutdown()
         if self.runner.running:
             self.runner.stop()
+        if self._log_req is not None:
+            self._log_req.close()
         self.client.disconnect()
         super().closeEvent(event)
 

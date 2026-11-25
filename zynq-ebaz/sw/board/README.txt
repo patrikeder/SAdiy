@@ -3,8 +3,9 @@ SAdiy on the EBAZ4205: where things are and what to run.   (this folder is ~/sad
 RUN (from ~/sadiy or by full path, the scripts find their own files; no PYTHONPATH needed):
   ./status.sh   what is on the board: software build, PL state, devices, running sweepd, other copies of the software
   ./fpga.sh     load the bitstream if the PL has none or the wrong one (--force: again)
-  ./bench.sh    bench mode (Pins / Synth tabs of the GUI): ADF4351, PE4302, ADS1115. No sweeping
+  ./bench.sh    bench mode (Pins / Synth tabs of the GUI): ADF4351, PE4302 (via PCF8574 on I2C). No sweeping
   ./sweep.sh    sweeping with the PL engine
+  ./bringup.sh  the PL bring-up stages (pl_bringup.py): ./bringup.sh fe | version | la | --help. Replaces the hand-copied bringup-pkg
   ./selftest.sh pass/fail test of the PL sweep path with the engine's test ramp (no RF). ./sweep.sh --test-ramp shows the ramp in the GUI
   ./sim.sh      simulated chain, no hardware
   ./stop.sh     stop sweepd
