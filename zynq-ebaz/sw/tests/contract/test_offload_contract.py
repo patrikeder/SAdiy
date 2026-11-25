@@ -220,7 +220,7 @@ def test_core_identity_is_checked():
         RegOffload(bad_id, plat.model.write)
 
     def bad_version(offset):
-        return 0x00020000 if offset == OFFSET["VERSION"] else real_read(offset)
+        return 0x00010003 if offset == OFFSET["VERSION"] else real_read(offset)
 
     with pytest.raises(RuntimeError, match="version"):
         RegOffload(bad_version, plat.model.write)

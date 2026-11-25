@@ -3,25 +3,27 @@
 
 Run ON THE EBAZ4205 after the bitstream is loaded (an AXI access to an unconfigured PL stalls the CPU):
 
-    python3 pl_bringup.py                      # automatic stages: ident regs gen push owner ctrl lock adc if
+    python3 pl_bringup.py                      # automatic stages: ident regs gen push owner ctrl lock att if fe
     python3 pl_bringup.py ident gen            # chosen stages only
-    python3 pl_bringup.py spi att              # stages for the logic analyzer (they ask before each capture)
+    python3 pl_bringup.py spi                  # stage for the logic analyzer (it asks before each capture)
     python3 pl_bringup.py --model              # same code against the PlModel on a PC (self test, no board)
 
 Stages
   ident  ID / VERSION / CAPS                                   (stops the run when the core is not ours)
   regs   read / write back of the configuration registers, TABLE_ADDR, RESULT_ADDR
   gen    sweep with the test generator (no RF): results = N_AVG * (DET_TEST + index), counters, timing
-  push   sweep fed by DET_PUSH (the path the ADS1115 uses), samples pushed while idle are dropped
-  owner  pin owner switching, refused starts (owner and start in one write, N_ENTRIES = 0, too many)
+  push   sweep fed by DET_PUSH (samples written by the PS), samples pushed while idle are dropped
+  owner  pin owner switching (SPI pins, CE, I2C bus), refused starts (owner and start in one write, N_ENTRIES = 0,
+         too many)
   ctrl   abort while waiting for samples, soft_reset, irq_ack, interrupt count
   lock   lock wait: timeout flags when LD is low, no flags when LD is high, stop_on_err
-  adc    ADS1115 reader of the PL (DET_CFG.src = 3): samples without software in the loop, I2C pin hand-over
+  att    PE4302 through the PCF8574 on I2C (register map 2.0): the engine takes the bus, the PCF8574 answers,
+         level changes make-before-break; logic analyzer hints for SCL / SDA. FAILs without a PCF8574 on the bus.
   if     IF fast path with the sample generator: a pattern with two tones is loaded, the NCO sweeps across it,
          every result word is compared with the Python reference (bit-exact) and the peaks are checked
+  fe     ADC front end (map 1.3): tie-off, traffic generator, the IF path behind it
   ce     (not in auto) ADF4351 CE pin through ADF_PINS.ce: drives CE low for a moment
   spi    (LA)  ADF4351 SPI frames at several SPI_DIV values: CLK, DAT, LE
-  att    (LA)  PE4302 make-before-break changes: V1..V6
 
 Safety: the SPI words of these tests have control bits 111, which is no ADF4351 register, so a connected
 ADF4351 should ignore them. Still unplug it or hold CE low for the first run. RF outputs are never enabled
@@ -50,10 +52,15 @@ DEFAULT_BASE = 0x43C00000
 ID_MAGIC = 0x53410001
 SRC_PUSH, SRC_TEST = 0, 1
 ALL_IN = 0x3F                                        # PE4302 levels V1..V6: every stage in (31.5 dB)
+MAP_MAJOR = 2                                        # register map 2.0: PCF8574 attenuator, no ADS1115 reader
 SAFE_WORDS = [0xA5A5A5A7, 0x5A5A5A5F, 0x00000007, 0xFFFFFFFF]   # control bits 111: no ADF4351 register
-AUTO = ["ident", "regs", "gen", "push", "owner", "ctrl", "lock", "adc", "if", "fe"]
-SRC_ADC = 3
-LA_STAGES = ["spi", "att"]
+AUTO = ["ident", "regs", "gen", "push", "owner", "ctrl", "lock", "att", "if", "fe"]
+LA_STAGES = ["spi"]
+
+
+def port_byte(levels: int, p3: int = 1, p7: int = 1) -> int:
+    """PCF8574 port byte of V1..V6: P0..P2 = V1..V3, P3 = backlight, P4..P6 = V4..V6, P7 spare."""
+    return (p7 << 7) | ((levels >> 3 & 7) << 4) | (p3 << 3) | (levels & 7)
 
 
 # ------------------------------------------------------------------------------------------------ helpers
@@ -134,7 +141,17 @@ class Ctx:
         return bool(self.r.status()["pin_owner_act"])
 
     def release_pins(self) -> None:
+        self.wait_att()
         self.r.ctrl(pin_owner=0)
+
+    def wait_att(self, timeout: float = 0.1) -> bool:
+        """Wait until the attenuator transaction (I2C to the PCF8574) is done."""
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < timeout:
+            if not self.r.get("ATT_STAT", "busy"):
+                return True
+            time.sleep(0.0005)
+        return False
 
     def upload(self, entries: Sequence[TableEntry]) -> bool:
         r = self.r
@@ -214,7 +231,8 @@ def stage_ident(c: Ctx) -> None:
         print("The core is not there (bitstream not loaded, wrong base address, or a stale one). Stopping.")
         raise SystemExit(2)
     c.core_ok = True
-    rep.check("VERSION major = 1", version >> 16 == 1, f"read 0x{version:08X}")
+    rep.check(f"VERSION major = {MAP_MAJOR}", version >> 16 == MAP_MAJOR, f"read 0x{version:08X}"
+              + ("" if version >> 16 == MAP_MAJOR else ": the bitstream and this script do not match"))
     caps = r.rd("CAPS")
     clk, raw, taw = r.get("CAPS", "clk_mhz"), r.get("CAPS", "result_aw"), r.get("CAPS", "table_aw")
     rep.info(f"CAPS = 0x{caps:08X}: clk {clk} MHz, table 2^{taw} = {1 << taw} entries, results 2^{raw} = {1 << raw}")
@@ -222,7 +240,7 @@ def stage_ident(c: Ctx) -> None:
     st = r.status()
     rep.info("STATUS = " + ", ".join(f"{k}={v}" for k, v in st.items()))
     rep.info(f"PE4302 reg = 0x{r.rd('PE4302'):08X} (active_high={r.get('PE4302', 'active_high')}), "
-             f"PIN_STATE = 0x{r.rd('PIN_STATE'):08X}")
+             f"ATT_I2C = 0x{r.rd('ATT_I2C'):08X}, ATT_STAT = 0x{r.rd('ATT_STAT'):08X}, PIN_STATE = 0x{r.rd('PIN_STATE'):08X}")
 
 
 def stage_regs(c: Ctx) -> None:
@@ -334,19 +352,19 @@ def stage_push(c: Ctx) -> None:
 def stage_owner(c: Ctx) -> None:
     r, rep = c.r, c.rep
     c.reset()
-    rep.la("capture pe4302_v[5:0], clk, dat, le during this stage: no glitch may appear at any owner change")
+    rep.la("capture clk, dat, le, i2c_scl, i2c_sda during this stage: no glitch may appear at any owner change")
     with Saved(r, ["N_ENTRIES"]):
         try:
             c.release_pins()
             rep.check("owner = PS: pin_owner_act = 0", r.status()["pin_owner_act"] == 0)
-            ps = r.rd("PIN_STATE")
-            rep.info(f"PS owns the pins: pe_t = 0x{r.get('PIN_STATE', 'pe_t'):02X} (0x3F = Linux has not driven them), "
-                     f"pe_in = 0x{r.get('PIN_STATE', 'pe_in'):02X}, le/clk/dat = "
-                     f"{r.get('PIN_STATE', 'le')}/{r.get('PIN_STATE', 'clk')}/{r.get('PIN_STATE', 'dat')}")
-            _ = ps
+            rep.info(f"PS owns the pins: le/clk/dat = {r.get('PIN_STATE', 'le')}/{r.get('PIN_STATE', 'clk')}/"
+                     f"{r.get('PIN_STATE', 'dat')}, i2c_pl = {r.get('PIN_STATE', 'i2c_pl')}")
+            rep.check("PS has the I2C bus (i2c_pl = 0)", r.get("PIN_STATE", "i2c_pl") == 0)
             rep.check("owner = engine: pin_owner_act = 1", c.take_pins())
-            rep.check("engine pins at ALL IN (31.5 dB)", r.get("PIN_STATE", "pe_out") == ALL_IN,
-                      f"pe_out = 0x{r.get('PIN_STATE', 'pe_out'):02X}")
+            rep.check("engine has the I2C bus (i2c_pl = 1)", r.get("PIN_STATE", "i2c_pl") == 1)
+            c.wait_att()
+            rep.check("attenuator at ALL IN (31.5 dB) after the take", r.get("ATT_STAT", "levels") == ALL_IN,
+                      f"ATT_STAT.levels = 0x{r.get('ATT_STAT', 'levels'):02X}")
             rep.check("engine drives LE high, CLK low when idle", (r.get("PIN_STATE", "le"), r.get("PIN_STATE", "clk")) == (1, 0),
                       f"le={r.get('PIN_STATE', 'le')} clk={r.get('PIN_STATE', 'clk')}")
             c.release_pins()
@@ -478,70 +496,13 @@ def stage_lock(c: Ctx) -> None:
             c.reset()
 
 
-def stage_adc(c: Ctx) -> None:
-    r, rep = c.r, c.rep
-    if r.rd("VERSION") & 0xFFFF < 1 or "ADC_CFG" not in REGS:
-        rep.skip("this bitstream has no ADS1115 reader (register map 1.0)")
-        return
-    n_avg, n_pts = 4, 2
-    c.reset()
-    with Saved(r, ["N_AVG", "DET_CFG", "T_MIN_US", "T_SETTLE_US"]):
-        try:
-            cfgw, addr = r.get("ADC_CFG", "config"), r.get("ADC_CFG", "addr")
-            div, t_conv = max(4, r.rd("ADC_I2C_DIV")), r.rd("ADC_T_CONV_US")
-            rep.info(f"ADC_CFG: config 0x{cfgw:04X}, address 0x{addr:02X}; I2C {100e3 / (4 * div):.0f} kHz; "
-                     f"conversion wait {t_conv} us")
-            rep.check("config word is single shot with OS set", bool(cfgw & 0x8000 and cfgw & 0x0100), f"0x{cfgw:04X}")
-            rep.check("PS owns the I2C pins before (PIN_STATE.i2c_pl = 0)", r.get("PIN_STATE", "i2c_pl") == 0)
-            rep.check("bus idle: SCL and SDA high", (r.get("PIN_STATE", "scl"), r.get("PIN_STATE", "sda")) == (1, 1),
-                      f"scl={r.get('PIN_STATE', 'scl')} sda={r.get('PIN_STATE', 'sda')} (pull-ups? ADC powered?)")
-            r.put("DET_CFG", "src", SRC_ADC)
-            if not rep.check("engine takes the pins", c.take_pins()):
-                return
-            rep.check("the reader owns the I2C pins now (PIN_STATE.i2c_pl = 1)", r.get("PIN_STATE", "i2c_pl") == 1)
-            r.wr("N_AVG", n_avg)
-            r.wr("T_MIN_US", 10)
-            r.wr("T_SETTLE_US", 10)
-            count0 = r.get("ADC_STAT", "count")
-            rep.la(f"i2c_scl / i2c_sda: per sample S {addr:02X}+W 01 {cfgw >> 8:02X} {cfgw & 0xFF:02X} P, {t_conv} us, "
-                   f"S {addr:02X}+W 00 P, S {addr:02X}+R hi lo P")
-            ok, dt = c.sweep([TableEntry(word=0, measure=True, skip_lock=True)] * n_pts, timeout=10.0)
-            if not rep.check(f"{n_pts} points x {n_avg} samples taken by the PL", ok):
-                r.ctrl(abort=1)
-                return
-            nack = r.get("ADC_STAT", "err_nack")
-            rep.check("the ADS1115 acknowledged (no err_nack)", nack == 0,
-                      "no answer: check SDA / SCL wiring, the address pin, 3.3 V supply and pull-ups" if nack else "")
-            got = c.results(n_pts)
-            done = (r.get("ADC_STAT", "count") - count0) & 0xFF
-            rep.check(f"{n_pts * n_avg} conversions read", done == n_pts * n_avg or bool(nack), f"{done}")
-            last = r.get("ADC_STAT", "last")
-            signed = last - 0x10000 if last & 0x8000 else last
-            fs = {0: 6.144, 1: 4.096, 2: 2.048, 3: 1.024, 4: 0.512, 5: 0.256}.get((cfgw >> 9) & 7, 0.256)
-            for i, w in enumerate(got):
-                mean = (w & 0x0FFFFFFF) / n_avg
-                rep.info(f"point {i}: sum {w & 0x0FFFFFFF}, mean code {mean:.1f} = {mean * fs / 32768:.4f} V at the ADC pin")
-            rep.info(f"last conversion register 0x{last:04X} = {signed} = {signed * fs / 32768:.4f} V")
-            if not nack:
-                rep.check("codes are in range (0 .. 32767 per sample)", all((w & 0x0FFFFFFF) <= n_avg * 32767 for w in got))
-                spread = max(got) - min(got)
-                rep.info(f"difference between the two points: {spread / n_avg:.1f} codes")
-            if c.real:
-                rep.info(f"{dt / (n_pts * n_avg) * 1e3:.2f} ms per sample incl. Python polling "
-                         f"(wait {t_conv} us + about {90 * 4 * div / 100:.0f} us on the bus)")
-        finally:
-            c.release_pins()
-            c.reset()
-    rep.check("I2C pins back with the PS (PIN_STATE.i2c_pl = 0)", r.get("PIN_STATE", "i2c_pl") == 0)
-
-
 def stage_if(c: Ctx) -> None:
     import math
 
     from sadiy_ebaz import ifpath
 
     r, rep = c.r, c.rep
-    if r.rd("VERSION") & 0xFFFF < 2 or "IF_CIC" not in REGS:
+    if r.rd("VERSION") < 0x00010002 or "IF_CIC" not in REGS:
         rep.skip("this bitstream has no IF path (register map before 1.2)")
         return
     n, tones, div = 1024, ((100, 16000.0), (260, 1600.0)), max(1, c.args.gen_div)
@@ -614,7 +575,7 @@ def stage_fe(c: Ctx) -> None:
     from sadiy_ebaz import ifpath
 
     r, rep = c.r, c.rep
-    if r.rd("VERSION") & 0xFFFF < 3 or "FE_CFG" not in REGS:
+    if r.rd("VERSION") < 0x00010003 or "FE_CFG" not in REGS:
         rep.skip("this bitstream has no ADC front end (register map before 1.3)")
         return
     fe = REGS["FE_CFG"].fields
@@ -734,7 +695,7 @@ def stage_fe(c: Ctx) -> None:
 
 def stage_ce(c: Ctx) -> None:
     r, rep = c.r, c.rep
-    if "ADF_PINS" not in REGS or r.rd("VERSION") & 0xFFFF < 1:
+    if "ADF_PINS" not in REGS or r.rd("VERSION") < 0x00010001:
         rep.skip("this bitstream has no ADF_PINS register (register map 1.0)")
         return
     c.reset()
@@ -787,36 +748,58 @@ def stage_spi(c: Ctx) -> None:
 
 
 def stage_att(c: Ctx) -> None:
+    """PE4302 through the PCF8574 (register map 2.0)."""
     r, rep = c.r, c.rep
+    if r.rd("VERSION") >> 16 < 2 or "ATT_I2C" not in REGS:
+        rep.skip("this bitstream drives the PE4302 pins directly (register map 1.x): no PCF8574")
+        return
     levels = [int(x, 0) for x in c.args.att_levels.split(",")]
     c.reset()
-    with Saved(r, ["T_ATT_GAP_CYC"]):
-        try:
-            if not rep.check("engine takes the pins", c.take_pins()):
-                return
-            gap = r.rd("T_ATT_GAP_CYC")
-            active_high = r.get("PE4302", "active_high")
-            rep.info(f"PE4302.active_high = {active_high}, T_ATT_GAP_CYC = {gap} ({gap * 10} ns per hold)")
-            cur = ALL_IN
-            for new in levels + [ALL_IN]:
-                make = (cur | new) if active_high else (cur & new)
-                c.pause(f"change V1..V6 0x{cur:02X} -> 0x{new:02X}: arm the LA on pe4302_v[5:0]")
-                ok, _ = c.sweep([TableEntry(word=0, att=new, att_en=True)])
-                pe_out, pe_in = r.get("PIN_STATE", "pe_out"), r.get("PIN_STATE", "pe_in")
-                rep.check(f"0x{cur:02X} -> 0x{new:02X}: finished, pins at the new level", ok and pe_out == new,
-                          f"pe_out = 0x{pe_out:02X}")
-                rep.check(f"0x{cur:02X} -> 0x{new:02X}: pad read-back equals the driven level", pe_in == new,
-                          f"pe_in = 0x{pe_in:02X}")
-                rep.la(f"0x{cur:02X} -> make state 0x{make:02X} for {gap * 10} ns -> 0x{new:02X}, then {gap * 10} ns "
-                       "before the entry ends; attenuation never below the lower of old and new")
-                cur = new
-        finally:
-            c.release_pins()
-            c.reset()
+    try:
+        addr, p3, p7 = r.get("ATT_I2C", "addr"), r.get("ATT_I2C", "p3"), r.get("ATT_I2C", "p7")
+        div = max(4, r.get("ATT_I2C_DIV", "div"))
+        active_high = r.get("PE4302", "active_high")
+        pb = lambda v: port_byte(v, p3, p7)  # noqa: E731
+        rep.info(f"PCF8574 at 0x{addr:02X}, P3 (backlight) = {p3}, P7 = {p7}, I2C {100e3 / (4 * div):.0f} kHz; "
+                 f"P0..P2 = V1..V3, P4..P6 = V4..V6; active_high = {active_high}")
+        rep.check("PS has the I2C bus before (i2c_pl = 0)", r.get("PIN_STATE", "i2c_pl") == 0)
+        rep.check("bus idle: SCL and SDA high", (r.get("PIN_STATE", "scl"), r.get("PIN_STATE", "sda")) == (1, 1),
+                  f"scl={r.get('PIN_STATE', 'scl')} sda={r.get('PIN_STATE', 'sda')} (pull-ups? PCF8574 powered from 3.3 V?)")
+        count0 = r.get("ATT_STAT", "count")
+        rep.la(f"i2c_scl / i2c_sda: taking the pins sends S {addr << 1:02X} {pb(ALL_IN):02X} P")
+        if not rep.check("engine takes the pins and the bus", c.take_pins()):
+            return
+        rep.check("attenuator transaction finished", c.wait_att())
+        rep.check("the engine has the I2C bus (i2c_pl = 1)", r.get("PIN_STATE", "i2c_pl") == 1)
+        rep.check("taking the pins sent one transaction", (r.get("ATT_STAT", "count") - count0) & 0xFF == 1,
+                  f"ATT_STAT.count {count0} -> {r.get('ATT_STAT', 'count')}")
+        nack = r.get("ATT_STAT", "err_nack")
+        rep.check(f"the PCF8574 answers at 0x{addr:02X} (no err_nack)", nack == 0,
+                  "no answer: SDA / SCL wiring, supply (3.3 V), A0..A2 (address; a PCF8574A is 0x38..0x3F), pull-ups"
+                  if nack else "")
+        cur = ALL_IN
+        for new in levels + [ALL_IN]:
+            make = (cur | new) if active_high else (cur & new)
+            ok, _ = c.sweep([TableEntry(word=0, att=new, att_en=True)])
+            c.wait_att()
+            lv, byte, nack = r.get("ATT_STAT", "levels"), r.get("ATT_STAT", "byte"), r.get("ATT_STAT", "err_nack")
+            rep.check(f"0x{cur:02X} -> 0x{new:02X}: done, ATT_STAT.levels = 0x{new:02X}, byte 0x{pb(new):02X}, ACK",
+                      ok and lv == new and byte == pb(new) and not nack,
+                      f"levels 0x{lv:02X}, byte 0x{byte:02X}, err_nack {nack}")
+            if make != new:
+                rep.la(f"0x{cur:02X} -> 0x{new:02X}: S {addr << 1:02X} {pb(make):02X} {pb(new):02X} P "
+                       "(make state held one byte, attenuation never below the lower of old and new)")
+            else:
+                rep.la(f"0x{cur:02X} -> 0x{new:02X}: S {addr << 1:02X} {pb(new):02X} P (stages only switched in)")
+            cur = new
+    finally:
+        c.release_pins()
+        c.reset()
+    rep.check("I2C bus back with the PS (i2c_pl = 0)", r.get("PIN_STATE", "i2c_pl") == 0)
 
 
 STAGES = {"ident": stage_ident, "regs": stage_regs, "gen": stage_gen, "push": stage_push, "owner": stage_owner,
-          "ctrl": stage_ctrl, "lock": stage_lock, "adc": stage_adc, "if": stage_if, "fe": stage_fe, "ce": stage_ce,
+          "ctrl": stage_ctrl, "lock": stage_lock, "if": stage_if, "fe": stage_fe, "ce": stage_ce,
           "spi": stage_spi,
           "att": stage_att}
 
@@ -872,7 +855,6 @@ def run(argv: Optional[Sequence[str]] = None, model=None) -> int:
         from sadiy_ebaz.ebaz_pl_model import PlModel
         model = PlModel()
         model.lock_model = lambda idx, word, m=model: bool(m.ld_now)
-        model.adc_code = lambda idx: 8000 + idx
     if model is not None:
         regs = Regs(model.read, model.write)
         close = lambda: None  # noqa: E731

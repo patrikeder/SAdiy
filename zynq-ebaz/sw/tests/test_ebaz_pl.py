@@ -13,11 +13,11 @@ from sadiy.server.sweepd import Sweepd
 VPC = 4.096 / 32768.0
 
 
-def model(code=8000, locked=True):
+def model(locked=True, pcf=0x27):
     m = PlModel()
     m.ld_now = locked
     m.lock_model = lambda i, w: locked
-    m.adc_code = (lambda i: code) if code is not None else None
+    m.pcf_address = pcf
     return m
 
 
@@ -29,30 +29,77 @@ def points(n=8):
     return build_sweep(50e6, 450e6, n, 10.7e6, "high", 25e6)
 
 
-def test_pl_adc_configuration_and_pin_takeover():
+def test_pcf8574_configuration_and_pin_takeover():
     m = model()
-    plat = platform(m, sps=860)
-    cfgw = m.read(REGS["ADC_CFG"].offset)
-    assert cfgw & 0xFFFF == 0xC3E3 and (cfgw >> 16) & 0x7F == 0x48      # AIN0, 4.096 V, single shot, 860 SPS
-    assert m.read(REGS["ADC_T_CONV_US"].offset) == int(1.1e6 / 860) + 150
-    assert REGS["DET_CFG"].fields["src"].get(m.read(REGS["DET_CFG"].offset)) == 3
+    plat = platform(m, pcf8574_address=0x27, backlight=1)
+    assert m.read(REGS["ATT_I2C"].offset) == 0x327                      # address 0x27, P3 (backlight) and P7 high
+    assert REGS["DET_CFG"].fields["src"].get(m.read(REGS["DET_CFG"].offset)) == 1      # test generator
     st = plat.offload().status()
     assert st["pin_owner_act"] == 1
+    assert m.att_bytes == [(0xFF,)]                                     # taken at 31.5 dB: one byte, all ports high
     pins = m.read(REGS["PIN_STATE"].offset)
-    assert REGS["PIN_STATE"].fields["pe_out"].get(pins) == 0x3F          # taken at the pull-up level: 31.5 dB
     assert REGS["PIN_STATE"].fields["ce"].get(pins) == 1 and REGS["PIN_STATE"].fields["i2c_pl"].get(pins) == 1
+    m2 = model()
+    platform(m2, pcf8574_address=0x3F, backlight=0)
+    assert m2.read(REGS["ATT_I2C"].offset) == 0x23F
+
+
+def test_missing_pcf8574_is_logged_not_fatal(caplog):
+    m = model(pcf=None)
+    platform(m)
+    assert "PCF8574 attenuator does not answer at I2C address 0x27" in caplog.text
+
+
+class SlowAtt:
+    """ATT_STAT as on the board: after a transaction starts, `busy` for some reads and err_nack only at its end
+    (the model finishes at once)."""
+
+    def __init__(self, m, busy_reads=5):
+        self.m, self.busy_reads, self.left = m, busy_reads, busy_reads
+
+    def read(self, offset):
+        v = self.m.read(offset)
+        if offset == REGS["ATT_STAT"].offset and self.left:
+            self.left -= 1
+            f = REGS["ATT_STAT"].fields
+            return (v & ~f["err_nack"].mask) | f["busy"].mask
+        return v
+
+
+def test_missing_pcf8574_is_reported_after_the_transaction_finished(caplog):
+    m = model(pcf=None)
+    slow = SlowAtt(m)
+    EbazPlPlatform(slow.read, m.write, poll_s=0.0)
+    assert slow.left == 0
+    assert "PCF8574 attenuator does not answer" in caplog.text
+
+
+def test_nack_during_a_sweep_is_logged_once(caplog):
+    m = model()
+    plat = platform(m)
+    engine = engine_on(plat, config.load(), sleep=lambda s: None)
+    engine.run(points(), 0.0)
+    assert "did not acknowledge" not in caplog.text
+    m.pcf_address = None                                               # PCF8574 unplugged between two sweeps
+    engine.run(points(), 10.0)
+    engine.run(points(), 20.0)
+    assert caplog.text.count("did not acknowledge during the sweep") == 1
 
 
 def test_detector_read_spi_words_and_attenuator_lines():
-    m = model(code=12345)
-    plat = platform(m)
-    assert plat.detector().read_volts(4) == pytest.approx(12345 * VPC)
+    m = model()
+    plat = platform(m, det_test_base=1234)
+    assert plat.detector().read_volts(4) == pytest.approx(1234 * VPC)
     plat.synth_link().xfer(bytes.fromhex("00580005" "008C803C"))
     assert m.spi_words[-2:] == [0x00580005, 0x008C803C]
     lines = plat.atten_port()
-    lines[5].write(0)
-    assert REGS["PIN_STATE"].fields["pe_out"].get(m.read(REGS["PIN_STATE"].offset)) == 0x1F
+    lines[5].write(0)                                                   # V6 out: 0x3F -> 0x1F
+    assert REGS["ATT_STAT"].fields["levels"].get(m.read(REGS["ATT_STAT"].offset)) == 0x1F
+    assert m.att_bytes[-1] == (0xFF, 0b1011_1111)                       # make (all in), then P6 low
     assert lines[5].read() == 0 and lines[0].read() == 1
+    lines[0].write(0)
+    lines[1].write(0)                                                   # each change starts from the last one
+    assert REGS["ATT_STAT"].fields["levels"].get(m.read(REGS["ATT_STAT"].offset)) == 0x1C
     assert plat.lock_detect()() is True
 
 
@@ -72,16 +119,16 @@ def test_outputs_are_enabled_only_after_the_first_lock():
     assert not any(r4_enables_output(w) for w in m2.spi_words if register_of(w) == 4)
 
 
-def test_sweep_through_the_pl_adc_and_table_reupload_after_single_actions():
+def test_sweep_and_table_reupload_after_single_actions():
     cfg = config.load()
-    m = model(code=9000)
+    m = model()
     plat = platform(m)
     engine = engine_on(plat, cfg, sleep=lambda s: None)
     pts = points()
     p1 = engine.run(pts, 10.0)
     assert len(p1) == len(pts) and np.all(np.isfinite(p1))
     assert m.read(REGS["POINT_COUNT"].offset) == len(pts)
-    assert REGS["PIN_STATE"].fields["pe_out"].get(m.read(REGS["PIN_STATE"].offset)) == engine.offload.code_for(10.0)
+    assert REGS["ATT_STAT"].fields["levels"].get(m.read(REGS["ATT_STAT"].offset)) == engine.offload.code_for(10.0)
     uploads = engine.offload.uploads
     engine.run(pts, 10.0)
     assert engine.offload.uploads == uploads                 # unchanged table is not sent again
@@ -91,40 +138,27 @@ def test_sweep_through_the_pl_adc_and_table_reupload_after_single_actions():
     assert m.read(REGS["T_SETTLE_US"].offset) == round(cfg["sweep"]["settle_s"] * 1e6)
 
 
-def test_missing_adc_is_an_error_not_a_silent_zero():
-    m = model(code=None)
-    plat = platform(m)
-    with pytest.raises(RuntimeError, match="ADS1115"):
-        plat.detector().read_volts(1)
-
-
-def test_ps_push_and_test_generator_sources():
-    m = model()
-    plat = platform(m, detector="ps", ps_sample_source=lambda: 4321)
-    assert plat.detector().read_volts(3) == pytest.approx(4321 * VPC)
-    assert REGS["PIN_STATE"].fields["i2c_pl"].get(m.read(REGS["PIN_STATE"].offset)) == 0   # the PS keeps the bus
-    m2 = model()
-    plat2 = platform(m2, detector="test", det_test_base=500)
-    assert plat2.detector().read_volts(2) == pytest.approx(500 * VPC)
-    with pytest.raises(ValueError):
-        platform(model(), detector="ps")
+def test_removed_and_unknown_detector_sources_are_refused():
+    for old in ("pl", "ps"):
+        with pytest.raises(ValueError, match="ADS1115 was removed"):
+            platform(model(), detector=old)
     with pytest.raises(ValueError):
         platform(model(), detector="nonsense")
 
 
-def test_old_bitstream_is_refused_for_the_pl_adc():
+def test_bitstream_of_map_1_is_refused():
     class Old(PlModel):
         def read(self, offset):
-            return 0x00010000 if offset == REGS["VERSION"].offset else super().read(offset)
+            return 0x00010003 if offset == REGS["VERSION"].offset else super().read(offset)
 
-    with pytest.raises(RuntimeError, match="register map 1.0"):
+    with pytest.raises(RuntimeError, match="register map version 1.3"):
         platform(Old())
 
 
 def test_sweepd_runs_sweeps_on_the_platform():
     cfg = config.load()
     cfg["platform"] = {"name": "ebaz"}
-    m = model(code=9000)
+    m = model()
     engine = engine_on(platform(m), cfg, sleep=lambda s: None)
     d = Sweepd(cfg, engine, None)
     assert d.apply({"cmd": "status"})["platform"] == "ebaz"

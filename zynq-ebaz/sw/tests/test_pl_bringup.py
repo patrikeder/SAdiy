@@ -27,7 +27,6 @@ def locking_model(ld: bool) -> PlModel:
     m = PlModel()
     m.ld_now = ld
     m.lock_model = lambda idx, word: ld
-    m.adc_code = lambda idx: 9000 + idx
     return m
 
 
@@ -79,20 +78,29 @@ def test_unknown_stage_is_refused():
     assert pl_bringup.run(["nonsense"], model=PlModel()) == 2
 
 
-def test_missing_adc_is_reported(capsys):
+def test_missing_pcf8574_is_reported(capsys):
     m = locking_model(False)
-    m.adc_code = None
-    assert run(m, "adc") == 1
-    assert "FAIL  the ADS1115 acknowledged" in capsys.readouterr().out
+    m.pcf_address = None
+    assert run(m, "att") == 1
+    assert "FAIL  the PCF8574 answers at 0x27" in capsys.readouterr().out
 
 
-def test_old_bitstream_skips_the_adc_stage(capsys):
+def test_pcf8574_at_another_address_is_reported(capsys):
+    m = locking_model(False)
+    m.pcf_address = 0x3F                                       # a PCF8574A board
+    assert run(m, "att") == 1
+    assert "PCF8574A is 0x38..0x3F" in capsys.readouterr().out
+
+
+def test_old_bitstream_is_reported_and_skips_the_new_stages(capsys):
     class Old(PlModel):
         def read(self, offset):
             return 0x00010000 if offset == REGS["VERSION"].offset else super().read(offset)
 
-    assert run(Old(), "adc", "ce", "if") == 0
-    assert capsys.readouterr().out.count("SKIP") == 3
+    assert run(Old(), "att", "ce", "if") == 1
+    out = capsys.readouterr().out
+    assert "FAIL  VERSION major = 2" in out and "do not match" in out
+    assert out.count("SKIP") == 3
 
 
 def test_if_stage_detects_a_wrong_dsp_result(capsys):
@@ -105,6 +113,6 @@ def test_if_stage_detects_a_wrong_dsp_result(capsys):
     assert "FAIL  every result word equals the Python reference" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("stage", ["ident", "regs", "gen", "push", "owner", "ctrl", "adc", "if", "ce", "spi", "att"])
+@pytest.mark.parametrize("stage", ["ident", "regs", "gen", "push", "owner", "ctrl", "lock", "att", "if", "fe", "ce", "spi"])
 def test_each_stage_alone(stage):
     assert run(locking_model(False), stage) == 0

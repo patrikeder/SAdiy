@@ -13,11 +13,12 @@ Written so that a later session (Sonnet) can maintain the RTL without the histor
 The Zynq PL takes over the per-point timing of a sweep: write the ADF4351, wait for lock, let the detector
 settle, sum N detector samples, store the sum. Python on the PS prepares everything and reads the results.
 
-State of this document: register map 1.3 (2026-11-23). The detector samples come from the PS (push), a test
-generator, the ADS1115 reader in the PL (8a) or a sample stream (8b); the stream can also go through the IF
-path (8c). The stream can come from the ADC front end for the AD9226 module (8d, map 1.3: clock, capture, tie-off
+State of this document: register map 2.0 (2026-11-25). The PE4302 is driven through a PCF8574 I2C port expander
+(section 9; user decision 2026-11-25: no direct GPIO to the PE4302, no ADS1115). The detector samples come from the
+PS (push), a test generator or a sample stream (8b); the stream can also go through the IF path (8c). The stream can come from the ADC front end for the AD9226 module (8d, map 1.3: clock, capture, tie-off
 and traffic generator, pins only in a special build). Standalone modules that are not in the engine yet (FFT, FIR,
-SPI ADC adapter) are in `dsp-modules.md`. What has run on the board: `ebaz-pl-measurements.md` (map 1.0 only).
+SPI ADC adapter) are in `dsp-modules.md`. What has run on the board: `ebaz-pl-measurements.md` (maps 1.0 to 1.3;
+map 2.0 has not run on the board).
 
 Rules that must survive every change:
 
@@ -25,12 +26,11 @@ Rules that must survive every change:
    and uploaded in a table. The RTL never builds, modifies or repeats a register word on its own.
 2. **RF outputs.** The RTL sends nothing by itself: not at reset, not when taking the pins, not on abort.
    Whether an RF output is on is decided only by the R4 words Python puts into the table.
-3. **Attenuator is safe by default.** At reset the engine's PE4302 value is all pins high, which is all
-   stages in for an active-high module only. Software therefore writes `PE4302.manual` (and `active_high`)
-   from the present pad levels (`PIN_STATE.pe_in`) before it sets `pin_owner`; `RegOffload.acquire_pins()`
-   does this. Every change of the
-   PE4302 pins made by the engine is make-before-break. With the PS as pin owner and its GPIO lines still
-   inputs, the pins are not driven and the adapter's pull-ups give 31.5 dB.
+3. **Attenuator is safe by default.** At power-up the PCF8574 holds all ports high, and the engine's value
+   (`ATT_STAT.levels`) resets to the same 0x3F: all stages in (31.5 dB) for an active-high module. Taking the pins
+   sends `PE4302.manual` (reset 0x3F) as one byte; `RegOffload.acquire_pins()` first sets it to the levels the
+   engine sent last. Every change made by the engine that switches a stage out is make-before-break (section 9).
+   The engine cannot read the PCF8574 back: what Linux wrote to it while the PS owned the bus is not known to it.
 4. **Pin ownership changes only while idle**, and changing it produces no edge on LE or CLK.
 5. No vendor IP inside `rtl/src/` (plain SystemVerilog, inferred block RAM). Vendor IP lives only in the block
    design (`rtl/fpga/`).
@@ -45,9 +45,9 @@ Rules that must survive every change:
 | `rtl/src/sadiy_top.sv` | top of the engine (no pads, no vendor cells) | yes |
 | `rtl/src/sweep_seq.sv` | sequencer FSM | yes |
 | `rtl/src/adf4351_spi.sv` | 32-bit SPI writer | yes |
-| `rtl/src/pe4302_mbb.sv` | make-before-break pin driver | yes |
+| `rtl/src/pcf8574_att.sv` | PE4302 through the PCF8574: port mapping, make-before-break in one I2C transaction (9) | yes |
+| `rtl/src/i2c_wr.sv` | I2C write master (address + 1 or 2 bytes), used by `pcf8574_att` | yes |
 | `rtl/src/det_sampler.sv` | sample source select and accumulator | yes |
-| `rtl/src/ads1115_reader.sv` | I2C master that reads the ADS1115 (detector source 3) | yes |
 | `rtl/src/sample_gen.sv` | sample generator: pattern RAM played as a sample stream, in place of an ADC | yes |
 | `rtl/src/if_power.sv` | IF path: NCO, mixer, CIC, power detector | yes |
 | `rtl/src/adc_fe.sv` | ADC front end for the AD9226 module: clock, capture (`rtl/dsp/adc_ad9226.sv`), tie-off / traffic generator / pins as the source of the data lines (8d) | yes |
@@ -89,21 +89,16 @@ module sadiy_top #(
   output logic [31:0] s_axil_rdata,   output logic [1:0] s_axil_rresp,
   output logic        s_axil_rvalid,  input  logic s_axil_rready,
   output logic        irq,
-  // PS side (EMIO): SPI0 and the six GPIO lines of the PE4302
+  // PS side (EMIO): SPI0, CE, I2C0 (EMIO GPIO 0..5 no longer reach the engine: map 2.0)
   input  logic        emio_adf_clk, emio_adf_dat, emio_adf_le,
-  input  logic [5:0]  emio_pe_o,      // level the PS drives
-  input  logic [5:0]  emio_pe_t,      // 1 = PS line is an input (not driven)
   input  logic        emio_ce_o, emio_ce_t,                 // EMIO GPIO 6 (CE)
   input  logic        emio_scl_o, emio_scl_t, emio_sda_o, emio_sda_t,   // PS I2C0
   output logic        emio_scl_i, emio_sda_i,
   // pins (pads and IOBUFs are in rtl/fpga/ebaz_sadiy_top.sv)
   output logic        adf4351_clk, adf4351_dat, adf4351_le,
   input  logic        adf4351_ld,
-  output logic [5:0]  pe4302_v_o,     // level to drive
-  output logic [5:0]  pe4302_v_t,     // 1 = do not drive
-  input  logic [5:0]  pe4302_v_i,     // pad level
   output logic        adf4351_ce_o, adf4351_ce_t,  input logic adf4351_ce_i,
-  output logic        i2c_scl_o, i2c_scl_t,        input logic i2c_scl_i,   // ADS1115 bus (open drain)
+  output logic        i2c_scl_o, i2c_scl_t,        input logic i2c_scl_i,   // PCF8574 bus (open drain)
   output logic        i2c_sda_o, i2c_sda_t,        input logic i2c_sda_i,
   // sample stream of an ADC adapter (section 8b); tie valid to 0 until one exists
   input  logic        det_ext_valid,
@@ -125,8 +120,10 @@ wants them must take them from the PS. The LCD (ST7789) is Linux's, with no PL l
 
 Not routed through `sadiy_top` (the board top wires them straight between EMIO and the pads): lock detect to
 the PS (EMIO GPIO 7, in parallel to `adf4351_ld`), Ethernet, the adapter's LCD, keys and LEDs. Since register
-map 1.1 `adf4351_ce` (EMIO GPIO 6) and I2C0 go through the pin mux of `sadiy_top` (section 9). EMIO GPIO 0..5 are the PE4302 lines; their read-back (`emio_tri_i[5:0]`) is the
-pad level `pe4302_v_i`. This is the same EMIO line map as the Phase 1 design of session L.
+map 1.1 `adf4351_ce` (EMIO GPIO 6) and I2C0 go through the pin mux of `sadiy_top` (section 9). EMIO GPIO 0..5 were
+the PE4302 lines up to map 1.3; since map 2.0 the board top wires them straight to the former PE4302 balls as spare
+GPIO (the PE4302 is on the PCF8574). This is the same EMIO line map as the Phase 1 design of session L, so the PS7
+configuration and the boot image stay as they are.
 
 ## 4. Registers
 
@@ -163,7 +160,7 @@ Table entry, 64 bit, written as two words (`TABLE_W0`, then `TABLE_W1`, which co
 | Bits | Name | Meaning |
 |---|---|---|
 | W0 31:0 | word | SPI word for the ADF4351, sent MSB first |
-| W1 5:0 | att | PE4302 pin levels V1..V6, bit 0 = V1 (levels, not dB: Python applies weights and polarity) |
+| W1 5:0 | att | PE4302 levels V1..V6, bit 0 = V1 (levels, not dB: Python applies weights and polarity), sent to the PCF8574 |
 | W1 8 | spi_en | send `word` |
 | W1 9 | att_en | apply `att` (make-before-break) before the SPI word |
 | W1 10 | measure | after the SPI word take one measurement and store one result |
@@ -217,14 +214,14 @@ NEXT      : entry += 1; entry == N_ENTRIES -> IDLE with done = 1, SWEEP_COUNT +=
 - `start` is latched: if an attenuator change from `PE4302.manual` or a pin owner change is still in
   progress, the sweep begins when that is finished. `STATUS.busy` is high from the `start` write on.
 - `abort` is honoured in every state except in the middle of an SPI word or of an attenuator change, which
-  finish first. Then: IDLE, `done = 1`, `aborted = 1`, no result for the unfinished point, PE4302 pins stay
+  finish first. Then: IDLE, `done = 1`, `aborted = 1`, no result for the unfinished point, the attenuator stays
   at their last value, the synthesiser is not touched.
 - `soft_reset` returns the sequencer to IDLE and clears `done`, `err_lock`, `aborted`, `err_table`,
   `POINT_COUNT`, `FIRST_ERR_INDEX`, `ENTRY_INDEX`, `SWEEP_COUNT`. In one CTRL write it wins over the other
   pulses. An SPI word or attenuator change that is in progress
   finishes on its own (a word is never cut short: a rising LE on a partial word would load garbage into the
   ADF4351). Not touched: configuration registers, the tables, the result memory, the pin owner and the
-  PE4302 pins.
+  attenuator.
 - `start` clears `done`, `err_lock`, `aborted`, `err_table`, `POINT_COUNT`, `FIRST_ERR_INDEX`. It is ignored
   while busy, and a refused start clears the same things before it sets `err_table` and `done`. While busy,
   `TABLE_ADDR` and `TABLE_W1` writes are ignored (`TABLE_W0` is plain storage); other register writes are not
@@ -257,43 +254,19 @@ A sample is a 16-bit unsigned code with a valid strobe. Source per `DET_CFG.src`
 
 | src | Source | Use |
 |---|---|---|
-| 0 | each write of `DET_PUSH` | Phase 2 on hardware: the PS reads the ADS1115 and pushes; also unit tests |
+| 0 | each write of `DET_PUSH` | samples written by the PS (bring-up, unit tests) |
 | 1 | test generator: `(DET_TEST.base + (result_index & 0xFF)) & 0xFFFF`, one sample every microsecond | simulation and HIL timing tests without an ADC |
 | 2 | the sample stream selected by `DET_CFG.stream` (section 8b); a negative sample counts as 0 | a fast detector ADC on the `det_ext` port, or the generator in its place |
-| 3 | ADS1115 reader in the PL (section 8a) | normal operation: no software in the measurement loop |
+| 3 | same as 2 | was the ADS1115 reader up to register map 1.3 (section 8a) |
 
 Samples count only in SAMPLE; anything arriving in another state is dropped. `N_AVG = 0` is treated as 1.
 
-## 8a. ADS1115 reader (`ads1115_reader`, source 3, register map 1.1)
+## 8a. ADS1115 reader (removed in register map 2.0)
 
-An I2C master that takes one single-shot conversion per sample while the sampler wants samples (SAMPLE state,
-`DET_CFG.src = 3`, engine owns the I2C pins). Per sample:
-
-```
-S addr+W 01 cfg_hi cfg_lo P      config write: starts the conversion (ADC_CFG.config, OS = 1, single shot)
-wait ADC_T_CONV_US               must exceed the conversion time of the data rate (+10 % tolerance)
-S addr+W 00 P                    pointer to the conversion register
-S addr+R hi(ACK) lo(NACK) P      the result, two's complement
-```
-
-- Sample given to the sampler: the code as unsigned 16 bit; a negative code (input below GND) counts as 0.
-  `ADC_STAT.last` shows the conversion register as read. Software converts with the full scale of the PGA
-  bits it wrote to `ADC_CFG.config` (volts = code x full scale / 32768).
-- The conversion starts only after SETTLE, so every sample is taken at the settled level. Nothing is
-  converted outside SAMPLE (checked in `tb_adc`). The reader waits 3 clocks after a sample before it looks
-  at `run` again, because the sampler needs that long to drop it after the last sample.
-- Timing: a bit is four quarters of `H = max(ADC_I2C_DIV, 4)` clocks (SCL low, high, high, low; SDA changes
-  at the start of the first quarter, sampled at the end of the second). Reset 70 = 357 kHz: t_low = t_high =
-  1.4 us, start hold and stop setup 0.7 us, bus free 2.1 us (fast mode limits 1.3 / 0.6 / 0.6 / 1.3 us).
-  A sample costs about 90 bit times plus the wait: 1.65 ms at the reset values (860 SPS), so about 600
-  samples per second. No clock stretching, no arbitration (the ADS1115 does neither).
-- No acknowledge (ADC missing, wrong address): the transaction ends with a STOP, the sample is delivered as 0
-  and `ADC_STAT.err_nack` is set (sticky until `start` or `soft_reset`). So a sweep never hangs on a missing
-  ADC; software must check `err_nack` after the sweep (`RegOffload.run` raises).
-- `abort` or the end of SAMPLE during a sample: the bus transaction in progress ends with its STOP, the
-  conversion wait is cut short, nothing is delivered.
-- The PS-push source (0) stays for bring-up and comparison: with `src = 0` the PS keeps the I2C bus and
-  reads the ADS1115 itself.
+Maps 1.1 to 1.3 had an I2C master that read an ADS1115 as detector source 3 (`ADC_CFG`, `ADC_I2C_DIV`,
+`ADC_T_CONV_US`, `ADC_STAT` at 0x080..0x08C; measured on the board 2026-11-16). The user removed the ADS1115
+(2026-11-25): the detector of the real chain will be the IF path behind the AD9226 front end (8c, 8d). Its bit
+timing lives on in `i2c_wr` (section 9). `DET_CFG.src = 3` now selects the same as 2.
 
 ## 8b. Sample stream format and the generator (`sample_gen`, register map 1.2)
 
@@ -311,7 +284,6 @@ An ADC adapter is a small module in the board top that converts to this and driv
 |---|---|
 | AD9226 (12 bit parallel, offset binary) | `data = (code - 2048) << 4`, `ovr = OTR`; its sample clock must be derived from `clk` (or cross with a FIFO). Module facts, filter and sample-rate decision (50 MS/s): `adc-module.md` |
 | SPI SAR ADC (16 bit, unipolar) | `data = code >> 1` (0 .. 32767) |
-| ADS1115 (16 bit two's complement) | `data = code`. The reader of section 8a keeps its own source (3); this row is for completeness |
 
 `DET_CFG.stream` selects the stream: 0 = `det_ext_*`, 1 = the generator. `DET_CFG.mode` selects what is done
 with it: 0 = video path (`src = 2`: sum of N_AVG samples, for a detector ADC), 1 = IF path (section 8c).
@@ -389,43 +361,63 @@ X during the output transition, all phases, src 3 = 2); `tb_if` (front end throu
 bit-exact, OTR in result bit 30, tone strength); `tb_axil_regs` (FE registers); `test_adc_fe_model.py` (model);
 `pl_bringup.py fe` (on the board and against the model).
 
-## 9. PE4302 (`pe4302_mbb`) and pin owner (`pin_mux`)
+## 9. PE4302 through the PCF8574 (`pcf8574_att`, `i2c_wr`) and pin owner (`pin_mux`)
 
-Make-before-break: `make = old | new` for `PE4302.active_high = 1`, `old & new` for 0. Sequence: `make`,
-hold `T_ATT_GAP_CYC` clocks, `new`, hold `T_ATT_GAP_CYC` clocks, ready. If `make == old == new` nothing
-changes but the time is the same. This equals what `drivers/pe4302.py` reaches after its "turning on" writes,
-for all 64 x 64 transitions (vectors `mbb_high.hex`, `mbb_low.hex`).
+Register map 2.0 (user decision 2026-11-25): the PE4302 has no FPGA pins. Its inputs V1..V6 hang on a PCF8574
+I2C port expander (the board is an I2C-to-LCD adapter) on the same I2C bus (`i2c_scl` / `i2c_sda`) the PS uses:
 
-Who changes the engine's PE4302 value: (a) a table entry with `att_en`; (b) a write of `PE4302` while the
-engine owns the pins and is idle, if `manual` differs from the levels the engine drives (make-before-break; a
-`start` written meanwhile waits for it). A write at any other time only stores the value and is not applied
-later; (c) taking ownership loads `PE4302.manual` directly, because the old state was the PS's. After a sweep
-the pins stay at the last table value; they do not fall back to `manual`.
+| PCF8574 port | P0 | P1 | P2 | P3 | P4 | P5 | P6 | P7 |
+|---|---|---|---|---|---|---|---|---|
+| signal | V1 (0.5 dB) | V2 | V3 | backlight LED (`ATT_I2C.p3`) | V4 | V5 | V6 (16 dB) | spare (`ATT_I2C.p7`) |
+
+`ATT_I2C.addr` (reset 0x27) is the address, `ATT_I2C_DIV` the quarter bit period (reset 250 = 100 kHz, the
+PCF8574 maximum). The PCF8574 takes a byte at its acknowledge, so a transaction `S addr+W b0 b1 P` puts `b0` on
+the ports for one byte time (9 SCL periods, 90 us at 100 kHz) and then `b1`.
+
+Make-before-break: `make = old | new` for `PE4302.active_high = 1`, `old & new` for 0. If `make != new` (a stage
+switches out) the transaction carries `make` then `new`; otherwise (only stages switch in) only `new`. Then
+`T_ATT_GAP_CYC` clocks of hold. The intermediate state therefore never has less attenuation than the lower of the
+two settings (`tb_att` checks the bytes on the bus, `contract/test_pl_model.py` all 64 x 64 transitions in the
+model against `drivers/pe4302.py`). A transaction at 100 kHz takes 0.2 ms (one byte) or 0.29 ms (two); the
+sequencer's ATT state waits for it, so only entries with `att_en` cost this time.
+
+The quasi-bidirectional PCF8574 ports drive high only weakly (about 100 uA); the PE4302 module has 10 kohm
+pull-downs on its inputs, so each V line needs a pull-up to 3.3 V (2.2 kohm as on the adapter). The PCF8574
+board must run from 3.3 V: its SDA / SCL pull-ups go to its own supply, and the FPGA pins are 3.3 V only.
+
+Who changes the engine's value: (a) a table entry with `att_en` (also when the value is unchanged: one byte);
+(b) a write of `PE4302` while the engine owns the pins and is idle, if `manual` differs from `ATT_STAT.levels`
+(a `start` written meanwhile waits for it); a write at any other time only stores the value; (c) taking
+ownership sends `PE4302.manual` as one byte. After a sweep the attenuator stays at the last table value.
+`ATT_STAT`: `levels` (V1..V6 of the last transaction), `byte` (its last port byte), `err_nack` (sticky: the
+PCF8574 did not acknowledge, the attenuation may be wrong; cleared by `start` and `soft_reset`), `busy`, `count`.
+A NACK ends the transaction with a STOP right after the address; `levels` follows anyway.
 
 Pin owner: `STATUS.pin_owner_act` follows `CTRL.pin_owner` only while the sequencer is idle and no SPI word
-or attenuator change is running.
+or attenuator transaction is running.
 
 | Pin | owner 0 (PS) | owner 1 (engine) |
 |---|---|---|
 | `adf4351_clk/dat/le` | `emio_adf_*` | SPI writer |
-| `pe4302_v_o`, `pe4302_v_t` | `emio_pe_o`, `emio_pe_t` | engine value, `t = 0` |
 | `adf4351_ce` | EMIO GPIO 6 (`emio_ce_o / _t`) | `ADF_PINS.ce`, driven |
-| `i2c_scl`, `i2c_sda` | PS I2C0 | PS I2C0, or the ADS1115 reader when `DET_CFG.src = 3` |
+| `i2c_scl`, `i2c_sda` | PS I2C0 | the engine's I2C master (PCF8574) |
 
-The I2C pins have their own select, `PIN_STATE.i2c_pl` = engine owns the pins AND `DET_CFG.src = 3`. It changes
-only while the reader is idle. While the reader has the bus the PS controller sees both lines high (an idle
-bus); a PS transfer in that time fails with no acknowledge and does not reach the pads. Software must not
-switch while a PS transfer runs. `PIN_STATE` also shows the pad levels of CE, SCL and SDA.
+`PIN_STATE.i2c_pl` = `pin_owner_act`: the engine has the I2C bus whenever it owns the pins. While it has it the
+PS controller sees both lines high (an idle bus); a PS transfer in that time fails with no acknowledge and does
+not reach the pads. Software must not switch while a PS transfer runs. `PIN_STATE` also shows the pad levels of
+CE, SCL and SDA. The former PE4302 balls (DATA2-14..19) are plain EMIO GPIO 0..5 in the board top until
+`pins.toml` frees them; the engine does not touch them.
 
 A `CTRL.pin_owner` write during a sweep is remembered and takes effect when the sweep has ended.
 The outputs of the mux are registered (one clock of delay on the PS path, irrelevant at 10 MHz SPI). Both
 owners idle with LE high and CLK low, so a switch makes no edge as long as the PS SPI is idle too: software
 must not switch during a PS transfer. `PIN_STATE` shows the pins after the mux.
 
-Software sequence for an offloaded sweep (S7): with the PS as owner program the synth as today (outputs off,
-tune, wait for lock, enable the output); write `PE4302.manual` = the current pin levels; set `pin_owner`;
-upload the table (its R4 words carry the output state Python wants); `start`; wait for `done`; read results.
-Hand the pins back only when the PS GPIO lines already drive the wanted levels.
+Software sequence for an offloaded sweep (S7): configure `ATT_I2C`; write `PE4302.manual` = the wanted levels;
+set `pin_owner` (sends them); upload the table (its R4 words carry the output state Python wants); `start`; wait
+for `done`; read results; check `ATT_STAT.err_nack`. The PCF8574 keeps its levels when the pins go back to the PS.
+`err_nack` is set only at the end of a transaction: after taking the pins or writing `PE4302.manual`, wait for
+`ATT_STAT.busy` = 0 before reading it (`busy` is up from the clock that sets `pin_owner_act`).
 
 ## 10. Verification
 
@@ -433,8 +425,7 @@ Hand the pins back only when the PS GPIO lines already drive the wanted levels.
 |---|---|
 | `tb_axil_regs` | reset values, rw / ro / const / w1p / ext behaviour, bus handshakes |
 | `tb_adf4351_spi` | bit stream of every word in `spi_words.hex` decoded as an ADF4351 would; frame shape; divider values |
-| `tb_pe4302_mbb` | all 64 x 64 transitions against `mbb_high.hex` / `mbb_low.hex`, gap length |
-| `tb_adc` | `sadiy_top` with a behavioural ADS1115 on the pads: sums of a sweep with source 3 (negative code = 0), bytes on the bus, conversion wait, SCL period, no conversion outside SAMPLE, missing ADC (sample 0, `err_nack`), abort during the wait, I2C hand-over PS / reader, CE through `ADF_PINS` |
+| `tb_att` | `sadiy_top` with a behavioural PCF8574 on the pads: I2C hand-over PS / engine, the byte sent when the pins are taken, increase = one byte, decrease = make then final in one transaction (make held one byte, SCL count), port mapping and P3 / P7, active-low make, sweep entries before their SPI word, wrong address (NACK, STOP right after the address, `err_nack` until `start`), divider, no transaction while the PS owns the pins, CE through `ADF_PINS` |
 | `tb_if` | generator and IF path through `sadiy_top`: three NCO sweeps against `if<k>_result.hex` from the Python reference, bit for bit (one sample per clock and slower, saturation and the over-range bit, repeatability); video path from the generator; the `det_ext` port as the stream; the ADC front end as the stream (tie-off bit-exact, OTR, tone) |
 | `tb_adc_fe` | `adc_fe` alone: clock off / spacing, tie-off, OTR, clear, two's complement, generator modes against the sine table, pin source against a behavioural AD9226 (all phases, X in the transition) |
 | `tb_sweep` | `sadiy_top` through AXI: table upload, full sweep with a behavioural lock model, SPI words and results against `sweep_*.hex`; lock timeout with and without stop_on_err; abort; PS push source; pin owner; refused start |
@@ -442,8 +433,8 @@ Hand the pins back only when the PS GPIO lines already drive the wanted levels.
 The testbenches were checked by breaking the RTL on purpose (lost lock flag, ignored stop_on_err / abort,
 table write while busy, wrong sample count, break-before-make, lost SPI bit, owner change during a sweep):
 each of these makes a testbench fail. Repeat such a check when you add a feature and its test.
-For the ADS1115 reader: no clamp of negative codes, no conversion wait, no gap after a sample, no ACK of the
-first read byte; each makes `tb_adc` fail. For the IF path: wrong cosine offset, mixer shift, comb delay,
+For the PCF8574 path (2026-11-25): P3 / P4 swapped, no make byte, active-low ignored, engine always owning the
+bus, NACK not reported, bytes sent after a NACK; each makes `tb_att` fail. For the IF path: wrong cosine offset, mixer shift, comb delay,
 skip count, NCO step; each makes `tb_if` fail (a phase increment error of 1 LSB does not: it is below the
 resolution of the sine table in these runs).
 
@@ -467,8 +458,7 @@ RTL are checked against each other.
   above on refused start, table writes while busy, soft reset and the `PE4302` write are the result.
 - Added: `DET_CFG`, `DET_TEST`, `DET_PUSH` (PS-fed samples make Phase 2 measure with the ADS1115), `CAPS`,
   `PE4302.active_high`, `CTRL.stop_on_err`, `CTRL.irq_ack`.
-- `sadiy_top` has `_o / _t / _i` triples for the PE4302 pins instead of plain outputs, so the tri-state
-  boot default of Phase 1 survives; CE, I2C and LD-to-PS bypass it.
+- Up to map 1.3 `sadiy_top` had `_o / _t / _i` triples for the PE4302 pins; map 2.0 removed the pins.
 - Register map 1.1 (2026-11-14, user request "no software in the measurement loop"): the ADS1115 reader in the
   PL as source 3 (the plan's S10 named an SPI ADC that does not exist on the board; source 2 stays free for it),
   `ADC_*` registers, `ADF_PINS.ce`, CE and I2C through the pin mux, more `PIN_STATE` bits. With these a
@@ -476,6 +466,9 @@ RTL are checked against each other.
 - Register map 1.2 (2026-11-15, user request: build the fast path before an ADC adapter exists): one sample
   stream format for every ADC (8b), a software-filled generator in place of the ADC, and the IF path (8c) as
   a second detector mode. The plan's Stage B FFT and FIR filters are not part of it.
+- Register map 2.0 (2026-11-25, user decision): ADS1115 reader and the direct PE4302 pins removed; the PE4302 goes
+  through a PCF8574 on I2C (`ATT_I2C`, `ATT_I2C_DIV`, `ATT_STAT` at 0x080..0x088), `PIN_STATE.pe_*` removed,
+  `i2c_pl` = pin owner, `DET_CFG.src = 3` = 2. Major version because software of map 1.x would misuse it.
 - Session R also owns the Vivado project for the engine (`rtl/fpga/`, user decision 2026-11-14). Session L's
   `rtl/vivado/` (Phase 1, `pins.toml`) is untouched and stays the master for pin locations.
 
@@ -492,11 +485,11 @@ the change must go to hardware, then add a dated entry to `zynq-ebaz/log_rtl.md`
 - **New ADC**: write an adapter module that outputs the sample stream of section 8b (`valid`, signed
   `data[15:0]`, `ovr`), instantiate it in `ebaz_sadiy_top.sv` and connect it to `det_ext_*`; add its pins to session L's
   `pins.toml` (ask L, via the log). `sadiy_top` does not change.
-- The SPI and PE4302 pads are false paths in `rtl/fpga/constraints/timing.xdc` (slow signals, DAT changes
+- The SPI and I2C pads are false paths in `rtl/fpga/constraints/timing.xdc` (slow signals, DAT changes
   half a bit away from the sampling edge). If the SPI is ever run faster than 10 MHz, put the three output
   registers of `pin_mux` into the IOBs instead.
 - **Timing fails** (`build_bit.sh` reports WNS < 0): do not relax constraints. Report the path in the log;
   typical fix is one more register stage on the failing path. If two attempts fail, write an escalation
   (plan, section 1).
 - Do not: add vendor primitives to `rtl/src/`, drive pins from anywhere but `pin_mux`, make the RTL emit an
-  SPI word that is not in the table, change the reset value of `PE4302.manual` or the idle levels of LE / CLK.
+  SPI word that is not in the table, change the reset value of `PE4302.manual` (or of `ATT_STAT.levels`) or the idle levels of LE / CLK.

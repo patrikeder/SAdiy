@@ -8,7 +8,7 @@ module det_sampler #(
   input  wire logic        clk,
   input  wire logic        resetn,
   input  wire logic        run,
-  input  wire logic [1:0]  src,           // 0 PS push, 1 test generator, 2 external stream, 3 ADS1115 reader
+  input  wire logic [1:0]  src,           // 0 PS push, 1 test generator, 2 and 3 external stream
   input  wire logic [11:0] n_avg,
   input  wire logic [15:0] test_base,
   input  wire logic [7:0]  result_index,  // low 8 bits of the result index (test generator)
@@ -16,8 +16,6 @@ module det_sampler #(
   input  wire logic [15:0] push_data,
   input  wire logic        ext_valid,
   input  wire logic [15:0] ext_data,
-  input  wire logic        adc_valid,
-  input  wire logic [15:0] adc_data,
   output      logic [27:0] sum,
   output      logic        done
 );
@@ -35,8 +33,7 @@ module det_sampler #(
     unique case (src)
       2'd0:    begin s_valid = push_valid; s_data = push_data; end
       2'd1:    begin s_valid = us_tick;    s_data = test_base + {8'd0, result_index}; end
-      2'd2:    begin s_valid = ext_valid;  s_data = ext_data; end
-      default: begin s_valid = adc_valid;  s_data = adc_data; end
+      default: begin s_valid = ext_valid;  s_data = ext_data; end   // 2, and 3 (the ADS1115 reader until map 2.0)
     endcase
   end
 

@@ -131,9 +131,9 @@ note(-265, 116, "devices outside the FPGA", "hd dev-h")
 DX, DW = -265, 190
 device(DX, 140, DW, 178, "ADF4351 eval board (LO)", ["25 MHz osc, 5 V DC jack", "header GND CE LE CLK LD",
                                                      "RF out -> AD831 LO in", "outputs on only after lock"])
-device(DX, 334, DW, 52, "PE4302 module", ["V1..V6 = 0.5 .. 16 dB, high = in", "adapter pull-ups: 31.5 dB"])
-device(DX, 400, DW, 112, "ADS1115 (I2C 0x48)", ["detector ADC, A0 vs GND", "read by the PL reader or PS I2C0",
-                                                "analog: RF in -> PE4302 ->", "amp -> AD831 -> detector -> A0"])
+device(DX, 334, DW, 52, "PE4302 module", ["V1..V6 = 0.5 .. 16 dB, high = in", "pull-ups to 3.3 V: 31.5 dB"])
+device(DX, 400, DW, 112, "PCF8574 (I2C 0x27)", ["I2C-to-LCD adapter, 3.3 V", "P0..P2 = V1..V3, P3 = LED",
+                                                "P4..P6 = V4..V6, P7 spare", "written by the PL or PS I2C0"])
 device(DX, 896, DW, 48, "AD9226 module (not wired yet)", ["50 ohm SMA in, 5 V, 3.3 V logic"])
 device(DX, 1090, DW, 44, "Adapter LCD, ST7789", ["SPI1 + DC / RES, Linux fbtft"])
 device(DX, 1138, DW, 92, "Adapter LEDs, keys", ["LEDs 1..3: EMIO outputs", "keys 1..5: active low",
@@ -145,7 +145,7 @@ PR = 20 + PADW  # 155
 pad(165, "adf4351_clk/dat/le", "3 output pads", "G20  G19  H20")
 pad(230, "adf4351_ce", "IOBUF u_ce, EMIO n=6", "K19")
 pad(295, "adf4351_ld", "input, also EMIO n=7", "J19")
-pad(360, "pe4302_v[5:0]", "IOBUF g_pe, EMIO 0..5", "J20 L16 L19 M18 L20 M20")
+pad(360, "pe4302_v[5:0]: spare", "IOBUF g_pe, EMIO 0..5", "J20 L16 L19 M18 L20 M20", dashed=True)
 pad(425, "i2c_scl", "IOBUF u_scl", "L17")
 pad(490, "i2c_sda", "IOBUF u_sda", "K18")
 pad(920, "adc_clk, adc_d, otr", "ADC_PADS build only", "DATA1, adapter v2", dashed=True)
@@ -157,26 +157,26 @@ pad(1256, "ENET0 MII, MDIO", "direct, IOBUF u_mdio", "U14..Y19, W15, Y14")
 # =============================================================== engine blocks
 box(280, 120, 150, 500, "u_pins", "pin_mux", [
     "owner = 0:", "  PS levels to the pins", "  (bench mode, Linux)", "owner = 1:", "  engine drives the pins",
-    "  (sweep)", "", "ADF4351 SPI, CE,", "PE4302 V1..V6,", "ADS1115 SCL / SDA", "", "I2C to the PL reader",
-    "only while i2c_pl = 1"])
+    "  (sweep)", "", "ADF4351 SPI, CE,", "I2C SCL / SDA", "(PCF8574: PE4302)", "",
+    "I2C to the engine", "while it owns the pins"])
 inline(300, 665, 100, 52, "input sync", "2-FF, inline")
 
 box(535, 100, 1195, 64, "u_regs", "axil_regs", [], cls="blk regs")
-note(680, 124, "register file generated from regmap.toml by gen_regs.py, map 1.3 (VERSION 0x00010003), 4 KiB at 0x43C0_0000")
-note(680, 140, "CTRL, STATUS, timing, PE4302, DET_CFG, TABLE_ADDR / W0 / W1, RESULT_ADDR / DATA (auto-increment), ADC_*, GEN_*, IF_*, FE_*", "bt dim")
+note(680, 124, "register file generated from regmap.toml by gen_regs.py, map 2.0 (VERSION 0x00020000), 4 KiB at 0x43C0_0000")
+note(680, 140, "CTRL, STATUS, timing, PE4302, ATT_*, DET_CFG, TABLE_ADDR / W0 / W1, RESULT_ADDR / DATA (auto-increment), GEN_*, IF_*, FE_*", "bt dim")
 
 box(545, 220, 170, 64, "u_spi", "adf4351_spi", ["32-bit word, MSB first"])
-box(545, 330, 170, 64, "u_mbb", "pe4302_mbb", ["make-before-break step"])
-inline(545, 445, 170, 50, "I2C handover", "inline, between samples")
-box(545, 530, 170, 80, "u_adc", "ads1115_reader", ["I2C master, single shot", "NACK gives sample 0"])
+box(545, 330, 170, 64, "u_att", "pcf8574_att", ["V1..V6 to the port byte", "make, final: one write"])
+inline(545, 445, 125, 50, "I2C owner", "= pin owner, inline")
+box(545, 530, 170, 80, "u_att.u_i2c", "i2c_wr", ["I2C master, write only", "address + 1 or 2 bytes"])
 
 box(815, 470, 160, 180, "u_det", "det_sampler", [])
-sub(827, 518, 136, 54, "source select", ["0 push  1 test ramp", "2 stream  3 ADS1115"])
+sub(827, 518, 136, 54, "source select", ["0 push  1 test ramp", "2 and 3 stream"])
 sub(827, 584, 136, 54, "n_avg accumulator", ["28-bit sum, then done"])
 
 box(1110, 220, 200, 380, "u_seq", "sweep_seq", [
     "one table entry per step:", "",
-    "IDLE", "FETCH      read entry", "ATT        PE4302 step", "SPI        ADF4351 word",
+    "IDLE", "FETCH      read entry", "ATT        attenuator", "SPI        ADF4351 word",
     "WAIT_MIN   T_MIN_US", "WAIT_LOCK  LD stable", "SETTLE     T_SETTLE_US", "SAMPLE     detector run",
     "STORE      result word", "NEXT", "", "abort, stop on error,", "lock timeout, counters"],
     cls="blk seq", tcls="bt mono")
@@ -205,7 +205,7 @@ box(1808, 195, 140, 66, "proc_sys_reset_0", "proc_sys_reset", [])
 box(1808, 290, 236, 720, "processing_system7_0", "processing_system7 (PS7)", [
     "2x Cortex-A9, Linux", "sweepd -> /dev/mem", "DDR3, MIO[53:0]: not via PL", "",
     "M_AXI_GP0  0x43C0_0000", "IRQ_F2P[0]", "FCLK_CLK0  100 MHz", "",
-    "EMIO SPI0  ADF4351", "EMIO I2C0  ADS1115", "EMIO GPIO 0..5  PE4302", "EMIO GPIO 6   ADF4351 CE",
+    "EMIO SPI0  ADF4351", "EMIO I2C0  PCF8574", "EMIO GPIO 0..5  spare", "EMIO GPIO 6   ADF4351 CE",
     "EMIO GPIO 7   lock detect", "EMIO GPIO 8..17", "  LCD, LEDs, keys", "EMIO SPI1  LCD", "ENET0      MII",
     "", "Linux line = 54 + n"], cls="blk ps", tcls="bt mono")
 
@@ -214,7 +214,7 @@ box(1808, 290, 236, 720, "processing_system7_0", "processing_system7 (PS7)", [
 wire([(-75, 165), (20, 165)], "pin", "SPI writes", (-27, 159), start=True, end=False)
 wire([(20, 230), (-75, 230)], "pin", "CE, high = on", (-27, 224))
 wire([(-75, 295), (20, 295)], "pin", "lock detect", (-27, 289))
-wire([(20, 360), (-75, 360)], "pin", "V1..V6 levels", (-27, 354))
+wire([(-170, 400), (-170, 386)], "pin", "V1..V6", (-164, 396), anchor="start")
 wire([(20, 425), (-75, 425)], "pin", "I2C clock", (-27, 419))
 wire([(20, 490), (-75, 490)], "pin", "I2C data", (-27, 484), start=True)
 wire([(-75, 920), (20, 920)], "data", "ADC samples", (-27, 914))
@@ -226,9 +226,8 @@ wire([(-75, 1256), (20, 1256)], "ps", "MII, MDIO", (-27, 1250), start=True)
 # --- pads <-> pin mux
 wire([(280, 165), (PR, 165)], "pin", "ADF4351 SPI pins", (222, 159))
 wire([(280, 230), (PR, 230)], "pin", "synth enable pin", (226, 224), start=True)
-wire([(280, 360), (PR, 360)], "pin", "attenuator pins", (226, 354), start=True)
-wire([(280, 425), (PR, 425)], "pin", "ADS1115 clock", (226, 419), start=True)
-wire([(280, 490), (PR, 490)], "pin", "ADS1115 data", (226, 484), start=True)
+wire([(280, 425), (PR, 425)], "pin", "PCF8574 clock", (226, 419), start=True)
+wire([(280, 490), (PR, 490)], "pin", "PCF8574 data", (226, 484), start=True)
 
 # --- pad level sense bus (x = 172): synchronisers, reader SDA, PS GPIO readback
 wire([(PR, 295), (172, 295)], "sense", None, end=False)
@@ -256,9 +255,9 @@ wire([(1636, 164), (1636, 216)], "cfg", "irq enable", (1630, 196), anchor="end")
 
 # --- drivers -> pin mux
 wire([(545, 252), (430, 252)], "pin", "engine SPI frame", (487, 246))
-wire([(545, 362), (430, 362)], "pin", "attenuator drive", (487, 356))
+wire([(700, 394), (700, 530)], "ctl", "port bytes", (706, 470), anchor="start")
 wire([(545, 470), (430, 470)], "ctl", "I2C owner select", (487, 464))
-wire([(545, 560), (430, 560)], "pin", "reader I2C drive", (487, 554))
+wire([(545, 560), (430, 560)], "pin", "engine I2C drive", (487, 554))
 
 # --- sequencer <-> drivers, pin owner
 wire([(1110, 252), (715, 252)], "ctl", "LO word handshake", (930, 246), start=True)
@@ -266,10 +265,8 @@ wire([(1110, 378), (715, 378)], "ctl", "attenuator step handshake", (930, 372), 
 wire([(1110, 420), (430, 420)], "ctl", "pin owner active", (930, 414))
 wire([(630, 420), (630, 445)], "ctl")
 dot(630, 420, "ctl")
-wire([(630, 495), (630, 530)], "ctl", "reader run gate", (636, 517), anchor="start")
 
 # --- detector samples
-wire([(715, 545), (815, 545)], "data", "ADC samples", (780, 539))
 wire([(1110, 520), (975, 520)], "ctl", "measure run gate", (1042, 514))
 wire([(1080, 520), (1080, 752)], "ctl")
 dot(1080, 520, "ctl")
@@ -286,7 +283,7 @@ wire([(830, 828), (830, 650)], "data", "video sample stream", (824, 712), anchor
 dot(830, 828, "data")
 
 # --- bus taps
-wire([(680, 730), (680, 610)], "cfg", "reader config, status", (674, 662), anchor="end", start=True)
+wire([(680, 730), (680, 610)], "cfg", "PCF8574 address, status", (674, 662), anchor="end", start=True)
 wire([(630, 730), (630, 780)], "cfg", "pattern upload", (624, 760), anchor="end")
 wire([(765, 730), (765, 790)], "cfg", "stream source select", (759, 778), anchor="end")
 wire([(930, 730), (930, 650)], "cfg", "sampler source, push", (936, 700), anchor="start")

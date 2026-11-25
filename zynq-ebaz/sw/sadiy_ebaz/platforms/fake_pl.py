@@ -41,8 +41,7 @@ class FakePlPlatform:
         self.capabilities = Capabilities("fake_pl", True, 16, 1 << self.model.table_aw, 1 << self.model.result_aw)
         self.pin_log = PinLog()
         self._spi = FakeSpi()
-        # PS lines as the PE4302 driver wants them: outputs, all stages in. Set `line.output = False` in a test
-        # to model a line that is still an input (the model then sees the adapter pull-up level).
+        # control lines of the PE4302 driver (on the board the PCF8574 sits behind them; the model is not involved)
         self._lines: List[FakeGpio] = [FakeGpio(f"V{i + 1}", self.pin_log, 1) for i in range(6)]
         self._adc = FakeAdc()
         self._offload: Optional[RegOffload] = None
@@ -59,16 +58,7 @@ class FakePlPlatform:
     def detector(self) -> FakeAdc:
         return self._adc
 
-    def _sync_ps_pins(self) -> None:
-        """What the board shows the core: PS GPIO levels and directions (on hardware this is the EMIO wiring)."""
-        o = t = 0
-        for i, ln in enumerate(self._lines):
-            o |= ln.level << i if ln.output else 0
-            t |= 0 if ln.output else 1 << i
-        self.model.emio_pe_o, self.model.emio_pe_t = o, t
-
     def _reg_read(self, offset: int) -> int:
-        self._sync_ps_pins()
         return self.model.read(offset)
 
     def _push_code(self) -> int:

@@ -6,9 +6,10 @@
 #                        at most 25 MHz, from the 100 MHz FCLK0); the ADF4351 samples it on its own
 #                        edge, with a setup / hold of a few ns against 20+ ns bit periods. No
 #                        generated clock is defined for it on purpose.
-#   adf4351_ce/ld, pe4302_v : static levels (attenuator weights, chip enable, lock detect) read
-#                        by software or the sequencer, which waits many clocks for them.
-#   i2c_scl/sda        : open-drain I2C0 of the PS (EMIO), at most 400 kHz, bit-banged by the PS.
+#   adf4351_ce/ld      : static levels (chip enable, lock detect) read by software or the sequencer,
+#                        which waits many clocks for them.
+#   pe4302_v           : former PE4302 lines, spare EMIO GPIO since register map 2.0 (static levels).
+#   i2c_scl/sda        : open-drain I2C: PS I2C0 (EMIO) or the engine's PCF8574 writer, 100 kHz by default.
 #   enet0_mdio_*       : MDIO / MDC of the PS, 2.5 MHz at most.
 # A set_false_path is therefore the honest constraint: an invented output delay would be a number
 # nobody can verify. It also keeps these ports out of the "unconstrained ports" report.

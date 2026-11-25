@@ -17,7 +17,7 @@ the expected values were agreed with the RTL session (answers below, read from `
 `sweepd` has the command `selftest` (parameters `points`, `n_avg`, `base`, `sweeps`, `wrap`, `fill`; reply `passed`, `checks`,
 `failed`, `lines`, `seconds`; `status.selftest_available`; `server/protocol.py`). It runs between two sweeps and the sweeping
 goes on afterwards (`OffloadSweep.self_test` -> `ramp_test.run_on_core(release=False)`), so differently from `selftest.sh`:
-the engine keeps the pins it has, no `soft_reset` and no release, PE4302 and ADF_PINS are not written (a PE4302.manual write moves the pins, ADF_PINS.ce could flip CE), and only N_AVG, DET_CFG (src 3 -> 1 -> 3), DET_TEST, T_MIN_US and T_SETTLE_US are restored. The sweep table is uploaded
+the engine keeps the pins it has, no `soft_reset` and no release, PE4302 and ADF_PINS are not written (a PE4302.manual write moves the pins, ADF_PINS.ce could flip CE), and only N_AVG, DET_CFG (src as found -> 1 -> as found), DET_TEST, T_MIN_US and T_SETTLE_US are restored. The sweep table is uploaded
 again at the next sweep. Tests that would take longer than 30 s are refused. GUI: Advanced tab, box "Ramp self-test".
 
 ## Set-up the test makes
@@ -30,7 +30,7 @@ again at the next sweep. Tests that would take longer than 30 s are refused. GUI
 | `T_MIN_US` / `T_SETTLE_US` | set to 20 / 20 for the test (`--t-min`, `--t-settle`) so that the time floor can detect waits that are not applied; all registers the test writes (N_AVG, DET_CFG, DET_TEST, T_*, ADF_PINS, PE4302) are restored at the end |
 | N_AVG | 4 by default (1..4095 valid; 0 counts as 1) |
 | Points | 401 by default: at least 257 so the 8-bit index wraps. `--fill` uses all 4096 (table and result memory exactly full, about 181 ms per sweep at 20/20/4): covers the 12-bit addressing |
-| Pins | `pin_owner = 1` is required for `start`. The test writes `PE4302.manual` = levels read back from the pins and `ADF_PINS.ce` = the CE level of the pad before taking them (only when the engine does not own the pins yet: an owning engine drives `ADF_PINS.ce` already, and a write with a different pad level would flip the pin), so nothing changes; gives them back at the end and `soft_reset`s |
+| Pins | `pin_owner = 1` is required for `start`. Taking the pins sends `PE4302.manual` = the levels the engine sent last (`ATT_STAT.levels`, register map 2.0: the PE4302 is on the PCF8574) and the test writes `ADF_PINS.ce` = the CE level of the pad before taking them (only when the engine does not own the pins yet: an owning engine drives `ADF_PINS.ce` already, and a write with a different pad level would flip the pin), so nothing changes; gives them back at the end and `soft_reset`s |
 | sweepd | must not run (`selftest.sh` checks) |
 
 ## Expected result and pass criteria
@@ -49,7 +49,7 @@ A sweep passes when all of this holds (one line per failed check, with the first
 7. every sweep must produce new values: the result memory is not cleared by `start` and the host cannot write it, so with one base a
    second sweep (or a second run of `selftest.sh`) would pass on stale data even if the engine stored nothing. Hence the poison sweep and a
    different base per sweep; with 3 or more sweeps the last one repeats the first base and must equal sweep 1 exactly
-8. pins unchanged: `PIN_STATE.pe_out` (what the engine drives) equals the PE4302 levels read from the pads before the run, and the CE pad level is unchanged, after every sweep
+8. pins unchanged: `ATT_STAT.levels` (what the engine sent to the PCF8574) equals the value before the run, and the CE pad level is unchanged, after every sweep
 9. time per sweep: not below the hardware floor `points * (T_MIN_US + T_SETTLE_US + N_AVG) us`, not above
    `1.3 * floor + 2 ms` (sequencer overhead and the 1 ms poll). The time measured is `RegOffload.last_sweep_s`
    (start pulse to done seen), so the host's readout of the results (`last_read_s`, listed as information) is not part
@@ -75,7 +75,7 @@ for 401 points. With one SPI word per entry add about 2.04 us at SPI_DIV 3.
 
 ## Not covered (other tests)
 
-Real SPI frames, lock detect, the ADS1115 reader and the analog chain: `pl_bringup.py` stages `spi`, `lock`, `adc`, and the
+Real SPI frames, lock detect, the PCF8574 attenuator and the analog chain: `pl_bringup.py` stages `spi`, `lock`, `att`, and the
 bench checklist `bench-test-adc-att-lock.md`. The register-level generator check of the RTL lane is `pl_bringup.py gen`;
 this self-test goes through the same software layers as a real sweep (`RegOffload`), which is the difference.
 

@@ -61,7 +61,7 @@ ext_out processing_system7_0/SPI1_SS_O   spi1_ss_o
 connect_bd_net [get_bd_pins const0/dout] [get_bd_pins $ps/SPI1_MISO_I]
 connect_bd_net [get_bd_pins const1/dout] [get_bd_pins $ps/SPI1_SS_I]
 
-# ---- I2C0 (ADS1115): split open-drain signals, IOBUFs are in the board top ----
+# ---- I2C0 (PCF8574 of the PE4302, map 2.0): split open-drain signals, IOBUFs are in the board top ----
 ext_in  processing_system7_0/I2C0_SCL_I i2c0_scl_i
 ext_out processing_system7_0/I2C0_SCL_O i2c0_scl_o
 ext_out processing_system7_0/I2C0_SCL_T i2c0_scl_t

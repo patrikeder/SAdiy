@@ -71,6 +71,8 @@ Consequences:
   the module itself.
 - Series resistors on the data lines near the FPGA of 33 to 100 ohm, 33 to 47 ohm on `adc_clk` at the FPGA. The
   220 ohm of the control lines is too much at 50 MHz (RC with the input capacitance).
+- Since register map 2.0 (2026-11-25) the PE4302 hangs on a PCF8574 on the I2C bus, so the six former PE4302 balls
+  (DATA2-14..19: J20 L16 L19 M18 L20 M20) are free for the adapter v2. The I2C bus (L17 / K18) stays.
 - Keep the cable between adapter and module short; sample delay is adjustable in the `adc_ad9226` module
   (constant latency of 7 clock periods is not corrected).
 

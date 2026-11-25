@@ -94,7 +94,6 @@ module axil_regs (
   output logic pe4302_wr,
 
   // PIN_STATE @ 0x034
-  input  logic [5:0] pin_state_pe_in,
   input  logic pin_state_ld,
   input  logic pin_state_le,
   input  logic pin_state_clk,
@@ -103,8 +102,6 @@ module axil_regs (
   input  logic pin_state_scl,
   input  logic pin_state_sda,
   input  logic pin_state_i2c_pl,
-  input  logic [5:0] pin_state_pe_out,
-  input  logic [5:0] pin_state_pe_t,
 
   // DET_CFG @ 0x038
   output logic [1:0] det_cfg_src,
@@ -159,21 +156,20 @@ module axil_regs (
   input  logic [7:0] caps_result_aw,
   input  logic [15:0] caps_clk_mhz,
 
-  // ADC_CFG @ 0x080
-  output logic [15:0] adc_cfg_config,
-  output logic [6:0] adc_cfg_addr,
+  // ATT_I2C @ 0x080
+  output logic [6:0] att_i2c_addr,
+  output logic att_i2c_p3,
+  output logic att_i2c_p7,
 
-  // ADC_I2C_DIV @ 0x084
-  output logic [11:0] adc_i2c_div_div,
+  // ATT_I2C_DIV @ 0x084
+  output logic [11:0] att_i2c_div_div,
 
-  // ADC_T_CONV_US @ 0x088
-  output logic [19:0] adc_t_conv_us_us,
-
-  // ADC_STAT @ 0x08C
-  input  logic [15:0] adc_stat_last,
-  input  logic adc_stat_err_nack,
-  input  logic adc_stat_busy,
-  input  logic [7:0] adc_stat_count,
+  // ATT_STAT @ 0x088
+  input  logic [5:0] att_stat_levels,
+  input  logic [7:0] att_stat_byte,
+  input  logic att_stat_err_nack,
+  input  logic att_stat_busy,
+  input  logic [7:0] att_stat_count,
 
   // ADF_PINS @ 0x090
   output logic adf_pins_ce,
@@ -292,10 +288,10 @@ module axil_regs (
       det_cfg_stream <= 1'h0;
       det_test_base <= 16'h0;
       table_w0_word <= 32'h0;
-      adc_cfg_config <= 16'hC3E3;
-      adc_cfg_addr <= 7'h48;
-      adc_i2c_div_div <= 12'h46;
-      adc_t_conv_us_us <= 20'h578;
+      att_i2c_addr <= 7'h27;
+      att_i2c_p3 <= 1'h1;
+      att_i2c_p7 <= 1'h1;
+      att_i2c_div_div <= 12'hFA;
       adf_pins_ce <= 1'h1;
       gen_cfg_div <= 16'h3E8;
       gen_cfg_len_m1 <= 12'h0;
@@ -381,15 +377,13 @@ module axil_regs (
         10'h01D: begin  // RESULT_DATA
           result_data_wr <= 1'b1;
         end
-        10'h020: begin  // ADC_CFG
-          adc_cfg_config <= wdata_q[15:0];
-          adc_cfg_addr <= wdata_q[22:16];
+        10'h020: begin  // ATT_I2C
+          att_i2c_addr <= wdata_q[6:0];
+          att_i2c_p3 <= wdata_q[8];
+          att_i2c_p7 <= wdata_q[9];
         end
-        10'h021: begin  // ADC_I2C_DIV
-          adc_i2c_div_div <= wdata_q[11:0];
-        end
-        10'h022: begin  // ADC_T_CONV_US
-          adc_t_conv_us_us <= wdata_q[19:0];
+        10'h021: begin  // ATT_I2C_DIV
+          att_i2c_div_div <= wdata_q[11:0];
         end
         10'h024: begin  // ADF_PINS
           adf_pins_ce <= wdata_q[0];
@@ -465,7 +459,7 @@ module axil_regs (
         rd_mux[31:0] = 32'h53410001;
       end
       10'h001: begin  // VERSION
-        rd_mux[31:0] = 32'h10003;
+        rd_mux[31:0] = 32'h20000;
       end
       10'h002: begin  // CTRL
         rd_mux[3] = ctrl_irq_en;
@@ -512,7 +506,6 @@ module axil_regs (
         rd_mux[8] = pe4302_active_high;
       end
       10'h00D: begin  // PIN_STATE
-        rd_mux[5:0] = pin_state_pe_in;
         rd_mux[8] = pin_state_ld;
         rd_mux[9] = pin_state_le;
         rd_mux[10] = pin_state_clk;
@@ -521,8 +514,6 @@ module axil_regs (
         rd_mux[13] = pin_state_scl;
         rd_mux[14] = pin_state_sda;
         rd_mux[15] = pin_state_i2c_pl;
-        rd_mux[21:16] = pin_state_pe_out;
-        rd_mux[29:24] = pin_state_pe_t;
       end
       10'h00E: begin  // DET_CFG
         rd_mux[1:0] = det_cfg_src;
@@ -567,21 +558,20 @@ module axil_regs (
         rd_mux[15:8] = caps_result_aw;
         rd_mux[31:16] = caps_clk_mhz;
       end
-      10'h020: begin  // ADC_CFG
-        rd_mux[15:0] = adc_cfg_config;
-        rd_mux[22:16] = adc_cfg_addr;
+      10'h020: begin  // ATT_I2C
+        rd_mux[6:0] = att_i2c_addr;
+        rd_mux[8] = att_i2c_p3;
+        rd_mux[9] = att_i2c_p7;
       end
-      10'h021: begin  // ADC_I2C_DIV
-        rd_mux[11:0] = adc_i2c_div_div;
+      10'h021: begin  // ATT_I2C_DIV
+        rd_mux[11:0] = att_i2c_div_div;
       end
-      10'h022: begin  // ADC_T_CONV_US
-        rd_mux[19:0] = adc_t_conv_us_us;
-      end
-      10'h023: begin  // ADC_STAT
-        rd_mux[15:0] = adc_stat_last;
-        rd_mux[16] = adc_stat_err_nack;
-        rd_mux[17] = adc_stat_busy;
-        rd_mux[31:24] = adc_stat_count;
+      10'h022: begin  // ATT_STAT
+        rd_mux[5:0] = att_stat_levels;
+        rd_mux[15:8] = att_stat_byte;
+        rd_mux[16] = att_stat_err_nack;
+        rd_mux[17] = att_stat_busy;
+        rd_mux[31:24] = att_stat_count;
       end
       10'h024: begin  // ADF_PINS
         rd_mux[0] = adf_pins_ce;

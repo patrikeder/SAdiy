@@ -4,7 +4,7 @@ generated from regmap.toml by gen_regs.py, do not edit.
 """
 
 ADDR_WIDTH = 12
-MAP_VERSION = 0x00010003
+MAP_VERSION = 0x00020000
 ID_MAGIC = 0x53410001
 
 
@@ -28,7 +28,7 @@ ID_MAGIC_WIDTH = 32
 ID_MAGIC_MASK = 0xFFFFFFFF
 
 VERSION = 0x004
-VERSION_RESET = 0x00010003
+VERSION_RESET = 0x00020000
 VERSION_VERSION_LSB = 0
 VERSION_VERSION_WIDTH = 32
 VERSION_VERSION_MASK = 0xFFFFFFFF
@@ -146,9 +146,6 @@ PE4302_ACTIVE_HIGH_MASK = 0x00000100
 
 PIN_STATE = 0x034
 PIN_STATE_RESET = 0x00000000
-PIN_STATE_PE_IN_LSB = 0
-PIN_STATE_PE_IN_WIDTH = 6
-PIN_STATE_PE_IN_MASK = 0x0000003F
 PIN_STATE_LD_LSB = 8
 PIN_STATE_LD_WIDTH = 1
 PIN_STATE_LD_MASK = 0x00000100
@@ -173,12 +170,6 @@ PIN_STATE_SDA_MASK = 0x00004000
 PIN_STATE_I2C_PL_LSB = 15
 PIN_STATE_I2C_PL_WIDTH = 1
 PIN_STATE_I2C_PL_MASK = 0x00008000
-PIN_STATE_PE_OUT_LSB = 16
-PIN_STATE_PE_OUT_WIDTH = 6
-PIN_STATE_PE_OUT_MASK = 0x003F0000
-PIN_STATE_PE_T_LSB = 24
-PIN_STATE_PE_T_WIDTH = 6
-PIN_STATE_PE_T_MASK = 0x3F000000
 
 DET_CFG = 0x038
 DET_CFG_RESET = 0x00000000
@@ -285,41 +276,41 @@ CAPS_CLK_MHZ_LSB = 16
 CAPS_CLK_MHZ_WIDTH = 16
 CAPS_CLK_MHZ_MASK = 0xFFFF0000
 
-ADC_CFG = 0x080
-ADC_CFG_RESET = 0x0048C3E3
-ADC_CFG_CONFIG_LSB = 0
-ADC_CFG_CONFIG_WIDTH = 16
-ADC_CFG_CONFIG_MASK = 0x0000FFFF
-ADC_CFG_ADDR_LSB = 16
-ADC_CFG_ADDR_WIDTH = 7
-ADC_CFG_ADDR_MASK = 0x007F0000
+ATT_I2C = 0x080
+ATT_I2C_RESET = 0x00000327
+ATT_I2C_ADDR_LSB = 0
+ATT_I2C_ADDR_WIDTH = 7
+ATT_I2C_ADDR_MASK = 0x0000007F
+ATT_I2C_P3_LSB = 8
+ATT_I2C_P3_WIDTH = 1
+ATT_I2C_P3_MASK = 0x00000100
+ATT_I2C_P7_LSB = 9
+ATT_I2C_P7_WIDTH = 1
+ATT_I2C_P7_MASK = 0x00000200
 
-ADC_I2C_DIV = 0x084
-ADC_I2C_DIV_RESET = 0x00000046
-ADC_I2C_DIV_DIV_LSB = 0
-ADC_I2C_DIV_DIV_WIDTH = 12
-ADC_I2C_DIV_DIV_MASK = 0x00000FFF
+ATT_I2C_DIV = 0x084
+ATT_I2C_DIV_RESET = 0x000000FA
+ATT_I2C_DIV_DIV_LSB = 0
+ATT_I2C_DIV_DIV_WIDTH = 12
+ATT_I2C_DIV_DIV_MASK = 0x00000FFF
 
-ADC_T_CONV_US = 0x088
-ADC_T_CONV_US_RESET = 0x00000578
-ADC_T_CONV_US_US_LSB = 0
-ADC_T_CONV_US_US_WIDTH = 20
-ADC_T_CONV_US_US_MASK = 0x000FFFFF
-
-ADC_STAT = 0x08C
-ADC_STAT_RESET = 0x00000000
-ADC_STAT_LAST_LSB = 0
-ADC_STAT_LAST_WIDTH = 16
-ADC_STAT_LAST_MASK = 0x0000FFFF
-ADC_STAT_ERR_NACK_LSB = 16
-ADC_STAT_ERR_NACK_WIDTH = 1
-ADC_STAT_ERR_NACK_MASK = 0x00010000
-ADC_STAT_BUSY_LSB = 17
-ADC_STAT_BUSY_WIDTH = 1
-ADC_STAT_BUSY_MASK = 0x00020000
-ADC_STAT_COUNT_LSB = 24
-ADC_STAT_COUNT_WIDTH = 8
-ADC_STAT_COUNT_MASK = 0xFF000000
+ATT_STAT = 0x088
+ATT_STAT_RESET = 0x00000000
+ATT_STAT_LEVELS_LSB = 0
+ATT_STAT_LEVELS_WIDTH = 6
+ATT_STAT_LEVELS_MASK = 0x0000003F
+ATT_STAT_BYTE_LSB = 8
+ATT_STAT_BYTE_WIDTH = 8
+ATT_STAT_BYTE_MASK = 0x0000FF00
+ATT_STAT_ERR_NACK_LSB = 16
+ATT_STAT_ERR_NACK_WIDTH = 1
+ATT_STAT_ERR_NACK_MASK = 0x00010000
+ATT_STAT_BUSY_LSB = 17
+ATT_STAT_BUSY_WIDTH = 1
+ATT_STAT_BUSY_MASK = 0x00020000
+ATT_STAT_COUNT_LSB = 24
+ATT_STAT_COUNT_WIDTH = 8
+ATT_STAT_COUNT_MASK = 0xFF000000
 
 ADF_PINS = 0x090
 ADF_PINS_RESET = 0x00000001
@@ -445,7 +436,7 @@ REGISTERS = {
         "offset": 0x004,
         "ext": False,
         "fields": {
-            "version": {"lsb": 0, "width": 32, "access": "const", "reset": 0x00010003},
+            "version": {"lsb": 0, "width": 32, "access": "const", "reset": 0x00020000},
         },
     },
     "CTRL": {
@@ -544,7 +535,6 @@ REGISTERS = {
         "offset": 0x034,
         "ext": False,
         "fields": {
-            "pe_in": {"lsb": 0, "width": 6, "access": "ro", "reset": 0x00000000},
             "ld": {"lsb": 8, "width": 1, "access": "ro", "reset": 0x00000000},
             "le": {"lsb": 9, "width": 1, "access": "ro", "reset": 0x00000000},
             "clk": {"lsb": 10, "width": 1, "access": "ro", "reset": 0x00000000},
@@ -553,8 +543,6 @@ REGISTERS = {
             "scl": {"lsb": 13, "width": 1, "access": "ro", "reset": 0x00000000},
             "sda": {"lsb": 14, "width": 1, "access": "ro", "reset": 0x00000000},
             "i2c_pl": {"lsb": 15, "width": 1, "access": "ro", "reset": 0x00000000},
-            "pe_out": {"lsb": 16, "width": 6, "access": "ro", "reset": 0x00000000},
-            "pe_t": {"lsb": 24, "width": 6, "access": "ro", "reset": 0x00000000},
         },
     },
     "DET_CFG": {
@@ -657,33 +645,28 @@ REGISTERS = {
             "clk_mhz": {"lsb": 16, "width": 16, "access": "ro", "reset": 0x00000000},
         },
     },
-    "ADC_CFG": {
+    "ATT_I2C": {
         "offset": 0x080,
         "ext": False,
         "fields": {
-            "config": {"lsb": 0, "width": 16, "access": "rw", "reset": 0x0000C3E3},
-            "addr": {"lsb": 16, "width": 7, "access": "rw", "reset": 0x00000048},
+            "addr": {"lsb": 0, "width": 7, "access": "rw", "reset": 0x00000027},
+            "p3": {"lsb": 8, "width": 1, "access": "rw", "reset": 0x00000001},
+            "p7": {"lsb": 9, "width": 1, "access": "rw", "reset": 0x00000001},
         },
     },
-    "ADC_I2C_DIV": {
+    "ATT_I2C_DIV": {
         "offset": 0x084,
         "ext": False,
         "fields": {
-            "div": {"lsb": 0, "width": 12, "access": "rw", "reset": 0x00000046},
+            "div": {"lsb": 0, "width": 12, "access": "rw", "reset": 0x000000FA},
         },
     },
-    "ADC_T_CONV_US": {
+    "ATT_STAT": {
         "offset": 0x088,
         "ext": False,
         "fields": {
-            "us": {"lsb": 0, "width": 20, "access": "rw", "reset": 0x00000578},
-        },
-    },
-    "ADC_STAT": {
-        "offset": 0x08C,
-        "ext": False,
-        "fields": {
-            "last": {"lsb": 0, "width": 16, "access": "ro", "reset": 0x00000000},
+            "levels": {"lsb": 0, "width": 6, "access": "ro", "reset": 0x00000000},
+            "byte": {"lsb": 8, "width": 8, "access": "ro", "reset": 0x00000000},
             "err_nack": {"lsb": 16, "width": 1, "access": "ro", "reset": 0x00000000},
             "busy": {"lsb": 17, "width": 1, "access": "ro", "reset": 0x00000000},
             "count": {"lsb": 24, "width": 8, "access": "ro", "reset": 0x00000000},

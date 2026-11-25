@@ -2,12 +2,13 @@
 //
 // ebaz_sadiy_bd (block design, bd_ebaz_sadiy.tcl): PS7 with EMIO SPI0 / I2C0 / GPIO / ENET0,
 // FCLK0 = 100 MHz, AXI4-Lite master m_axil at 0x43C0_0000 (64 KiB), IRQ_F2P[0].
-// sadiy_top (rtl/src): the engine. It owns the ADF4351 SPI pins and the PE4302 pins when pin_owner
-// is 1, otherwise it passes the PS (EMIO) levels through. This file holds only pads and IOBUFs.
+// sadiy_top (rtl/src): the engine. It owns the ADF4351 SPI pins, CE and the I2C bus (PCF8574 attenuator) when
+// pin_owner is 1, otherwise it passes the PS (EMIO) levels through. This file holds only pads and IOBUFs.
 //
 // EMIO GPIO line map (same as session L's Phase 1; Linux line = 54 + n on the Zynq gpiochip):
-//   0..5  pe4302_v[0..5]  tri-state until software drives it, so the adapter's pull-ups give 31.5 dB
-//         at boot; goes through sadiy_top (emio_pe_o / emio_pe_t -> pad, pad level read back)
+//   0..5  pe4302_v[0..5]  register map 2.0: NOT the attenuator any more (the PE4302 hangs on a PCF8574 on I2C).
+//         The balls (pad names still from pins.toml) are plain EMIO GPIO for Linux, tri-state until driven;
+//         the engine does not touch them. They stay in the build until pins.toml frees them (session L).
 //   6     adf4351_ce      through the pin mux of sadiy_top (PS line, or ADF_PINS.ce while the engine owns the pins)
 //   7     adf4351_ld      input, in parallel to sadiy_top.adf4351_ld
 //   8     lcd_dc          adapter LCD data / command, IOBUF, tri-stated until driven
@@ -154,7 +155,6 @@ module ebaz_sadiy_top (
 `endif
 
   // ---- the engine ----
-  wire [5:0] pe4302_v_o, pe4302_v_t, pe4302_v_i;
   wire       eng_irq;
   wire       ce_o, ce_t, scl_o, scl_t, scl_i, sda_o, sda_t, sda_i;
 
@@ -169,10 +169,8 @@ module ebaz_sadiy_top (
       .s_axil_rvalid(m_axil_rvalid), .s_axil_rready(m_axil_rready),
       .irq(eng_irq),
       .emio_adf_clk(spi_sclk_o), .emio_adf_dat(spi_mosi_o), .emio_adf_le(spi_ss_o),
-      .emio_pe_o(emio_tri_o[5:0]), .emio_pe_t(emio_tri_t[5:0]),
       .adf4351_clk(adf4351_clk), .adf4351_dat(adf4351_dat), .adf4351_le(adf4351_le),
       .adf4351_ld(adf4351_ld),
-      .pe4302_v_o(pe4302_v_o), .pe4302_v_t(pe4302_v_t), .pe4302_v_i(pe4302_v_i),
       .emio_ce_o(emio_tri_o[6]), .emio_ce_t(emio_tri_t[6]),
       .emio_scl_o(i2c0_scl_o), .emio_scl_t(i2c0_scl_t), .emio_sda_o(i2c0_sda_o), .emio_sda_t(i2c0_sda_t),
       .emio_scl_i(i2c0_scl_i), .emio_sda_i(i2c0_sda_i),
@@ -189,10 +187,9 @@ module ebaz_sadiy_top (
   genvar i;
   generate
     for (i = 0; i < 6; i = i + 1) begin : g_pe
-      IOBUF u_pe (.I(pe4302_v_o[i]), .T(pe4302_v_t[i]), .O(pe4302_v_i[i]), .IO(pe4302_v[i]));
+      IOBUF u_pe (.I(emio_tri_o[i]), .T(emio_tri_t[i]), .O(emio_tri_i[i]), .IO(pe4302_v[i]));   // spare GPIO
     end
   endgenerate
-  assign emio_tri_i[5:0] = pe4302_v_i;      // PS reads back the pad level
 
   IOBUF u_ce (.I(ce_o), .T(ce_t), .O(emio_tri_i[6]), .IO(adf4351_ce));   // PS GPIO 6 or ADF_PINS.ce (pin mux)
   assign emio_tri_i[7]    = adf4351_ld;
@@ -214,7 +211,7 @@ module ebaz_sadiy_top (
   assign emio_tri_i[17:13] = keys;                      // raw pad level, active low
 
   // ---- I2C0 and MDIO ----
-  IOBUF u_scl  (.I(scl_o), .T(scl_t), .O(scl_i), .IO(i2c_scl));           // PS I2C0 or the ADS1115 reader (pin mux)
+  IOBUF u_scl  (.I(scl_o), .T(scl_t), .O(scl_i), .IO(i2c_scl));           // PS I2C0 or the engine's PCF8574 writer (pin mux)
   IOBUF u_sda  (.I(sda_o), .T(sda_t), .O(sda_i), .IO(i2c_sda));
   IOBUF u_mdio (.I(mdio_o), .T(mdio_t), .O(mdio_i), .IO(enet0_mdio_mdio_io));
 

@@ -9,18 +9,57 @@ Worktree `/media/patrik/Workspaces/uC/SAdiy-rtl`, branch `rtl`. Newest entry fir
   `zynq-ebaz/rtl/fpga/` and generate the project `/media/patrik/Workspaces/HW/Vivado/EBAZ_SAdiy`. Your
   `zynq-ebaz/rtl/vivado/**` (Phase 1, `pins.toml`, `gen_xdc.py`) is not touched and `pins.toml` stays the pin
   master. This takes S8's Vivado part from you; the runtime bitstream load and the UIO device tree stay yours.
-- PS7 settings and EMIO line map are the same in both designs (`check_ps7.sh`: identical, 2026-11-15): GPIO 0..5
-  PE4302, 6 CE, 7 LD, 8 / 9 LCD, 10..12 LEDs, 13..17 keys, SPI0, SPI1 (LCD), I2C0, ENET0 MII, FCLK0 100 MHz,
+- PS7 settings and EMIO line map are the same in both designs (`check_ps7.sh`: identical, 2026-11-25): GPIO 0..5
+  former PE4302 lines (spare since map 2.0), 6 CE, 7 LD, 8 / 9 LCD, 10..12 LEDs, 13..17 keys, SPI0, SPI1 (LCD), I2C0, ENET0 MII, FCLK0 100 MHz,
   FCLK1 25 MHz. A newer engine bitstream loads at runtime on the current image. AXI-lite base of the engine: `0x43C0_0000`, 4 KiB, on M_AXI_GP0;
   interrupt on IRQ_F2P[0].
 - The register map differs from plan appendix A / B (generic SPI word table, indirect table / result access,
-  PS-pushed detector samples). See `docs/rtl-spec.md` section 11. Current map: 1.2 (`rtl/regmap/regmap.md`).
+  PS-pushed detector samples). See `docs/rtl-spec.md` section 11. Current map: 2.0 (`rtl/regmap/regmap.md`).
+- **Map 2.0 (2026-11-25):** PE4302 through a PCF8574 on I2C (user decision), ADS1115 reader removed. Your side:
+  see the 2026-11-25 entry below ("for L").
 - `sweepd --platform ebaz` on hardware uses `sw/sadiy_ebaz/platforms/ebaz_pl.py` (registers through /dev/mem).
   Register access is /dev/mem, no UIO (your decision of 2026-11-14); older text that says UIO is outdated.
 
 ## State in one line
 
-**2026-11-24: engine with register map 1.3 (sweep sequencer, ADS1115 reader, sample generator, IF path, ADC front end for the AD9226) on the board: `fe` 19/19, full `run.sh` 90 pass / 1 script fix / 1 skip, `lock adc` 17/17 with a real ADF4351 LD, PL sweep without unlock flags, virtual spectrum correct. Merged to main and pushed (88ec24a). Not tested: the AD9226 module and its pins (ADC_PADS build, adapter v2), capture phase, RF through the chain (detector dead), `la`. Decided: the I2C ADC will be removed (not done yet).**
+**2026-11-25: register map 2.0 built (not on the board): PE4302 through a PCF8574 on the I2C bus, ADS1115 reader and direct PE4302 pins removed; xsim, pytest (1007), lint pass; bitstream timing met. Map 1.3 ran on the board on 2026-11-24 (`fe` 19/19, `lock adc` with a real ADF4351 LD, virtual spectrum). Not tested: map 2.0 on the board, a real PCF8574, the AD9226 module and its pins, RF through the chain.**
+
+## 2026-11-25 register map 2.0: PE4302 through a PCF8574, ADS1115 removed (user decision)
+
+User: "Remove ADS1115 and the direct GPIO connection to PE4302 ... replaced with a PCF8574 on I2C (so keep the I2C
+interface) ... V1 to P0, V2 to P1, V3 to P2, V4 to P4, V5 to P5 and V6 to P6 ... P3 is used for a LED backlight".
+
+- RTL: `pcf8574_att.sv` (port mapping, make-before-break as one transaction `S addr+W make final P`, one byte when
+  only stages switch in, `T_ATT_GAP_CYC` hold after it) and `i2c_wr.sv` (write master, bit timing of the old ADS1115
+  reader) replace `pe4302_mbb.sv` and `ads1115_reader.sv`. The engine owns the I2C bus whenever it owns the pins
+  (`PIN_STATE.i2c_pl` = `pin_owner_act`). `sweep_seq` unchanged. The former PE4302 balls are spare EMIO GPIO 0..5 in
+  the board top (pins.toml unchanged, PS7 unchanged: `check_ps7.sh` IDENTICAL).
+- Register map 2.0 (`VERSION` 0x00020000): `ADC_CFG / ADC_I2C_DIV / ADC_T_CONV_US / ADC_STAT` gone; new `ATT_I2C`
+  (addr 0x27, p3 = backlight 1, p7 1), `ATT_I2C_DIV` (250 = 100 kHz, PCF8574 maximum), `ATT_STAT` (levels, byte,
+  err_nack, busy, count); `PIN_STATE.pe_in / pe_out / pe_t` gone; `DET_CFG.src = 3` = 2. Major bump: map 1.x software
+  would write ADS1115 registers into the attenuator's.
+- Tests: `tb_att` replaces `tb_adc` and `tb_pe4302_mbb` (behavioural PCF8574 on the pads); six mutants (P3 / P4 swap,
+  no make byte, active low ignored, engine always on the bus, NACK not reported, bytes after a NACK) each fail it.
+  `tb_sweep`, `tb_if`, `tb_axil_regs` adapted; all xsim testbenches pass. Model: PCF8574 transactions (`att_bytes`,
+  `pcf_address`), the 64 x 64 MBB contract test now expects one byte where make = new. pytest 1007 passed.
+- Software (R's part): `reg_offload` (major 2, `configure_att`, `att_status`, `set_att_pins` waits for the
+  transaction, `acquire_pins` sends the last sent levels), `ebaz_pl` (detector "test" only: "pl" / "ps" refused with
+  a message; PCF8574 address from `[attenuator] pcf8574_address`, NACK logged), `fake_pl`, `ramp_test`,
+  `pl_bringup` (stage `att` automatic, stage `adc` removed, version gates compare the whole version).
+- Fix before the commit: `ebaz_pl` read `err_nack` right after taking the pins, before the transaction had ended, so a
+  missing PCF8574 would not have been reported on the board (the model finishes at once). New `RegOffload.wait_att`;
+  a NACK during a sweep is now logged too (once). Two tests with a delayed `ATT_STAT` / unplugged PCF8574.
+- Bitstream 2026-11-25 20:14: WNS +1.68 ns, WHS +0.061 ns, LUT 2886 (16.4 %), FF 3166 (9.0 %), BRAM 12.5 tiles,
+  DSP 4, 0 critical warnings. Docs: `rtl-spec.md` (sections 1, 2, 3, 8, 8a, 9, 10, 11), `blockdiagram.svg`,
+  `selftest.md`, `adc-module.md` (balls freed for adapter v2), `ebaz-pl-measurements.md` (note).
+- Hardware notes for the user: the PCF8574 drives high only weakly (about 100 uA), and the PE4302 module has 10 kohm
+  pull-downs, so every V line needs a pull-up to 3.3 V (2.2 kohm as on the adapter). Power the PCF8574 board from 3.3 V:
+  its SDA / SCL pull-ups go to its supply and the FPGA pins are 3.3 V only. A PCF8574A board answers at 0x38..0x3F.
+- **For L:** bench mode / `ps_backend` must write the PE4302 through the PCF8574 on I2C0 (`/dev/i2c-0`, address
+  0x27, port byte P0..P2 = V1..V3, P3 = backlight, P4..P6 = V4..V6, P7) instead of EMIO GPIO 0..5, and must not use
+  I2C0 while the engine owns the pins; the ADS1115 driver, `[adc]` ADS1115 settings, detector "pl" / "ps" are gone on
+  the EBAZ; `pins.toml` / `pinmap_ebaz.py` / `gen_diagrams.py` / netlist: PE4302 nets now on the PCF8574, DATA2-14..19
+  free; `[attenuator] pcf8574_address` and `pcf8574_backlight` belong in `config/default.toml`; GUI Pins tab, docs.
 
 ## 2026-11-24 first board run of map 1.3, ADF4351 connected (details: `docs/ebaz-pl-measurements.md`)
 

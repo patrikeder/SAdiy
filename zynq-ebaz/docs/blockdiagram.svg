@@ -52,8 +52,8 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <path class="w w-pin" d="M310,290 L215,290" marker-end="url(#a-pin)"/>
 <path class="halo" d="M215,355 L310,355"/>
 <path class="w w-pin" d="M215,355 L310,355" marker-end="url(#a-pin)"/>
-<path class="halo" d="M310,420 L215,420"/>
-<path class="w w-pin" d="M310,420 L215,420" marker-end="url(#a-pin)"/>
+<path class="halo" d="M120,460 L120,446"/>
+<path class="w w-pin" d="M120,460 L120,446" marker-end="url(#a-pin)"/>
 <path class="halo" d="M310,485 L215,485"/>
 <path class="w w-pin" d="M310,485 L215,485" marker-end="url(#a-pin)"/>
 <path class="halo" d="M310,550 L215,550"/>
@@ -72,8 +72,6 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <path class="w w-pin" d="M570,225 L455,225" marker-end="url(#a-pin)"/>
 <path class="halo" d="M570,290 L455,290"/>
 <path class="w w-pin" d="M570,290 L455,290" marker-end="url(#a-pin)" marker-start="url(#s-pin)"/>
-<path class="halo" d="M570,420 L455,420"/>
-<path class="w w-pin" d="M570,420 L455,420" marker-end="url(#a-pin)" marker-start="url(#s-pin)"/>
 <path class="halo" d="M570,485 L455,485"/>
 <path class="w w-pin" d="M570,485 L455,485" marker-end="url(#a-pin)" marker-start="url(#s-pin)"/>
 <path class="halo" d="M570,550 L455,550"/>
@@ -106,8 +104,8 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <path class="w w-cfg" d="M1926,224 L1926,276" marker-end="url(#a-cfg)"/>
 <path class="halo" d="M835,312 L720,312"/>
 <path class="w w-pin" d="M835,312 L720,312" marker-end="url(#a-pin)"/>
-<path class="halo" d="M835,422 L720,422"/>
-<path class="w w-pin" d="M835,422 L720,422" marker-end="url(#a-pin)"/>
+<path class="halo" d="M990,454 L990,590"/>
+<path class="w w-ctl" d="M990,454 L990,590" marker-end="url(#a-ctl)"/>
 <path class="halo" d="M835,530 L720,530"/>
 <path class="w w-ctl" d="M835,530 L720,530" marker-end="url(#a-ctl)"/>
 <path class="halo" d="M835,620 L720,620"/>
@@ -120,10 +118,6 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <path class="w w-ctl" d="M1400,480 L720,480" marker-end="url(#a-ctl)"/>
 <path class="halo" d="M920,480 L920,505"/>
 <path class="w w-ctl" d="M920,480 L920,505" marker-end="url(#a-ctl)"/>
-<path class="halo" d="M920,555 L920,590"/>
-<path class="w w-ctl" d="M920,555 L920,590" marker-end="url(#a-ctl)"/>
-<path class="halo" d="M1005,605 L1105,605"/>
-<path class="w w-data" d="M1005,605 L1105,605" marker-end="url(#a-data)"/>
 <path class="halo" d="M1400,580 L1265,580"/>
 <path class="w w-ctl" d="M1400,580 L1265,580" marker-end="url(#a-ctl)"/>
 <path class="halo" d="M1370,580 L1370,812"/>
@@ -209,13 +203,13 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <rect class="dev" x="25" y="394" width="190" height="52" rx="6"/>
 <text class="dt" x="34" y="412">PE4302 module</text>
 <text class="bt dim" x="34" y="426">V1..V6 = 0.5 .. 16 dB, high = in</text>
-<text class="bt dim" x="34" y="439">adapter pull-ups: 31.5 dB</text>
+<text class="bt dim" x="34" y="439">pull-ups to 3.3 V: 31.5 dB</text>
 <rect class="dev" x="25" y="460" width="190" height="112" rx="6"/>
-<text class="dt" x="34" y="478">ADS1115 (I2C 0x48)</text>
-<text class="bt dim" x="34" y="492">detector ADC, A0 vs GND</text>
-<text class="bt dim" x="34" y="505">read by the PL reader or PS I2C0</text>
-<text class="bt dim" x="34" y="518">analog: RF in -&gt; PE4302 -&gt;</text>
-<text class="bt dim" x="34" y="531">amp -&gt; AD831 -&gt; detector -&gt; A0</text>
+<text class="dt" x="34" y="478">PCF8574 (I2C 0x27)</text>
+<text class="bt dim" x="34" y="492">I2C-to-LCD adapter, 3.3 V</text>
+<text class="bt dim" x="34" y="505">P0..P2 = V1..V3, P3 = LED</text>
+<text class="bt dim" x="34" y="518">P4..P6 = V4..V6, P7 spare</text>
+<text class="bt dim" x="34" y="531">written by the PL or PS I2C0</text>
 <rect class="dev" x="25" y="956" width="190" height="48" rx="6"/>
 <text class="dt" x="34" y="974">AD9226 module (not wired yet)</text>
 <text class="bt dim" x="34" y="988">50 ohm SMA in, 5 V, 3.3 V logic</text>
@@ -242,8 +236,8 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <text class="pn" x="317" y="346">adf4351_ld</text>
 <text class="bt dim" x="317" y="359">input, also EMIO n=7</text>
 <text class="ball" x="317" y="372">J19</text>
-<rect class="pad" x="310" y="398" width="145" height="44" rx="3"/>
-<text class="pn" x="317" y="411">pe4302_v[5:0]</text>
+<rect class="pad dash" x="310" y="398" width="145" height="44" rx="3"/>
+<text class="pn" x="317" y="411">pe4302_v[5:0]: spare</text>
 <text class="bt dim" x="317" y="424">IOBUF g_pe, EMIO 0..5</text>
 <text class="ball" x="317" y="437">J20 L16 L19 M18 L20 M20</text>
 <rect class="pad" x="310" y="463" width="145" height="44" rx="3"/>
@@ -285,11 +279,11 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <text class="bt" x="579" y="294">  (sweep)</text>
 <text class="bt" x="579" y="307"></text>
 <text class="bt" x="579" y="320">ADF4351 SPI, CE,</text>
-<text class="bt" x="579" y="333">PE4302 V1..V6,</text>
-<text class="bt" x="579" y="346">ADS1115 SCL / SDA</text>
+<text class="bt" x="579" y="333">I2C SCL / SDA</text>
+<text class="bt" x="579" y="346">(PCF8574: PE4302)</text>
 <text class="bt" x="579" y="359"></text>
-<text class="bt" x="579" y="372">I2C to the PL reader</text>
-<text class="bt" x="579" y="385">only while i2c_pl = 1</text>
+<text class="bt" x="579" y="372">I2C to the engine</text>
+<text class="bt" x="579" y="385">while it owns the pins</text>
 <rect class="inl" x="590" y="725" width="100" height="52" rx="5"/>
 <text class="st" x="640.0" y="749.0" text-anchor="middle">input sync</text>
 <text class="bt dim" x="640.0" y="763.0" text-anchor="middle">2-FF, inline</text>
@@ -301,24 +295,25 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <text class="bm" x="844" y="312">adf4351_spi</text>
 <text class="bt" x="844" y="329">32-bit word, MSB first</text>
 <rect class="blk" x="835" y="390" width="170" height="64" rx="5"/>
-<text class="bi" x="844" y="408">u_mbb</text>
-<text class="bm" x="844" y="422">pe4302_mbb</text>
-<text class="bt" x="844" y="439">make-before-break step</text>
-<rect class="inl" x="835" y="505" width="170" height="50" rx="5"/>
-<text class="st" x="920.0" y="528.0" text-anchor="middle">I2C handover</text>
-<text class="bt dim" x="920.0" y="542.0" text-anchor="middle">inline, between samples</text>
+<text class="bi" x="844" y="408">u_att</text>
+<text class="bm" x="844" y="422">pcf8574_att</text>
+<text class="bt" x="844" y="439">V1..V6 to the port byte</text>
+<text class="bt" x="844" y="452">make, final: one write</text>
+<rect class="inl" x="835" y="505" width="125" height="50" rx="5"/>
+<text class="st" x="897.5" y="528.0" text-anchor="middle">I2C owner</text>
+<text class="bt dim" x="897.5" y="542.0" text-anchor="middle">= pin owner, inline</text>
 <rect class="blk" x="835" y="590" width="170" height="80" rx="5"/>
-<text class="bi" x="844" y="608">u_adc</text>
-<text class="bm" x="844" y="622">ads1115_reader</text>
-<text class="bt" x="844" y="639">I2C master, single shot</text>
-<text class="bt" x="844" y="652">NACK gives sample 0</text>
+<text class="bi" x="844" y="608">u_att.u_i2c</text>
+<text class="bm" x="844" y="622">i2c_wr</text>
+<text class="bt" x="844" y="639">I2C master, write only</text>
+<text class="bt" x="844" y="652">address + 1 or 2 bytes</text>
 <rect class="blk" x="1105" y="530" width="160" height="180" rx="5"/>
 <text class="bi" x="1114" y="548">u_det</text>
 <text class="bm" x="1114" y="562">det_sampler</text>
 <rect class="sub" x="1117" y="578" width="136" height="54" rx="4"/>
 <text class="st" x="1185.0" y="594" text-anchor="middle">source select</text>
 <text class="bt dim" x="1185.0" y="608" text-anchor="middle">0 push  1 test ramp</text>
-<text class="bt dim" x="1185.0" y="620" text-anchor="middle">2 stream  3 ADS1115</text>
+<text class="bt dim" x="1185.0" y="620" text-anchor="middle">2 and 3 stream</text>
 <rect class="sub" x="1117" y="644" width="136" height="54" rx="4"/>
 <text class="st" x="1185.0" y="660" text-anchor="middle">n_avg accumulator</text>
 <text class="bt dim" x="1185.0" y="674" text-anchor="middle">28-bit sum, then done</text>
@@ -329,7 +324,7 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <text class="bt mono" x="1409" y="342" xml:space="preserve"></text>
 <text class="bt mono" x="1409" y="355" xml:space="preserve">IDLE</text>
 <text class="bt mono" x="1409" y="368" xml:space="preserve">FETCH      read entry</text>
-<text class="bt mono" x="1409" y="381" xml:space="preserve">ATT        PE4302 step</text>
+<text class="bt mono" x="1409" y="381" xml:space="preserve">ATT        attenuator</text>
 <text class="bt mono" x="1409" y="394" xml:space="preserve">SPI        ADF4351 word</text>
 <text class="bt mono" x="1409" y="407" xml:space="preserve">WAIT_MIN   T_MIN_US</text>
 <text class="bt mono" x="1409" y="420" xml:space="preserve">WAIT_LOCK  LD stable</text>
@@ -410,8 +405,8 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <text class="bt mono" x="2107" y="477" xml:space="preserve">FCLK_CLK0  100 MHz</text>
 <text class="bt mono" x="2107" y="490" xml:space="preserve"></text>
 <text class="bt mono" x="2107" y="503" xml:space="preserve">EMIO SPI0  ADF4351</text>
-<text class="bt mono" x="2107" y="516" xml:space="preserve">EMIO I2C0  ADS1115</text>
-<text class="bt mono" x="2107" y="529" xml:space="preserve">EMIO GPIO 0..5  PE4302</text>
+<text class="bt mono" x="2107" y="516" xml:space="preserve">EMIO I2C0  PCF8574</text>
+<text class="bt mono" x="2107" y="529" xml:space="preserve">EMIO GPIO 0..5  spare</text>
 <text class="bt mono" x="2107" y="542" xml:space="preserve">EMIO GPIO 6   ADF4351 CE</text>
 <text class="bt mono" x="2107" y="555" xml:space="preserve">EMIO GPIO 7   lock detect</text>
 <text class="bt mono" x="2107" y="568" xml:space="preserve">EMIO GPIO 8..17</text>
@@ -440,12 +435,12 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <circle class="d-cfg" cx="2002" cy="505" r="3.8"/>
 <text class="hd" x="310" y="176" text-anchor="start">pads, I/O buffers, FPGA pins</text>
 <text class="hd dev-h" x="25" y="176" text-anchor="start">devices outside the FPGA</text>
-<text class="bt" x="970" y="184" text-anchor="start">register file generated from regmap.toml by gen_regs.py, map 1.3 (VERSION 0x00010003), 4 KiB at 0x43C0_0000</text>
-<text class="bt dim" x="970" y="200" text-anchor="start">CTRL, STATUS, timing, PE4302, DET_CFG, TABLE_ADDR / W0 / W1, RESULT_ADDR / DATA (auto-increment), ADC_*, GEN_*, IF_*, FE_*</text>
+<text class="bt" x="970" y="184" text-anchor="start">register file generated from regmap.toml by gen_regs.py, map 2.0 (VERSION 0x00020000), 4 KiB at 0x43C0_0000</text>
+<text class="bt dim" x="970" y="200" text-anchor="start">CTRL, STATUS, timing, PE4302, ATT_*, DET_CFG, TABLE_ADDR / W0 / W1, RESULT_ADDR / DATA (auto-increment), GEN_*, IF_*, FE_*</text>
 <text class="wl l-pin" x="263" y="219" text-anchor="middle">SPI writes</text>
 <text class="wl l-pin" x="263" y="284" text-anchor="middle">CE, high = on</text>
 <text class="wl l-pin" x="263" y="349" text-anchor="middle">lock detect</text>
-<text class="wl l-pin" x="263" y="414" text-anchor="middle">V1..V6 levels</text>
+<text class="wl l-pin" x="126" y="456" text-anchor="start">V1..V6</text>
 <text class="wl l-pin" x="263" y="479" text-anchor="middle">I2C clock</text>
 <text class="wl l-pin" x="263" y="544" text-anchor="middle">I2C data</text>
 <text class="wl l-data" x="263" y="974" text-anchor="middle">ADC samples</text>
@@ -455,9 +450,8 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <text class="wl l-ps" x="263" y="1310" text-anchor="middle">MII, MDIO</text>
 <text class="wl l-pin" x="512" y="219" text-anchor="middle">ADF4351 SPI pins</text>
 <text class="wl l-pin" x="516" y="284" text-anchor="middle">synth enable pin</text>
-<text class="wl l-pin" x="516" y="414" text-anchor="middle">attenuator pins</text>
-<text class="wl l-pin" x="516" y="479" text-anchor="middle">ADS1115 clock</text>
-<text class="wl l-pin" x="516" y="544" text-anchor="middle">ADS1115 data</text>
+<text class="wl l-pin" x="516" y="479" text-anchor="middle">PCF8574 clock</text>
+<text class="wl l-pin" x="516" y="544" text-anchor="middle">PCF8574 data</text>
 <text class="wl l-sense" x="456" y="660" text-anchor="middle" transform="rotate(-90 456 660)">pad level sense</text>
 <text class="wl l-sense" x="730" y="694" text-anchor="middle">SDA input level</text>
 <text class="wl l-sense" x="1540" y="1112" text-anchor="middle">GPIO readback lines</text>
@@ -472,14 +466,12 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <text class="wl l-cfg" x="1566" y="258" text-anchor="start">sweep status counters</text>
 <text class="wl l-cfg" x="1920" y="256" text-anchor="end">irq enable</text>
 <text class="wl l-pin" x="777" y="306" text-anchor="middle">engine SPI frame</text>
-<text class="wl l-pin" x="777" y="416" text-anchor="middle">attenuator drive</text>
+<text class="wl l-ctl" x="996" y="530" text-anchor="start">port bytes</text>
 <text class="wl l-ctl" x="777" y="524" text-anchor="middle">I2C owner select</text>
-<text class="wl l-pin" x="777" y="614" text-anchor="middle">reader I2C drive</text>
+<text class="wl l-pin" x="777" y="614" text-anchor="middle">engine I2C drive</text>
 <text class="wl l-ctl" x="1220" y="306" text-anchor="middle">LO word handshake</text>
 <text class="wl l-ctl" x="1220" y="432" text-anchor="middle">attenuator step handshake</text>
 <text class="wl l-ctl" x="1220" y="474" text-anchor="middle">pin owner active</text>
-<text class="wl l-ctl" x="926" y="577" text-anchor="start">reader run gate</text>
-<text class="wl l-data" x="1070" y="599" text-anchor="middle">ADC samples</text>
 <text class="wl l-ctl" x="1332" y="574" text-anchor="middle">measure run gate</text>
 <text class="wl l-data" x="1314" y="694" text-anchor="middle">video power sum</text>
 <text class="wl l-data" x="1670" y="714" text-anchor="middle">IF power sum</text>
@@ -489,7 +481,7 @@ text{font-family:'DejaVu Sans',Verdana,sans-serif}
 <text class="wl l-data" x="990" y="974" text-anchor="middle">front-end stream</text>
 <text class="wl l-data" x="1142" y="906" text-anchor="middle">IF sample stream</text>
 <text class="wl l-data" x="1114" y="772" text-anchor="end">video sample stream</text>
-<text class="wl l-cfg" x="964" y="722" text-anchor="end">reader config, status</text>
+<text class="wl l-cfg" x="964" y="722" text-anchor="end">PCF8574 address, status</text>
 <text class="wl l-cfg" x="914" y="820" text-anchor="end">pattern upload</text>
 <text class="wl l-cfg" x="1049" y="838" text-anchor="end">stream source select</text>
 <text class="wl l-cfg" x="1226" y="760" text-anchor="start">sampler source, push</text>

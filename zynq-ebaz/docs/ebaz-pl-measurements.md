@@ -3,6 +3,9 @@
 Newest first. What was measured, with which setup, and what is still open. Source of the numbers: the user's runs on the
 EBAZ4205 with a logic analyzer (recorded by session R from the user's reports, 2026-11-14); no raw captures are in the repo.
 
+Register map 2.0 (2026-11-25: PE4302 through a PCF8574 on I2C, ADS1115 reader removed) has not run on the board.
+The `adc` stage and the `PIN_STATE.pe_*` readings below belong to maps 1.1 to 1.3 and no longer exist.
+
 The 2026-11-23 entry is map 1.3 (`VERSION` 0x00010003, stage `fe`). Everything below the 2026-11-16 entry was measured with register map 1.0. The 2026-11-16 entry is map 1.2
 (`VERSION` 0x00010002): `lock`, `adc` and `if` have run; `owner`, `ce` and `ctrl` have not been repeated on map 1.2.
 

@@ -21,7 +21,7 @@
 name = "sadiy"
 data_width = 32
 addr_width = 12
-version = 0x00010003        # major << 16 | minor; bump on every incompatible change
+version = 0x00020000        # major << 16 | minor; bump on every incompatible change (2.0: ADS1115 reader and PE4302 pins removed, PCF8574 attenuator)
 
 [[reg]]
 name = "ID"
@@ -42,7 +42,7 @@ doc = "Register map version (major << 16 | minor). Equals [map] version."
   name = "version"
   bits = "31:0"
   access = "const"
-  reset = 0x00010003
+  reset = 0x00020000
   doc = "must equal map.version (gen_regs.py checks)"
 
 [[reg]]
@@ -170,7 +170,7 @@ doc = "ADF4351 SPI half bit period in clk cycles (f_sclk = f_clk / (2 * div)). V
 [[reg]]
 name = "T_ATT_GAP_CYC"
 offset = 0x01C
-doc = "PE4302 make-before-break: clk cycles the intermediate (make) state is held, and again after the final state before the entry continues."
+doc = "Attenuator: clk cycles of hold after the PCF8574 transaction (final state on the pins) before the entry continues. The make state itself is held one I2C byte (9 SCL periods) inside the transaction."
   [[reg.field]]
   name = "cycles"
   bits = "15:0"
@@ -226,13 +226,13 @@ doc = "Detector settling time between lock (or timeout) and the first sample."
 name = "PE4302"
 offset = 0x030
 wr_strobe = true
-doc = "PE4302 pin control of the engine. Reset state = all stages in (31.5 dB) for an active-high module."
+doc = "PE4302 attenuator of the engine, written through the PCF8574 (ATT_* registers). Reset state = all stages in (31.5 dB) for an active-high module."
   [[reg.field]]
   name = "manual"
   bits = "5:0"
   access = "rw"
   reset = 0x3F
-  doc = "Pin levels V1..V6 (bit 0 = V1). A write while the engine owns the pins and is idle moves the pins there, make-before-break, if they differ. A write at any other time only stores the value. Taking the pins loads this value directly."
+  doc = "Levels V1..V6 (bit 0 = V1). A write while the engine owns the pins and is idle sends them to the PCF8574, make-before-break, if they differ from ATT_STAT.levels. A write at any other time only stores the value. Taking the pins sends this value as one byte."
   [[reg.field]]
   name = "active_high"
   bits = "8"
@@ -244,11 +244,6 @@ doc = "PE4302 pin control of the engine. Reset state = all stages in (31.5 dB) f
 name = "PIN_STATE"
 offset = 0x034
 doc = "Live pins after the pin mux, synchronised to clk."
-  [[reg.field]]
-  name = "pe_in"
-  bits = "5:0"
-  access = "ro"
-  doc = "Levels read back from the PE4302 pins."
   [[reg.field]]
   name = "ld"
   bits = "8"
@@ -288,17 +283,7 @@ doc = "Live pins after the pin mux, synchronised to clk."
   name = "i2c_pl"
   bits = "15"
   access = "ro"
-  doc = "1 = the ADS1115 reader of the PL owns the I2C pins (engine owns the pins and DET_CFG.src = 3); 0 = PS I2C0."
-  [[reg.field]]
-  name = "pe_out"
-  bits = "21:16"
-  access = "ro"
-  doc = "Levels driven on the PE4302 pins (meaningful where pe_t = 0)."
-  [[reg.field]]
-  name = "pe_t"
-  bits = "29:24"
-  access = "ro"
-  doc = "1 = that PE4302 pin is not driven (PS owner with the GPIO line as input)."
+  doc = "1 = the engine's I2C master (PCF8574 attenuator) owns the I2C pins: whenever the engine owns the pins (STATUS.pin_owner_act); 0 = PS I2C0."
 
 [[reg]]
 name = "DET_CFG"
@@ -308,7 +293,7 @@ doc = "Detector sample source."
   name = "src"
   bits = "1:0"
   access = "rw"
-  doc = "Video path (mode = 0): 0 = PS push (DET_PUSH), 1 = test generator (DET_TEST), 2 = sample stream selected by `stream` (negative samples count as 0), 3 = ADS1115 reader in the PL (ADC_* registers; the engine then owns the I2C pins while it owns the other pins)."
+  doc = "Video path (mode = 0): 0 = PS push (DET_PUSH), 1 = test generator (DET_TEST), 2 = sample stream selected by `stream` (negative samples count as 0), 3 = same as 2 (was the ADS1115 reader before register map 2.0)."
   [[reg.field]]
   name = "mode"
   bits = "4"
@@ -481,68 +466,68 @@ doc = "Build parameters."
   doc = "fabric clock in MHz (the microsecond tick divides by this)"
 
 [[reg]]
-name = "ADC_CFG"
+name = "ATT_I2C"
 offset = 0x080
-doc = "ADS1115 reader (DET_CFG.src = 3): what is written to the ADC for every sample."
-  [[reg.field]]
-  name = "config"
-  bits = "15:0"
-  access = "rw"
-  reset = 0xC3E3
-  doc = "ADS1115 config register word, written before every sample; must have OS = 1 and MODE = 1 (single shot). Reset: AIN0 to GND, +/-4.096 V, 860 SPS, comparator off."
+doc = "PCF8574 port expander that drives the PE4302 (P0..P2 = V1..V3, P3 = backlight LED, P4..P6 = V4..V6, P7 spare). New values apply with the next attenuator write."
   [[reg.field]]
   name = "addr"
-  bits = "22:16"
+  bits = "6:0"
   access = "rw"
-  reset = 0x48
-  doc = "I2C address of the ADS1115 (0x48 = ADDR pin to GND)."
+  reset = 0x27
+  doc = "7-bit I2C address (0x27 = PCF8574 with A2..A0 open on the usual LCD adapter; a PCF8574A answers at 0x3F)."
+  [[reg.field]]
+  name = "p3"
+  bits = "8"
+  access = "rw"
+  reset = 1
+  doc = "Level written to P3 (backlight LED of the LCD adapter board; 1 = on, the power-up state)."
+  [[reg.field]]
+  name = "p7"
+  bits = "9"
+  access = "rw"
+  reset = 1
+  doc = "Level written to P7 (not used; 1 = the quasi-bidirectional high of power-up)."
 
 [[reg]]
-name = "ADC_I2C_DIV"
+name = "ATT_I2C_DIV"
 offset = 0x084
-doc = "ADS1115 reader: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 70 = 357 kHz at 100 MHz (t_low 1.4 us)."
+doc = "PCF8574 bus: I2C quarter bit period in clk cycles (f_scl = f_clk / (4 * div)). Values below 4 are treated as 4. Reset 250 = 100 kHz at 100 MHz, the PCF8574 maximum."
   [[reg.field]]
   name = "div"
   bits = "11:0"
   access = "rw"
-  reset = 70
+  reset = 250
   doc = ""
 
 [[reg]]
-name = "ADC_T_CONV_US"
+name = "ATT_STAT"
 offset = 0x088
-doc = "ADS1115 reader: microseconds between the config write (conversion start) and the read. Must exceed the conversion time of the data rate in ADC_CFG.config plus its 10 % tolerance. Reset 1400 for 860 SPS."
+doc = "Attenuator status, read-only."
   [[reg.field]]
-  name = "us"
-  bits = "19:0"
-  access = "rw"
-  reset = 1400
-  doc = ""
-
-[[reg]]
-name = "ADC_STAT"
-offset = 0x08C
-doc = "ADS1115 reader status, read-only."
-  [[reg.field]]
-  name = "last"
-  bits = "15:0"
+  name = "levels"
+  bits = "5:0"
   access = "ro"
-  doc = "Conversion register of the last sample as read from the ADC (two's complement)."
+  doc = "PE4302 levels V1..V6 the engine sent last (final state of the last transaction; reset 0x3F = PCF8574 power-up)."
+  [[reg.field]]
+  name = "byte"
+  bits = "15:8"
+  access = "ro"
+  doc = "Last port byte sent (final state, P7..P0)."
   [[reg.field]]
   name = "err_nack"
   bits = "16"
   access = "ro"
-  doc = "Sticky: the ADC did not acknowledge (missing, wrong address, bus held). That sample was delivered as 0. Cleared by start and soft_reset."
+  doc = "Sticky: the PCF8574 did not acknowledge (missing, wrong address, no pull-ups): the attenuation may be wrong. Cleared by start and soft_reset."
   [[reg.field]]
   name = "busy"
   bits = "17"
   access = "ro"
-  doc = "A sample (bus transaction or conversion wait) is in progress."
+  doc = "An attenuator transaction or its hold is in progress."
   [[reg.field]]
   name = "count"
   bits = "31:24"
   access = "ro"
-  doc = "Conversions read since reset, wraps."
+  doc = "Transactions finished since reset, wraps."
 
 [[reg]]
 name = "ADF_PINS"
