@@ -23,7 +23,7 @@ Keep every RF link a short coax (SMA), 50 ohm. Mark each cable with its name.
 | ADC_BUS | AD9226 module header | adapter v2 (DATA1, 14 signals) | 12 data lines + OTR in, clock out; short cable, series resistors on the adapter (`../zynq-ebaz/docs/adc-module.md` section 4) |
 | IF_A | AD831 IF out | 10.7 MHz IF filter, IF amp, detector RF in | **analog branch, optional**: the AD8318 module is dead and not replaced |
 | DET | detector VOUT | RC + clamp (1k, 100 nF) on the adapter board | analog branch, only with a working detector; short and away from the LO and RF cables |
-| ADC | RC + clamp | ADS1115 A0 (BBB: AIN0 too, through a divider, as a cross-check) | analog branch |
+| ADC | RC + clamp | BBB AIN0 through a divider (the ADS1115 was removed) | analog branch |
 
 ## Practical rules
 

@@ -58,8 +58,9 @@ def test_init_sequence_checks_the_address_bits():
 
 # ---------------------------------------------------------------- pin text
 def test_describe_pin_has_net_board_pin_gpio_and_notes():
-    text = core.describe_pin(pinmap.PINS["P8.7"])
-    assert all(s in text for s in ("P8.7", "ATT_V1", "PE4302 V1", "66", "confirm", "pe4302-walk", "GPIO2_2"))
+    text = core.describe_pin(pinmap.PINS["P9.19"])
+    assert all(s in text for s in ("P9.19", "I2C_SCL", "PCF8574 SCL", "13", "confirm", "attenuator", "GPIO0_13"))
+    assert "PE4302 header" in core.describe_pin(pinmap.PINS["P8.7"])     # the adapter board still routes there
     assert "display-only" in core.describe_pin(pinmap.PINS["P9.1"])
     assert "AIN0" in core.describe_pin(pinmap.PINS["P9.39"])
     assert "Expert" in core.describe_pin(pinmap.PINS["P9.15"])
@@ -118,26 +119,26 @@ def test_no_reply_is_an_error_not_a_crash():
 
 
 def test_confirm_is_asked_once_per_pin(h):
-    assert h.session.drive("P8.7", 0)["ok"]
-    assert h.session.drive("P8.7", 1)["ok"]
+    assert h.session.drive("P9.27", 0)["ok"]
+    assert h.session.drive("P9.27", 1)["ok"]
     assert len(h.asked) == 1
-    assert h.session.drive("P8.8", 0)["ok"]
+    assert h.session.drive("P9.19", 0)["ok"]
     assert len(h.asked) == 2
 
 
 def test_refused_confirm_leaves_the_pin_alone():
     h = Harness(answer=False)
     h.session.open(lambda: True)
-    r = h.session.drive("P8.7", 0)
+    r = h.session.drive("P9.27", 1)
     assert not r["ok"] and r["cancelled"]
-    assert h.daemon.bench._lines["P8.7"].read() == 1
+    assert h.session.poll()["ok"] and h.session.level("P9.27")[1] != "out"
 
 
 def test_confirm_is_forgotten_when_the_mode_closes(h):
-    h.session.drive("P8.7", 0)
+    h.session.drive("P9.27", 0)
     h.session.close()
     h.session.open(lambda: True)
-    h.session.drive("P8.7", 0)
+    h.session.drive("P9.27", 0)
     assert len(h.asked) == 2
 
 
@@ -155,15 +156,15 @@ def test_expert_flag_follows_the_checkbox(h):
 
 
 def test_poll_sees_levels_and_notices_a_closed_mode(h):
-    h.session.drive("P8.7", 0)
+    h.session.drive("P9.27", 0)
     assert h.session.poll()["ok"]
-    assert h.session.level("P8.7") == (0, "out")
+    assert h.session.level("P9.27") == (0, "out")
     assert h.session.level("P9.22") == (None, "bus")
     assert h.session.level("P9.1") == (None, None)
     h.daemon.bench.close("no command from the client for 5 s")
     r = h.session.poll()
     assert r["closed"] and "no command" in r["error"] and not h.session.active
-    assert h.session.level("P8.7") == (None, None)
+    assert h.session.level("P9.27") == (None, None)
 
 
 def test_close_when_not_open_sends_nothing():
@@ -223,11 +224,11 @@ def test_blocks_fit_and_every_net_has_a_wire():
 
 def test_inner_column_wires_run_in_the_row_gap():
     by_net = {w.net: w for w in core.wires()}
-    outer = by_net["ATT_V1"].points                        # P8.7, odd: left column, toward the PE4302 on the left
-    inner = by_net["ATT_V2"].points                        # P8.8, even: must pass under P8.7
+    outer = by_net["I2C_SDA"].points                       # P9.20, even: right column, toward the boards on the right
+    inner = by_net["I2C_SCL"].points                       # P9.19, odd: must pass under P9.20
     assert outer[0][1] == outer[1][1]
     assert inner[1][1] > inner[0][1]
-    x, y, w, h = core.pin_rect(pinmap.PINS["P8.7"])
+    x, y, w, h = core.pin_rect(pinmap.PINS["P9.20"])
     assert inner[1][1] > y + h                             # below the neighbouring pin, not through it
 
 

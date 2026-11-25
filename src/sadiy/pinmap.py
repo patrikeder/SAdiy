@@ -13,7 +13,9 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-# One entry per SBC-to-board signal. bbb is a P9 pin number or a string like "P8.7"; rpi is the physical
+from .drivers import pcf8574
+
+# One entry per SBC-to-board signal (what the PCF8574 drives is not one: see EXPANDER_LINKS). bbb is a P9 pin number or a string like "P8.7"; rpi is the physical
 # pin (None = not used there); ebaz is a pin id on the EBAZ4205 DATA connectors, "DATA2.5" (None = not used there;
 # the balls are in zynq-ebaz/rtl/vivado/pins.toml, see pinmap_ebaz.py). mux is the `config-pin` mode of a bus pin, restored when it stops being a GPIO.
 NETS = [
@@ -28,30 +30,19 @@ NETS = [
          note="digital lock detect output (Lock_Flag LED on the board), GPIO input; the MUX pin stays unused"),
     dict(id="SYN_CE", dev="ADF4351", dpin="CE", kind="reserved", dir="SBC to board", bbb=27, rpi=36, ebaz="DATA2.13",
          note="optional; tie the CE header pin to 3V3 until needed"),
-    dict(id="ATT_V1", dev="PE4302", dpin="V1 (0.5 dB)", kind="gpio", dir="SBC to board", bbb="P8.7", rpi=29, ebaz="DATA2.14",
-         note="assumed weight; verify order and polarity with pe4302-walk"),
-    dict(id="ATT_V2", dev="PE4302", dpin="V2 (1 dB)", kind="gpio", dir="SBC to board", bbb="P8.8", rpi=31, ebaz="DATA2.15",
-         note="assumed 1 dB stage"),
-    dict(id="ATT_V3", dev="PE4302", dpin="V3 (2 dB)", kind="gpio", dir="SBC to board", bbb="P8.9", rpi=32, ebaz="DATA2.16",
-         note="assumed 2 dB stage"),
-    dict(id="ATT_V4", dev="PE4302", dpin="V4 (4 dB)", kind="gpio", dir="SBC to board", bbb="P8.10", rpi=33, ebaz="DATA2.17",
-         note="assumed 4 dB stage"),
-    dict(id="ATT_V5", dev="PE4302", dpin="V5 (8 dB)", kind="gpio", dir="SBC to board", bbb="P8.11", rpi=38, ebaz="DATA2.18",
-         note="assumed 8 dB stage"),
-    dict(id="ATT_V6", dev="PE4302", dpin="V6 (16 dB)", kind="gpio", dir="SBC to board", bbb="P8.12", rpi=40, ebaz="DATA2.19",
-         note="assumed 16 dB stage"),
     dict(id="DET_ADC", dev="Detector", dpin="VOUT via divider", kind="analog", dir="board to SBC", bbb=39,
-         rpi=None, ebaz=None, note="BBB: AIN0 through the divider, a cross-check only (the ADS1115 is the main ADC); 0 to 1.8 V absolute maximum. RPi: ADS1115 only",
-         note_bbb="AIN0 through the divider, a cross-check only (the ADS1115 is the main ADC); 0 to 1.8 V absolute maximum"),
+         rpi=None, ebaz=None, note="BBB: AIN0 through the divider, the only detector ADC left (the ADS1115 was removed); 0 to 1.8 V absolute maximum. RPi: no analog input",
+         note_bbb="AIN0 through the divider, the only detector ADC left (the ADS1115 was removed); 0 to 1.8 V absolute maximum"),
     dict(id="ADC_GND", dev="Detector", dpin="GND", kind="gnd", dir="return", bbb=34, rpi=None, ebaz=None,
-         note="optional, AIN0 cross-check only"),
-    dict(id="I2C_SDA", dev="ADS1115", dpin="SDA", kind="i2c", dir="bidirectional", bbb=20, rpi=3, mux="i2c", ebaz="DATA2.11",
-         note="main ADC on both platforms. BBB: I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted)",
-         note_bbb="main ADC. I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted)",
-         note_ebaz="main ADC. PS I2C0 through EMIO (/dev/i2c-0), pulled up inside the FPGA"),
-    dict(id="I2C_SCL", dev="ADS1115", dpin="SCL", kind="i2c", dir="SBC to board", bbb=19, rpi=5, mux="i2c", ebaz="DATA2.20",
-         note="main ADC on both platforms. BBB: I2C2 on the adapter board",
-         note_bbb="main ADC. I2C2 on the adapter board", note_ebaz="main ADC. PS I2C0 through EMIO (/dev/i2c-0), pulled up inside the FPGA"),
+         note="analog return of AIN0"),
+    dict(id="I2C_SDA", dev="PCF8574", dpin="SDA", kind="i2c", dir="bidirectional", bbb=20, rpi=3, mux="i2c", ebaz="DATA2.11",
+         note="attenuator port expander (PE4302 behind it). BBB: I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted)",
+         note_bbb="attenuator port expander (PE4302 behind it). I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted)",
+         note_ebaz="attenuator port expander (PE4302 behind it). PS I2C0 through EMIO (/dev/i2c-0), pulled up inside the FPGA; the PL engine takes the bus while it owns the pins"),
+    dict(id="I2C_SCL", dev="PCF8574", dpin="SCL", kind="i2c", dir="SBC to board", bbb=19, rpi=5, mux="i2c", ebaz="DATA2.20",
+         note="attenuator port expander. BBB: I2C2 on the adapter board; 100 kHz maximum",
+         note_bbb="attenuator port expander. I2C2 on the adapter board; 100 kHz maximum",
+         note_ebaz="attenuator port expander. PS I2C0 through EMIO (/dev/i2c-0), pulled up inside the FPGA; 100 kHz maximum"),
 ]
 
 BBB_P9 = {
@@ -112,6 +103,8 @@ PIN_NOTES = {
     "P9.41": "two SoC balls share this pin (GPIO0_20 and GPIO3_20): check the other is an input",
     "P9.42": "two SoC balls share this pin (GPIO0_7 and GPIO3_18): check the other is an input",
     "P9.32": "1.8 V ADC reference: do not load it",
+    **{f"P8.{n}": "was a PE4302 input until 2026-11-25. The adapter board as drawn still routes it to the PE4302 header: "
+                  "do not drive it while the PCF8574 is wired to that header" for n in range(7, 13)},
 }
 
 
@@ -171,8 +164,6 @@ def _access(kind: str, net: Optional[dict]) -> str:
 
 def _category(kind: str, net: Optional[dict]) -> str:
     if net is not None:
-        if net["dev"] == "PE4302":
-            return "pe4302"
         if net["id"] == "SYN_LD":
             return "lock"
         if net["id"] == "SYN_CE":
@@ -215,7 +206,26 @@ def _build() -> Dict[str, Pin]:
 PINS: Dict[str, Pin] = _build()
 BY_NET: Dict[str, Pin] = {p.net: p for p in PINS.values() if p.net}
 
-ATT_NETS: Tuple[str, ...] = tuple(f"ATT_V{i}" for i in range(1, 7))
+ATT_NETS: Tuple[str, ...] = tuple(f"ATT_V{i}" for i in range(1, 7))     # PE4302 V1..V6, outputs of the PCF8574
+
+
+@dataclass(frozen=True)
+class ExpanderLink:
+    """One wire from a PCF8574 port pin to a board input. No SBC pin is involved."""
+
+    net: str                      # "ATT_V1"; the signal name in bench patterns and CSV files
+    port: str                     # "P0"
+    dev: str                      # "PE4302"
+    dpin: str                     # "V1 (0.5 dB)"
+    note: str
+
+
+# The wiring the user chose (2026-11-25): V1..V3 on P0..P2, V4..V6 on P4..P6; P3 is the backlight of the LCD adapter board
+# the PCF8574 sits on. The bit numbers come from the driver, which the tests compare with the PL engine's.
+EXPANDER_LINKS: Tuple[ExpanderLink, ...] = tuple(
+    ExpanderLink(net, f"P{bit}", "PE4302", f"V{i + 1} ({db} dB)",
+                 "pull-up to 3.3 V needed (2.2k): the PCF8574 only drives high weakly; assumed weight, verify with pe4302-walk")
+    for i, (net, bit, db) in enumerate(zip(ATT_NETS, pcf8574.V_BITS, ("0.5", "1", "2", "4", "8", "16"))))
 SPI_NETS: Tuple[str, ...] = ("SYN_CLK", "SYN_DATA", "SYN_LE")
 I2C_NETS: Tuple[str, ...] = ("I2C_SCL", "I2C_SDA")
 LOCK_NET = "SYN_LD"
@@ -240,14 +250,15 @@ class BoardBlock:
     straps: Tuple[str, ...] = ()
 
 
+PCF8574_STRAPS = ("VCC 3.3 V (its I2C pull-ups too)", "P0 P1 P2 -> PE4302 V1 V2 V3", "P4 P5 P6 -> PE4302 V4 V5 V6",
+                  "P3: backlight LED of the board", "2.2k pull-ups on V1..V6", "PE4302 VDD 3.3 V; verify weights")
+
+
 BOARDS: Tuple[BoardBlock, ...] = (
-    BoardBlock("PE4302", "attenuator, parallel only", ATT_NETS,
-               ("VDD on two pads, 3.3 V", "2.2k pull-ups: open = 31.5 dB", "weights and polarity: verify")),
+    BoardBlock("PCF8574", "I2C 0x27, drives the PE4302", ("I2C_SCL", "I2C_SDA"), PCF8574_STRAPS),
     BoardBlock("ADF4351", "LO, 25 MHz reference", ("SYN_LE", "SYN_DATA", "SYN_CLK", "SYN_LD", "SYN_CE"),
                ("PDR: tied high (JP5)", "CE: J12 jumper picks 3V3 or P9.27", "5 V jack; never feed 3V3 pin")),
-    BoardBlock("ADS1115", "main ADC, I2C2 at 0x48", ("I2C_SCL", "I2C_SDA"),
-               ("A0 from detector; GND: board GND",)),
-    BoardBlock("AIN0", "optional on-chip cross-check", ("ADC_GND", "DET_ADC"),
+    BoardBlock("AIN0", "on-chip ADC input", ("ADC_GND", "DET_ADC"),
                ("Detector via divider 0.751",)),
 )
 
@@ -296,7 +307,7 @@ class PinMap:
 
 
 _BBB_LEGEND = (
-    ("spi", "SPI"), ("pe4302", "PE4302"), ("lock", "Lock detect"), ("synth", "ADF4351 CE"), ("i2c", "I2C (ADS1115)"),
+    ("spi", "SPI"), ("lock", "Lock detect"), ("synth", "ADF4351 CE"), ("i2c", "I2C (PCF8574, PE4302)"),
     ("adc", "ADC input"), ("power", "Power"), ("gnd", "Ground"), ("reserved", "eMMC / HDMI / reserved"), ("free", "Free"),
 )
 
@@ -306,8 +317,8 @@ BBB = PinMap(
         headers=(("P8", 280.0, 58.0), ("P9", 470.0, 58.0)), rows=23,
         board_rect=(212.0, 8.0, 410.0, 58.0 + 23 * 23.0 - 2), board_title="BeagleBone Black",
         canvas=(930.0, 640.0),
-        blocks=(("PE4302", 8, 60, 186, True), ("ADF4351", 680, 60, 242, False),
-                ("ADS1115", 680, 285, 242, False), ("AIN0", 680, 410, 242, False)),
+        blocks=(("PCF8574", 680, 285, 242, False), ("ADF4351", 680, 60, 242, False),
+                ("AIN0", 680, 480, 242, False)),
         legend=_BBB_LEGEND,
     ),
 )

@@ -17,8 +17,8 @@ new bitstream. It has no fixed paths; any directory on the board works, run as r
 
 ```
 ./sadiy_pl_load.sh        # load the bitstream (the Ethernet link drops for a second), reads ID
-./run.sh                  # automatic stages: ident regs gen push owner ctrl lock adc if
-./run.sh la               # spi att: for the logic analyzer, asks before each capture
+./run.sh                  # automatic stages: ident regs gen push owner ctrl lock att if fe
+./run.sh la               # spi: for the logic analyzer, asks before each capture
 ./run.sh ce               # CE pin (drops lock for a moment; fails if CE is jumpered high)
 ./sweepd.sh               # sweepd on the PL engine
 ./sweepd.sh --bench-only  # wiring tests: Linux owns the pins, no sweeps (session L's PS backend)
@@ -36,9 +36,11 @@ Reading results:
 - SPI clock = 100 MHz / (2 x SPI_DIV); a word with LE takes 67 x SPI_DIV clocks. All periods are multiples of
   20 ns: a reading like 15.62 MHz for SPI_DIV 3 is the analyzer's sample rate (125 MHz / 8), not the design.
   Ask for the analyzer's sample rate, or for the time of 31 clock periods.
-- I2C of the ADS1115 reader: 357 kHz at the reset divider, three transactions per sample, about 1.65 ms per
-  sample at 860 SPS.
-- `err_nack` in the adc stage: wiring of SDA / SCL, the address pin, 3.3 V supply, pull-ups.
+- Attenuator on I2C (PCF8574, register map 2.0): 100 kHz at the reset divider, one transaction `S addr+W [make] final P`,
+  0.2 ms (one byte) or 0.29 ms (two: the new stages in first, the old ones out 90 us later), then `T_ATT_GAP_CYC` of hold.
+- The `att` stage is automatic and FAILs without a PCF8574 on the bus. `err_nack`: wiring of SDA / SCL, supply (3.3 V,
+  never 5 V), address (A0..A2; a PCF8574A is 0x38..0x3F), pull-ups. Missing 2.2 kohm pull-ups on V1..V6 do not show
+  there: measure V high above 2.3 V.
 - The `if` stage compares every result word with the Python reference: one differing word is a real fault in
   the DSP chain or a damaged pattern write.
 

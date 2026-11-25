@@ -10,6 +10,7 @@ def build_bench_backend(cfg: dict):
     p = cfg.get("platform", {})
     return EbazPsBackend(
         spi_bus=int(p.get("spi_bus", 0)), spi_device=int(p.get("spi_device", 0)), spi_hz=int(b.get("spi_hz", 1_000_000)),
-        i2c_bus=int(p.get("i2c_bus", 0)), i2c_address=int(b.get("ads1115_address", 0x48)),
+        i2c_bus=int(p.get("i2c_bus", 0)),
+        i2c_address=int(cfg.get("attenuator", {}).get("pcf8574_address", 0x27)),
         regs_base=int(p["base"]) if "base" in p else None,       # the PL register base, as for the engine
     )

@@ -14,7 +14,8 @@ def walk_lines(
     expected_db: Sequence[float] = (0.5, 1.0, 2.0, 4.0, 8.0, 16.0),
     mv_per_db: float = 24.5,
 ) -> None:
-    """Identify what each PE4302 input does. Switches ONE stage at a time (the others out) and waits.
+    """Identify what each PE4302 input does. Switches ONE stage at a time (the others out) and waits. The lines are
+    those of the PCF8574 (`drivers.pcf8574.lines`), each change one I2C write.
 
     Setup: a low-level tone (-20 dBm or less at the module input) through the attenuator into the
     log detector, DMM on the detector output. With the log detector slope of about 24.5 mV/dB, the

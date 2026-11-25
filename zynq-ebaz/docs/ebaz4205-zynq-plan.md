@@ -1,5 +1,7 @@
 # EBAZ4205 port: handover to the executing project (v2)
 
+> **Changed 2026-11-25 (user decision):** the ADS1115 is removed and the PE4302 is driven by a PCF8574 on I2C instead of six lines on DATA2-14..19 (register map 2.0). Where this plan speaks of an ADS1115, of PE4302 pins or of `PE4302_MANUAL` / `PIN_STATE.pe_*`, it is history; the current state is in `rtl-spec.md`, `adc-module.md` and `STATUS-linux.md`.
+
 Written 2026-11-14, replaces the 2026-11-13 plan. Audience: the Claude Code project that owns the SAdiy repo (`/media/patrik/Workspaces/uC/SAdiy`). Read this file first, then `repo-status.md` and `chain-review-supplies-sw-plan.md`. Where the repo has moved on since those notes (dated 2026-11-01), the repo is the source of truth. Items marked (verify) come from web research or general knowledge, not from a schematic or datasheet check.
 
 ## 0. Status and ground rules

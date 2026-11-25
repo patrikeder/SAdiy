@@ -1,4 +1,4 @@
-"""Bench mode: direct pin control, raw board access and check patterns for wiring tests on the BBB.
+"""Bench mode: direct pin control, raw board access and check patterns for wiring tests on the BBB or the EBAZ4205.
 
 Runs inside `sweepd`, the only process that touches the hardware, and is exclusive with sweeping
 (`Sweepd` enforces that). No ZeroMQ here: `handle()` takes a command dict and returns a reply dict.
@@ -10,6 +10,10 @@ Safety rules, enforced here and not in the client, so that any client gets them:
 - A raw R4 word that enables an RF output is refused. Outputs turn on only through `bench_rf`, and only
   after an R0 was sent in this session and lock detect reads high. While an output is on, raw SPI words
   (other than an R4 that turns it off) and anything using the SPI pins as GPIO are refused.
+- The PE4302 hangs on a PCF8574 port expander on the I2C bus: its V1..V6 are not SBC pins. `bench_atten` and patterns
+  on ATT_V1..V6 write the expander, one I2C write per step, make-before-break. They ask for the same confirm as
+  driving the I2C pins. I2C pins used as GPIO could send the expander anything, so its setting is written again as
+  soon as they go back to the bus. After a write the pins are read back: a difference means a missing pull-up.
 - `safe_state()` (PE4302 at maximum attenuation, RF outputs off, every other line released) runs on
   bench_close, on any hardware error, when the client's lease runs out and when the daemon exits.
   A client that vanishes cannot leave a line driven: every bench command renews a short lease.
@@ -25,11 +29,11 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence
 
 from .. import logs, patterns, pinmap, platforms
-from ..drivers.adc import Ads1115
 from ..core.freqplan import LO_MAX_HZ
 from ..drivers.adf4351 import (POWER_CODE, Adf4351, Output, Outputs, decode_registers, r4_enables_output,
                                r4_with_outputs, register_of)
-from ..drivers.pe4302 import PE4302
+from ..drivers.pcf8574 import DEFAULT_ADDRESS, Pcf8574, levels_of
+from ..drivers.pe4302 import PE4302Pcf8574
 from ..hal.base import BenchBackend, GpioLine
 from ..hal.fake import FakeBackend
 
@@ -37,12 +41,9 @@ log = logging.getLogger(__name__)       # sadiy.server.bench: this module is nev
 
 AIN_MAX_CODE = 4095
 AIN_CHANNELS = 7
-ADS1115_CONFIG_REG = Ads1115.REG_CONFIG
-ADS1115_CONVERSION_REG = Ads1115.REG_CONVERSION
 
 SPI_PINS = tuple(pinmap.BY_NET[n].id for n in pinmap.SPI_NETS)
 I2C_PINS = tuple(pinmap.BY_NET[n].id for n in pinmap.I2C_NETS)
-ATT_PINS = tuple(pinmap.BY_NET[n].id for n in pinmap.ATT_NETS)
 LD_PIN = pinmap.BY_NET[pinmap.LOCK_NET].id
 CE_PIN = pinmap.BY_NET[pinmap.CE_NET].id
 BUS_PINS = SPI_PINS + I2C_PINS
@@ -77,26 +78,9 @@ def linux_backend(cfg: dict) -> BenchBackend:
     b = cfg.get("bench", {})
     return LinuxBackend(
         spi_bus=int(b.get("spi_bus", 1)), spi_device=int(b.get("spi_device", 0)), spi_hz=int(b.get("spi_hz", 1_000_000)),
-        i2c_bus=int(b.get("i2c_bus", 2)), i2c_address=int(b.get("ads1115_address", 0x48)),
+        i2c_bus=int(b.get("i2c_bus", 2)), i2c_address=int(cfg["attenuator"].get("pcf8574_address", DEFAULT_ADDRESS)),
         iio_device=str(b.get("iio_device", "iio:device0")),
     )
-
-
-class _LoggedLine(GpioLine):
-    """Keeps the order of the driver's writes, so the reply can show it."""
-
-    def __init__(self, line: GpioLine, name: str, log: List[List]) -> None:
-        self._line, self._name, self._log = line, name, log
-
-    def write(self, value: int) -> None:
-        self._line.write(value)
-        self._log.append([self._name, 1 if value else 0])
-
-    def read(self) -> int:
-        return self._line.read()
-
-    def set_direction(self, output: bool, initial: int = 0) -> None:
-        self._line.set_direction(output, initial)
 
 
 @dataclass
@@ -108,6 +92,7 @@ class _Run:
     loop: bool
     rate_hz: float
     pins: List[str]
+    att: List[str] = field(default_factory=list)      # ATT_V.. signals of the pattern: outputs of the PCF8574
     groups: List[List[patterns.Edge]] = field(default_factory=list)
     lines: Dict[str, GpioLine] = field(default_factory=dict)
     words: Optional[List[int]] = None
@@ -132,21 +117,21 @@ class Bench:
             platforms.get(platform) if platform else platforms.from_config(cfg))
         self.spi_pins = self.pm.ids(self.pm.spi_nets)
         self.i2c_pins = self.pm.ids(self.pm.i2c_nets)
-        self.att_pins = self.pm.ids(self.pm.att_nets)
+        self.att_nets = tuple(self.pm.att_nets)         # V1..V6 behind the PCF8574, not SBC pins
         self.ld_pin = self.pm.by_net[self.pm.lock_net].id
         self.ce_pin = self.pm.by_net[self.pm.ce_net].id
         self.bus_pins = self.spi_pins + self.i2c_pins
         att = cfg["attenuator"]
         self.weights_db = tuple(att["weights_db"])
         self.active_high = bool(att["active_high"])
+        self.pcf_address = int(att.get("pcf8574_address", DEFAULT_ADDRESS))
+        self.pcf_backlight = int(att.get("pcf8574_backlight", 1))
         self.pfd_hz = cfg["synth"]["pfd_hz"]
         self.mod_max = cfg["synth"]["mod_max"]
         self.vref = float(cfg["adc"]["vref"])
         self.ain0_divider_ratio = float(cfg["adc"].get("ain0_divider_ratio", 0.751))
         bench_cfg = cfg.get("bench", {})
         self.lease_s = float(bench_cfg.get("lease_s", 5.0))
-        self.ads_full_scale_v = float(cfg["adc"].get("ads1115_full_scale_v", 4.096))
-        self.ads_sps = int(cfg["adc"].get("ads1115_sps", 128))
         self._clock = clock
         self._sleep = sleep
         self.active = False
@@ -158,12 +143,10 @@ class Bench:
         self._lines: Dict[str, GpioLine] = {}
         self._dir: Dict[str, str] = {}
         self._gpio_mode: set = set()      # bus pins switched to GPIO
-        self._att: Optional[PE4302] = None
-        self._att_log: List[List] = []
+        self._att: Optional[PE4302Pcf8574] = None
         self._spi_bus = None
         self._spi_problem = ""
         self._adf: Optional[Adf4351] = None
-        self._ads: Optional[Ads1115] = None
         self._outputs = Outputs()
         self._last_r4: Optional[int] = None
         self._regs: Dict[int, int] = {}   # last word written to each ADF4351 register in this session
@@ -234,21 +217,11 @@ class Bench:
         self.token = secrets.token_hex(8)
         self._renewed = self._clock()
         warnings: List[str] = []
-        safe = 1 if self.active_high else 0
         try:
             warnings.extend(self.backend.prepare())
         except OSError as exc:
             warnings.append(f"board check failed: {exc}")
-        try:                                    # the attenuator first: it protects the chain
-            lines = []
-            for pid in self.att_pins:
-                pin = self.pm.pins[pid]
-                self._lines[pid] = self.backend.gpio(pin.gpio, output=True, initial=safe)
-                self._dir[pid] = "out"
-                lines.append(_LoggedLine(self._lines[pid], pin.net, self._att_log))
-            self._att = PE4302(lines, self.weights_db, self.active_high)
-        except OSError as exc:
-            warnings.append(f"PE4302 lines not available: {exc}")
+        warnings.extend(self._open_attenuator())          # first: it protects the chain
         for pid in (self.ld_pin, self.ce_pin):
             try:
                 self._lines[pid] = self.backend.gpio(self.pm.pins[pid].gpio, output=False)
@@ -263,18 +236,6 @@ class Bench:
         except (OSError, ImportError) as exc:
             self._spi_problem = str(exc)
             warnings.append(f"SPI not available, the RF output state is unknown: {exc}")
-        try:
-            bus = self.backend.i2c()
-        except (OSError, ImportError) as exc:
-            warnings.append(f"I2C not available, so no ADS1115: {exc}")
-        else:
-            try:
-                self._ads = Ads1115(bus, self.ads_full_scale_v, self.ads_sps, sleep=self._sleep)
-                self._ads.read_register(ADS1115_CONFIG_REG)
-            except OSError as exc:              # expected with nothing on the bus
-                self._ads = None
-                bus.close()
-                warnings.append(f"ADS1115 not available: {exc}")
         log.info("bench mode opened (%s backend)", self.backend.name)
         for w in warnings:
             log.warning("bench open: %s", w)
@@ -290,6 +251,32 @@ class Bench:
         )
         return reply
 
+    def _open_attenuator(self) -> List[str]:
+        """The PE4302 behind the PCF8574, set to maximum attenuation. Returns warnings."""
+        try:
+            bus = self.backend.i2c()
+        except (OSError, ImportError) as exc:
+            return [f"I2C not available, so no PE4302 attenuator: {exc}"]
+        try:
+            self._att = PE4302Pcf8574(Pcf8574(bus, self.pcf_backlight), self.weights_db, self.active_high)
+            warning = self._readback_warning()
+        except OSError as exc:                  # expected with nothing on the bus
+            self._att = None
+            bus.close()
+            return [f"PE4302 not available: no answer from the PCF8574 at I2C address 0x{self.pcf_address:02X} ({exc}). "
+                    "Check wiring, its 3.3 V supply and the address ([attenuator] pcf8574_address)"]
+        return [warning] if warning else []
+
+    def _readback_warning(self) -> str:
+        """"" when the expander's pins show what was written (V1..V6 only)."""
+        seen = self._att.port.read_levels()
+        wrote = self._att.port.levels
+        if seen == wrote:
+            return ""
+        bad = ", ".join(f"V{i + 1}" for i in range(6) if (seen ^ wrote) >> i & 1)
+        return (f"the PCF8574 pins do not follow what was written ({bad}): each V line needs a pull-up to 3.3 V "
+                "(2.2k), or a line is shorted. The attenuation is NOT what was set")
+
     def safe_state(self) -> List[str]:
         """Stop any pattern, PE4302 to maximum attenuation, RF outputs off, every other line released.
         Tries everything even when a step fails; returns what failed."""
@@ -302,11 +289,13 @@ class Bench:
                 errors.append(str(exc))
 
         self._stop_run()
+        for pid in [p for p in self.i2c_pins if p in self._gpio_mode]:      # the attenuator needs its bus back
+            attempt(self._restore_bus, pid, False)
         attempt(self._att_safe)
         for pid in list(self._lines):
             if pid in self.bus_pins:
                 attempt(self._restore_bus, pid)
-            elif pid not in self.att_pins and pid != self.ld_pin:
+            elif pid != self.ld_pin:
                 attempt(self._release, pid)
         attempt(self._rf_off)
         return errors
@@ -315,7 +304,7 @@ class Bench:
         if not self.active:
             return []
         errors = self.safe_state()
-        for bus in (self._spi_bus, self._ads):
+        for bus in (self._spi_bus, self._att.port if self._att else None):
             if bus is not None:
                 try:
                     bus.close()
@@ -334,14 +323,8 @@ class Bench:
         return {"ok": not errors, "error": "; ".join(errors), "active": False}
 
     def _att_safe(self) -> None:
-        if self._att is None:
-            return
-        safe = 1 if self.active_high else 0
-        for pid in self.att_pins:
-            if self._dir.get(pid) != "out":
-                self._lines[pid].set_direction(True, safe)
-                self._dir[pid] = "out"
-        self._att.safe_state()
+        if self._att is not None:
+            self._att.safe_state()
 
     def _release(self, pid: str) -> None:
         self._lines[pid].set_direction(False)
@@ -350,8 +333,9 @@ class Bench:
             del self._lines[pid]
             del self._dir[pid]
 
-    def _restore_bus(self, pid: str) -> None:
-        """Back from GPIO to the bus function. SPI: the chip may have latched junk, so R4 off again."""
+    def _restore_bus(self, pid: str, rewrite: bool = True) -> None:
+        """Back from GPIO to the bus function. The chip on it may have latched junk: SPI writes R4 off again, I2C
+        writes the attenuator's setting again (`rewrite` False when the caller sets it anyway)."""
         pin = self.pm.pins[pid]
         line = self._lines.pop(pid, None)
         self._dir.pop(pid, None)
@@ -361,6 +345,8 @@ class Bench:
         self._gpio_mode.discard(pid)
         if pid in self.spi_pins and not self._gpio_mode.intersection(self.spi_pins):
             self._rf_off()
+        if rewrite and pid in self.i2c_pins and not self._gpio_mode.intersection(self.i2c_pins) and self._att is not None:
+            self._att.write_current()
 
     def _ensure_bus(self, pins: Sequence[str]) -> None:
         for pid in pins:
@@ -438,10 +424,17 @@ class Bench:
                 out[pid] = {"level": None, "dir": "bus"}
         return out
 
-    def _att_db(self) -> Optional[float]:
-        if self._att is None:
+    def _att_pins_seen(self) -> Optional[int]:
+        """V1..V6 as the expander's pins show them (bit 0 = V1); None without it or while I2C is used as GPIO."""
+        if self._att is None or self._gpio_mode.intersection(self.i2c_pins):
             return None
-        levels = {f"V{i + 1}": self._lines[pid].read() for i, pid in enumerate(self.att_pins)}
+        return self._att.port.read_levels()
+
+    def _att_db(self, seen: Optional[int] = None) -> Optional[float]:
+        seen = self._att_pins_seen() if seen is None else seen
+        if seen is None:
+            return None
+        levels = {f"V{i + 1}": (seen >> i) & 1 for i in range(6)}
         return patterns.ParallelModel(levels, self.weights_db, self.active_high).attenuation_db
 
     def _ld(self) -> Optional[int]:
@@ -469,18 +462,24 @@ class Bench:
         }
 
     def _status(self, _cmd: dict) -> dict:
+        seen = self._att_pins_seen()
         return {
             "ok": True, "active": True, "owner": True, "pins": self._levels(), "ld": self._ld(),
-            "attenuation_db": self._att_db(),
+            "attenuation_db": None if seen is None else self._att_db(seen),
+            "att_levels": None if seen is None else [(seen >> i) & 1 for i in range(6)],
+            "att_ok": None if seen is None else seen == self._att.port.levels,
+            "attenuator": self._att is not None,
             "rf": {"main": self._outputs.main.enabled, "aux": self._outputs.aux.enabled},
             "synth": self.synth_state(),
             "pattern": self._pattern_status(), "last_error": self.last_error,
-            "spi": self._adf is not None, "ads1115": self._ads is not None,
+            "spi": self._adf is not None,
         }
 
     # ------------------------------------------------------------ pins
     def _pin(self, cmd: dict) -> dict:
         self._require_no_pattern()
+        if str(cmd["pin"]) in self.att_nets:
+            raise Refused(f"{cmd['pin']} is an output of the PCF8574 on I2C, not an SBC pin: use the PE4302 controls")
         pin = self.pm.find(str(cmd["pin"]))
         action = cmd.get("action", "read")
         if action == "read":
@@ -497,8 +496,6 @@ class Bench:
             if value not in (0, 1):
                 raise Refused("value must be 0 or 1")
             line = self._as_gpio(pin, True, value)
-            if pin.id in self.att_pins and self._att is not None:
-                self._att.sync_from_lines()
             return {"ok": True, "pin": pin.id, "level": line.read(), "dir": "out", "attenuation_db": self._att_db()}
         else:
             raise Refused(f"unknown pin action {action!r}")
@@ -530,35 +527,41 @@ class Bench:
         return {"ok": True, "pin": pin.id, "level": line.read(), "dir": "in", "attenuation_db": self._att_db()}
 
     # ------------------------------------------------------------ attenuator
+    def _check_attenuator(self, cmd: dict) -> None:
+        """Writing the PE4302 drives the I2C pins (confirm like any line to a board input)."""
+        if self._att is None:
+            raise Refused("the PE4302 is not available: the PCF8574 did not answer when bench mode opened")
+        self._check_drive([self.pm.pins[p] for p in self.i2c_pins], cmd, as_gpio=False)
+
     def _atten(self, cmd: dict) -> dict:
         self._require_no_pattern()
-        if self._att is None:
-            raise Refused("the PE4302 lines are not available")
-        pins = [self.pm.pins[p] for p in self.att_pins]
-        self._check_drive(pins, cmd)
-        for pid in self.att_pins:                      # a line left as an input must be driven again
-            if self._dir.get(pid) != "out":
-                self._lines[pid].set_direction(True, self._lines[pid].read())
-                self._dir[pid] = "out"
-        self._att.sync_from_lines()
-        del self._att_log[:]
+        self._check_attenuator(cmd)
+        mask = None
         if "levels" in cmd:
             levels = [int(v) for v in cmd["levels"]]
-            if len(levels) != len(self.att_pins) or any(v not in (0, 1) for v in levels):
+            if len(levels) != len(self.att_nets) or any(v not in (0, 1) for v in levels):
                 raise Refused("levels must be six values of 0 or 1 (V1..V6)")
-            if cmd.get("raw"):                    # wiring test: V1 to V6 in order, no make-before-break
-                for pid, level in zip(self.att_pins, levels):
-                    line = self._lines[pid]
-                    line.write(level)
-                    self._att_log.append([self.pm.pins[pid].net, level])
-                self._att.sync_from_lines()
-            else:
-                model = {f"V{i + 1}": v for i, v in enumerate(levels)}
-                self._att.set_attenuation(patterns.ParallelModel(model, self.weights_db, self.active_high).attenuation_db)
+            mask = sum(v << i for i, v in enumerate(levels))
+        db = None if mask is not None else float(cmd["db"])
+        self._ensure_bus(self.i2c_pins)
+        before = self._att.port.levels
+        if mask is None:
+            self._att.set_attenuation(db)
+        elif cmd.get("raw"):                    # wiring test: exactly these levels in one byte, no make step
+            self._att.set_levels(mask)
         else:
-            self._att.set_attenuation(float(cmd["db"]))
-        return {"ok": True, "attenuation_db": self._att_db(), "writes": list(self._att_log),
-                "pins": self._levels()}
+            model = {f"V{i + 1}": v for i, v in enumerate(levels)}
+            self._att.set_attenuation(patterns.ParallelModel(model, self.weights_db, self.active_high).attenuation_db)
+        warning = self._readback_warning()
+        if warning:
+            log.warning("bench: %s", warning)
+        writes, previous = [], before
+        for byte in self._att.last_bytes:       # which line changed in which byte, in order
+            now = levels_of(byte)
+            writes += [[net, (now >> i) & 1] for i, net in enumerate(self.att_nets) if (now ^ previous) >> i & 1]
+            previous = now
+        return {"ok": True, "attenuation_db": self._att_db(), "writes": writes,
+                "port_bytes": [f"0x{b:02X}" for b in self._att.last_bytes], "warning": warning, "pins": self._levels()}
 
     # ------------------------------------------------------------ synthesizer
     def _require_spi(self) -> None:
@@ -680,32 +683,22 @@ class Bench:
     # ------------------------------------------------------------ ADCs
     def _adc(self, cmd: dict) -> dict:
         self._require_no_pattern()
-        source = cmd.get("source", "ads1115")
+        source = cmd.get("source", "ain")
+        if source != "ain":
+            gone = " (the ADS1115 was removed)" if source == "ads1115" else ""
+            raise Refused(f"unknown ADC source {source!r}{gone}")
+        if not any(p.ain is not None for p in self.pm.pins.values()):
+            raise Refused(f"{self.pm.label} has no ADC input in bench mode (the ADS1115 was removed)")
         channel = int(cmd.get("channel", 0))
-        if source == "ain":
-            if not any(p.ain is not None for p in self.pm.pins.values()):
-                raise Refused(f"{self.pm.label} has no on-chip ADC input: use source ads1115")
-            if not 0 <= channel < AIN_CHANNELS:
-                raise Refused(f"AIN channel must be 0..{AIN_CHANNELS - 1}")
-            ain = self.backend.ain(channel)
-            count = max(1, min(int(cmd.get("n", 1)), 256))
-            raw = sum(ain.read_raw() for _ in range(count)) / count
-            volts = raw * self.vref / AIN_MAX_CODE
-            reply = {"ok": True, "source": "ain", "channel": channel, "raw": raw, "volts": volts}
-            if channel == 0:
-                reply["volts_detector"] = volts / self.ain0_divider_ratio
-            return reply
-        if source != "ads1115":
-            raise Refused(f"unknown ADC source {source!r}")
-        if self._ads is None:
-            raise Refused("the ADS1115 is not available")
-        self._ensure_bus(self.i2c_pins)
-        reply = {"ok": True, "source": "ads1115", "channel": channel, "full_scale_v": self.ads_full_scale_v}
-        if cmd.get("read", "single") == "single":
-            code = self._ads.convert(channel)
-            reply.update(code=code, volts=self._ads.to_volts(code))
-        reply["config"] = self._ads.read_register(ADS1115_CONFIG_REG)
-        reply["conversion"] = self._ads.read_register(ADS1115_CONVERSION_REG)
+        if not 0 <= channel < AIN_CHANNELS:
+            raise Refused(f"AIN channel must be 0..{AIN_CHANNELS - 1}")
+        ain = self.backend.ain(channel)
+        count = max(1, min(int(cmd.get("n", 1)), 256))
+        raw = sum(ain.read_raw() for _ in range(count)) / count
+        volts = raw * self.vref / AIN_MAX_CODE
+        reply = {"ok": True, "source": "ain", "channel": channel, "raw": raw, "volts": volts}
+        if channel == 0:
+            reply["volts_detector"] = volts / self.ain0_divider_ratio
         return reply
 
     # ------------------------------------------------------------ patterns
@@ -721,7 +714,7 @@ class Bench:
         if rate <= 0:
             raise Refused("the rate must be above 0")
         spec = cmd["spec"]
-        pat = patterns.from_spec(spec, self.pm.att_nets, self.weights_db, self.active_high)
+        pat = patterns.from_spec(spec, self.att_nets, self.weights_db, self.active_high)
         run = _Run(pat, 1.0 / rate, bool(cmd.get("loop")), rate, [])
         if pat.spi_words is not None:
             self._check_words(pat.spi_words)
@@ -729,11 +722,18 @@ class Bench:
             self._ensure_bus(self.spi_pins)
             run.words = pat.spi_words
         else:
-            pins = [self.pm.find(s) for s in pat.idle]
+            run.att = [s for s in pat.idle if s in self.att_nets]
+            pins = [self.pm.find(s) for s in pat.idle if s not in self.att_nets]
+            if run.att:
+                if any(p.id in self.i2c_pins for p in pins):
+                    raise Refused("the attenuator lines need the I2C bus: a pattern can not use the I2C pins as GPIO too")
+                self._check_attenuator(cmd)
             self._check_drive(pins, cmd)
             run.groups = patterns.step_groups(pat)
             run.pins = [p.id for p in pins]
-            # idle levels, high first so an active-high PE4302 never dips below its target
+            if run.att:                                     # idle levels of the expander lines, make-before-break
+                self._ensure_bus(self.i2c_pins)
+                self._att.apply_lines({self.att_nets.index(s): pat.idle[s] for s in run.att})
             for pin in sorted(pins, key=lambda p: -pat.idle[p.signal]):
                 run.lines[pin.signal] = self._as_gpio(pin, True, pat.idle[pin.signal])
         if run.total == 0:
@@ -780,8 +780,14 @@ class Bench:
         if run.words is not None:
             self._send_word(run.words[run.index])
         else:
+            expander = {}
             for edge in run.groups[run.index]:
-                run.lines[edge.signal].write(edge.level)
+                if edge.signal in self.att_nets:
+                    expander[self.att_nets.index(edge.signal)] = edge.level
+                else:
+                    run.lines[edge.signal].write(edge.level)
+            if expander:                                    # one I2C write per step
+                self._att.apply_lines(expander)
         run.index += 1
 
     def _stop_run(self) -> None:
@@ -802,10 +808,10 @@ class Bench:
         if run.measured_hz and run.measured_hz < 0.9 * run.rate_hz:
             log.warning("pattern %s ran at %.0f Hz instead of %g Hz: the backend can not keep up",
                         run.pattern.name, run.measured_hz, run.rate_hz)
-        if any(p in self.att_pins for p in run.pins):
+        if run.att:
             self._att_safe()
         for pid in run.pins:
             if pid in self.bus_pins:
                 self._restore_bus(pid)
-            elif pid not in self.att_pins:
+            else:
                 self._release(pid)

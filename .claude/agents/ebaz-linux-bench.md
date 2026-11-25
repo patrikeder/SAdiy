@@ -17,10 +17,11 @@ Scripts (all in `zynq-ebaz/sw/tools/`, deployed to `~/sadiy/zynq-ebaz/sw/tools/`
 - `ebaz_lcd_top.sh install|remove|status|frame` - `top` on the LCD instead of the login prompt (edits `/etc/inittab`).
 - `python3 tools/bringup.py --platform ebaz gpio-map | synth-ce on|off|release|read | pe4302-walk ...`.
 
-Facts: EMIO line n = Linux line 54 + n (V1..V6 = 54..59, CE 60, LD 61, LCD DC 62, RES 63, LEDs 64..66, keys 67..71); the
+Facts: EMIO line n = Linux line 54 + n (54..59 spare, the PE4302 lines until 2026-11-25; CE 60, LD 61, LCD DC 62, RES 63, LEDs 64..66, keys 67..71); the
 interface is `enx000a35001e53`; `/dev/spidev0.0`, `/dev/i2c-0` (root only); the Cadence I2C controller has no SMBus quick
-write, so `i2cdetect` skips 0x48 - use `i2cget -y 0 0x48 0x01 w` (expect 0x8583). Keep the PE4302 at 31.5 dB and no RF
-connected until each step passes. A statement about the board needs a pasted measurement.
+write, so use `i2cdetect -y -r 0`: the PCF8574 of the PE4302 attenuator answers at 0x27 (a PCF8574A at 0x38..0x3F).
+It needs 3.3 V and 2.2 kohm pull-ups on V1..V6; do not use `/dev/i2c-0` while the PL engine owns the pins. The ADS1115
+was removed (2026-11-25). Keep the PE4302 at 31.5 dB and no RF connected until each step passes. A statement about the board needs a pasted measurement.
 
 Record results in `ebaz-bringup.md` (what, instrument, date) and `log_linux.md`; a mismatch with the pin map goes back to
 `pins.toml` / `pinmap_ebaz.py` first. Hardware actions are the user's. Commit only when asked.

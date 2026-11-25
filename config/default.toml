@@ -22,11 +22,13 @@ out_aux_enable = false    # RFOUTB, not used
 out_aux_power_dbm = -4
 
 [attenuator]
-# PE4302 module with parallel control only: inputs V1..V6, no serial interface.
+# PE4302 module with parallel control only: inputs V1..V6, no serial interface. The inputs hang on a PCF8574 port
+# expander on I2C (an LCD backpack board): P0..P2 = V1..V3, P3 = its backlight, P4..P6 = V4..V6. Each V line needs a
+# 2.2 kohm pull-up to 3.3 V, and the expander board runs from 3.3 V. The I2C bus number is [bench] i2c_bus.
+pcf8574_address = 0x27         # PCF8574; a PCF8574A answers at 0x38..0x3F
+pcf8574_backlight = 1          # level of P3: 1 = backlight LED on
 weights_db = [0.5, 1.0, 2.0, 4.0, 8.0, 16.0]   # per the module description; confirm with tools/bringup.py pe4302-walk
 active_high = true                              # per the module description (high = stage in); confirm with the walk tool
-gpio_bbb = [66, 67, 69, 68, 45, 44]             # pin map numbers, bank*32+bit: P8.7, 8, 9, 10, 11, 12
-gpio_rpi_bcm = [5, 6, 12, 13, 20, 21]           # BCM GPIO numbers: pins 29, 31, 32, 33, 38, 40
 max_db = 31.5
 
 [detector]
@@ -34,21 +36,18 @@ slope_v_per_db = -0.0245  # AD8318 typical; calibrate per frequency
 intercept_dbm = 20.0
 floor_dbm = -65.0         # at or below: the output has flattened, a point is flagged "at floor" (only an upper bound)
 max_dbm = -1.0            # at or above: overload, a point is flagged and not trusted (VERIFY on the real detector)
-divider_ratio = 1.0       # Vadc / Vdet of the main ADC. The ADS1115 path on the adapter has no divider (1k, 100 nF, clamp)
+divider_ratio = 1.0       # Vadc / Vdet of the ADC in use (the BBB's AIN0 sits behind a divider: see [adc])
 
 [cal]
 default_gain_db = 22.0    # estimate: amp 31 - PE4302 1.5 - IF filter 6 - LPF ~1.5. Replace by measurement
 file = "cal/gain.json"
 
 [adc]
-# The ADS1115 is the ADC for the detector on both platforms (BBB: I2C2, P9.19 / P9.20). The BBB on-chip
-# AIN0 stays wired through the divider as a cross-check, read from the bench mode (or kind = "bbb_iio").
-kind = "sim"              # sim on a PC; ads1115 on the hardware. Also: bbb_iio
-channel = 0               # ADS1115 A0
-ads1115_full_scale_v = 4.096   # PGA range; the input is clamped to 3.3 V on the adapter
-ads1115_sps = 128         # 8, 16, 32, 64, 128, 250, 475, 860
+# The ADS1115 was removed on 2026-11-25 (user decision). The detector of the next chain is the AD9226 on the EBAZ4205's PL
+# (zynq-ebaz/docs/adc-module.md). What is left here: the simulator, and the BBB on-chip AIN0, wired through a divider.
+kind = "sim"              # sim on a PC; bbb_iio: the BBB on-chip ADC
 vref = 1.8                # BBB on-chip ADC full scale. NEVER exceed 1.8 V on AIN
-ain0_divider_ratio = 0.751     # Vain0 / Vdet: 1k over 3.01k on the adapter. Only for AIN0
+ain0_divider_ratio = 0.751     # Vain0 / Vdet: 1k over 3.01k on the adapter
 
 [sweep]
 points = 401
@@ -65,8 +64,7 @@ lock_retries = 2          # extra lock detect checks after the settle time, then
 spi_bus = 1               # /dev/spidev1.0 is SPI0 on many images; check after enabling the overlay
 spi_device = 0
 spi_hz = 1000000
-i2c_bus = 2               # I2C2 on P9.19 / P9.20 is /dev/i2c-2 on recent kernels
-ads1115_address = 0x48
+i2c_bus = 2               # the PCF8574's bus: I2C2 on P9.19 / P9.20 is /dev/i2c-2 on recent BBB kernels (EBAZ4205: 0)
 iio_device = "iio:device0"
 lease_s = 5.0             # no command from the client for this long: back to the safe state
 

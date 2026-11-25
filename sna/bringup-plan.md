@@ -1,5 +1,5 @@
 # SNA bring-up plan and timeline
-Written 2026-11-01. Delivery dates are Amazon.de estimates from that day and may slip.
+Written 2026-11-01. Delivery dates are Amazon.de estimates from that day and may slip. Since 2026-11-25 the ADS1115 is removed and the PE4302 sits behind a PCF8574 on I2C: the ADS1115 entries below are history.
 
 ## 1. Signal path and levels
 ADF4351 -> 6 dB pad -> PE4302 -> [DUT] -> detector -> ADC

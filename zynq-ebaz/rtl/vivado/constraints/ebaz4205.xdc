@@ -24,16 +24,16 @@ set_property -dict {PACKAGE_PIN G19 IOSTANDARD LVCMOS33} [get_ports adf4351_dat]
 set_property -dict {PACKAGE_PIN H20 IOSTANDARD LVCMOS33} [get_ports adf4351_le]  ; # DATA2-8 out, PS SPI0 SS0 via EMIO (LE = chip select)
 set_property -dict {PACKAGE_PIN J19 IOSTANDARD LVCMOS33} [get_ports adf4351_ld]  ; # DATA2-9 in, lock detect, EMIO GPIO input; pulldown so a missing cable reads unlocked
 set_property PULLTYPE PULLDOWN [get_ports adf4351_ld]
-set_property -dict {PACKAGE_PIN K18 IOSTANDARD LVCMOS33} [get_ports i2c_sda]  ; # DATA2-11 inout, PS I2C0 SDA via EMIO
+set_property -dict {PACKAGE_PIN K18 IOSTANDARD LVCMOS33} [get_ports i2c_sda]  ; # DATA2-11 inout, I2C SDA, PS I2C0 via EMIO or the PL engine
 set_property PULLTYPE PULLUP [get_ports i2c_sda]
 set_property -dict {PACKAGE_PIN K19 IOSTANDARD LVCMOS33} [get_ports adf4351_ce]  ; # DATA2-13 out, EMIO GPIO, tri-stated until software drives it; adapter jumper holds CE high
-set_property -dict {PACKAGE_PIN J20 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[0]}]  ; # DATA2-14 out, V1 = 0.5 dB
-set_property -dict {PACKAGE_PIN L16 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[1]}]  ; # DATA2-15 out, V2 = 1 dB
-set_property -dict {PACKAGE_PIN L19 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[2]}]  ; # DATA2-16 out, V3 = 2 dB
-set_property -dict {PACKAGE_PIN M18 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[3]}]  ; # DATA2-17 out, V4 = 4 dB
-set_property -dict {PACKAGE_PIN L20 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[4]}]  ; # DATA2-18 out, V5 = 8 dB
-set_property -dict {PACKAGE_PIN M20 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[5]}]  ; # DATA2-19 out, V6 = 16 dB
-set_property -dict {PACKAGE_PIN L17 IOSTANDARD LVCMOS33} [get_ports i2c_scl]  ; # DATA2-20 inout, PS I2C0 SCL via EMIO (ADS1115, address 0x48)
+set_property -dict {PACKAGE_PIN J20 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[0]}]  ; # DATA2-14 inout, spare EMIO GPIO 0 (was PE4302 V1 until 2026-11-25)
+set_property -dict {PACKAGE_PIN L16 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[1]}]  ; # DATA2-15 inout, spare EMIO GPIO 1 (was PE4302 V2 until 2026-11-25)
+set_property -dict {PACKAGE_PIN L19 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[2]}]  ; # DATA2-16 inout, spare EMIO GPIO 2 (was PE4302 V3 until 2026-11-25)
+set_property -dict {PACKAGE_PIN M18 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[3]}]  ; # DATA2-17 inout, spare EMIO GPIO 3 (was PE4302 V4 until 2026-11-25)
+set_property -dict {PACKAGE_PIN L20 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[4]}]  ; # DATA2-18 inout, spare EMIO GPIO 4 (was PE4302 V5 until 2026-11-25)
+set_property -dict {PACKAGE_PIN M20 IOSTANDARD LVCMOS33} [get_ports {pe4302_v[5]}]  ; # DATA2-19 inout, spare EMIO GPIO 5 (was PE4302 V6 until 2026-11-25)
+set_property -dict {PACKAGE_PIN L17 IOSTANDARD LVCMOS33} [get_ports i2c_scl]  ; # DATA2-20 inout, I2C SCL, PS I2C0 via EMIO or the PL engine (PCF8574 of the PE4302, address 0x27)
 set_property PULLTYPE PULLUP [get_ports i2c_scl]
 
 ## DATA3

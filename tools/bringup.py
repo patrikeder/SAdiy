@@ -5,9 +5,11 @@
                            line levels V1..V6 and the write order for an attenuator change, with the
                            attenuation after every write. The lowest value during the change must not
                            drop below the lower of old and new. Compare with a logic analyzer capture.
-  pe4302-walk --gpio 66,67,69,68,45,44 [--active-low] [--dry-run]
-                           run ON THE SBC: switches one PE4302 input at a time so you can identify the
-                           weight of V1..V6 and the polarity with the detector and a DMM
+  pe4302-walk [--bus N] [--address 0x27] [--active-low] [--dry-run]
+                           run ON THE SBC: switches one PE4302 input at a time (through the PCF8574 on I2C) so you
+                           can identify the weight of V1..V6 and the polarity with a signal through the attenuator
+                           (--platform ebaz before the command: /dev/i2c-0, and the PL engine must not own the pins;
+                           stop sweepd first)
   adf4351-pattern --word 0x00580005 [--word ...]
                            SPI frame for ADF4351 register words (MSB first, 32 clocks each)
   gpio-map                 run ON THE SBC, read-only: pin map number and sysfs number of every pin we use
@@ -36,10 +38,11 @@ for _p in (_ROOT / "src", _ROOT / "zynq-ebaz" / "sw"):      # run from a checkou
 from sadiy import buildinfo, config, patterns, pinmap, platforms
 from sadiy.bringup import walk_lines
 from sadiy.core.freqplan import build_sweep, plan_pll
+from sadiy.drivers import pcf8574
 from sadiy.drivers.adf4351 import Adf4351
 from sadiy.drivers.synth_ce import SynthCe
-from sadiy.hal.fake import FakeGpio, FakeSpi, PinLog
-from sadiy.server.sweepd import Sweepd, build_sim_engine
+from sadiy.hal.fake import FakeGpio, FakePcf8574, FakeSpi, PinLog
+from sadiy.server.sweepd import Sweepd, build_sim_engine, hardware_backend
 
 
 def cmd_pe4302(args):
@@ -52,22 +55,37 @@ def cmd_pe4302(args):
         print(f"wrote {args.csv}")
 
 
+def _walk_backend(args, cfg, pm):
+    """The bench backend of the board, for its I2C bus. On the EBAZ4205 it first takes the pins back from the PL."""
+    if args.bus is not None:
+        cfg["bench"]["i2c_bus"] = args.bus
+        cfg.setdefault("platform", {})["i2c_bus"] = args.bus
+    if args.address is not None:
+        cfg["attenuator"]["pcf8574_address"] = args.address
+    return hardware_backend(cfg, pm)
+
+
 def cmd_walk(args):
-    numbers = [int(x) for x in args.gpio.split(",")]
+    cfg = config.load()
     active_high = not args.active_low
     if args.dry_run:
-        log = PinLog()
-        lines = [FakeGpio(f"V{i + 1}", log) for i in range(len(numbers))]
-        walk_lines(lines, active_high, ask=lambda m: "")
+        port = pcf8574.Pcf8574(FakePcf8574(), cfg["attenuator"]["pcf8574_backlight"])
+        walk_lines(pcf8574.lines(port), active_high, ask=lambda m: "")
         return
-    from sadiy.hal.linux import SysfsGpio, gpio_bank_bases, sysfs_number
-
-    # start with every stage switched in so the outputs never glitch to minimum attenuation
-    safe = 1 if active_high else 0
-    bases = gpio_bank_bases()
-    lines = [SysfsGpio(sysfs_number(n, bases), initial=safe) for n in numbers]
+    backend = _walk_backend(args, cfg, platforms.get(args.platform))
+    for note in backend.prepare():
+        print(note)
+    try:
+        bus = backend.i2c()
+        port = pcf8574.Pcf8574(bus, cfg["attenuator"]["pcf8574_backlight"])
+        # every stage in first, so the attenuator never starts at minimum attenuation
+        port.write(0x3F if active_high else 0x00)
+        if port.read_levels() != port.levels:
+            print("WARNING: the PCF8574 pins do not follow: V1..V6 need pull-ups to 3.3 V (2.2k), or a line is shorted")
+    except OSError as exc:
+        raise SystemExit(f"no PCF8574: {exc}")
     print("Keep the RF level at the module input below -20 dBm while walking the lines.")
-    walk_lines(lines, active_high)
+    walk_lines(pcf8574.lines(port), active_high)
 
 
 def _ebaz_gpio_map(pm):
@@ -206,7 +224,8 @@ def main():
     a.add_argument("--csv")
     a.set_defaults(fn=cmd_pe4302)
     w = sub.add_parser("pe4302-walk")
-    w.add_argument("--gpio", required=True, help="pin map numbers (bank*32+bit) of V1..V6, comma separated")
+    w.add_argument("--bus", type=int, default=None, help="I2C bus number (default: the config; ebaz: 0)")
+    w.add_argument("--address", type=lambda x: int(x, 0), default=None, help="PCF8574 address (default: the config, 0x27)")
     w.add_argument("--active-low", action="store_true")
     w.add_argument("--dry-run", action="store_true", help="no hardware, just print the procedure")
     w.set_defaults(fn=cmd_walk)

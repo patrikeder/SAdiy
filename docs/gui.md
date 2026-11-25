@@ -57,11 +57,11 @@ cd /opt/sadiy && sudo PYTHONPATH=src python3 -m sadiy.server.sweepd --bench-only
 python -m sadiy.ui.sa_gui --platform bbb --host <bbb-ip> --connect       # on the PC (--platform optional)
 ```
 
-The board drawing shows P8 and P9 as in `hw/diagrams/bbb-p*-pinout.svg` (pin 1 at the top, odd pins on the left), with lines to PE4302, ADF4351, ADS1115 and the optional AIN0 cross-check. SPI and I2C pins can be driven as GPIO where the image has `config-pin` (this image has none, so they stay on their bus). Free GPIO (P8.7 to P8.19, P8.26 on a stock image) are locked until **Expert** is ticked.
+The board drawing shows P8 and P9 as in `hw/diagrams/bbb-p*-pinout.svg` (pin 1 at the top, odd pins on the left), with lines to the PCF8574 (which drives the PE4302 attenuator), the ADF4351 and AIN0. SPI and I2C pins can be driven as GPIO where the image has `config-pin` (this image has none, so they stay on their bus). Free GPIO (P8.7 to P8.19, P8.26 on a stock image) are locked until **Expert** is ticked. P8.7 to P8.12 were the PE4302 lines: the adapter board still routes them to its PE4302 header, so leave them alone while the PCF8574 is wired there.
 
 ### Using it on the EBAZ4205
 
-Status: **the Pins tab works on the real EBAZ4205 only with `sweepd --platform ebaz --bench-only`** (Linux owns the pins: PS GPIO, `/dev/spidev0.0`, `/dev/i2c-0`; run on the board 2026-11-16: ADF4351 frequency setting, PE4302 attenuation and ADS1115 readings worked). While `sweepd --platform ebaz` sweeps through the PL engine there is no bench mode, because the engine owns the pins: wiring tests and sweeping are two separate runs of `sweepd`. On the board (as root, `. ~/sadiy/env.sh` first):
+Status: **the Pins tab works on the real EBAZ4205 only with `sweepd --platform ebaz --bench-only`** (Linux owns the pins: PS GPIO, `/dev/spidev0.0`, `/dev/i2c-0`; run on the board 2026-11-16 with the old attenuator wiring: ADF4351 frequency setting, PE4302 attenuation and ADC readings worked; the PCF8574 has not run on the board). While `sweepd --platform ebaz` sweeps through the PL engine there is no bench mode, because the engine owns the pins: wiring tests and sweeping are two separate runs of `sweepd`. On the board (as root, `. ~/sadiy/env.sh` first):
 
 ```
 sudo env PYTHONPATH=$PYTHONPATH python3 -m sadiy.server.sweepd --platform ebaz --bench-only      # on the board
@@ -82,10 +82,10 @@ Other scripts that run on the board: `zynq-ebaz/sw/tools/ebaz_s4_readonly.sh` an
 Differences from the BBB, all visible in the tab:
 
 - A **View** selector (EBAZ4205 only) switches the left part between the **Adapter board** (default: the picture `zynq-ebaz/docs/pinmap-adapter.svg` made by `rtl/scripts/gen_pinmap.py`: UART header, USB-C, HDMI, LEDs, buzzer, LCD, keys and the right connector with its signals, FPGA ball and bank for each; re-read from the file at each start of the GUI; drawn on the window's own colours, not on a white page: the file's white background is left out and its plain text takes the window's text colour; pins are clickable here too: a click on a circle, key, LED or label selects the pin, as in the connectors view, the selected one gets a red frame, and the regions are read from the picture itself, so a regenerated picture keeps working) and the **Connectors** drawing described next, where pins are clicked. Power and ground pins and NC have no region there; choose those in the connectors view. Without the file (a GUI started away from the checkout) the connectors drawing is shown and the selector is hidden. Qt's SVG module is not needed: without it (a PyQt6 on Raspberry Pi OS has none unless `python3-pyqt6.qtsvg` is installed) the same picture is painted by hand from the shapes in the file (`bench_core.adapter_shapes`), looking almost the same. The BeagleBone has no such picture.
-- The drawing shows DATA2 (the adapter's signals), DATA1 and DATA3 (display, keys and LEDs: shown only, they can not be driven here) with lines to PE4302, ADF4351 and ADS1115. There is no AIN0 and no on-chip ADC, so the ADC box has only the ADS1115.
-- No pin mux: SPI (DATA2.5, .7, .8) and I2C (DATA2.20, .11) are wired to the PS in the bitstream, so they can not be driven as GPIO and **Back to bus** is not needed. The six PE4302 lines (DATA2.14 to .19), SYN_CE (DATA2.13) and lock detect (DATA2.9, read only) are EMIO GPIO and work as on the BBB.
+- The drawing shows DATA2 (the adapter's signals), DATA1 and DATA3 (display, keys and LEDs: shown only, they can not be driven here) with lines to the PCF8574 and the ADF4351. There is no AIN0 and no on-chip ADC, so the Raw access page has no ADC box.
+- No pin mux: SPI (DATA2.5, .7, .8) and I2C (DATA2.20, .11) are wired to the PS in the bitstream, so they can not be driven as GPIO and **Back to bus** is not needed. SYN_CE (DATA2.13) and lock detect (DATA2.9, read only) are EMIO GPIO and work as on the BBB. The former PE4302 pins DATA2.14 to .19 are spare EMIO GPIO.
 - Pin ids are `DATA<n>.<pin>`; the pin page shows the FPGA ball in the name, `GPIO: EMIO n (Linux line 54 + n)` and the adapter pin it goes to.
-- Every other connector pin is display-only: there is no Expert mode on this board, because nothing else is a safe GPIO.
+- **Expert** unlocks only the six spare EMIO pins DATA2.14 to .19 (do not drive them while old attenuator wires are still connected). Every other connector pin without a net is display-only.
 
 **Enter bench mode** takes over the pins, after asking to stop a running sweep. All lines start safe: PE4302 at 31.5 dB, RF outputs off. **Leave bench mode** returns to the safe state, and so do disconnecting, closing the window, a hardware error, or 5 s without contact with the GUI. Press Run afterwards to sweep again; Run is refused while bench mode is on.
 
@@ -97,7 +97,7 @@ Differences from the BBB, all visible in the tab:
 |---|---|
 | Wired to a board input | drive, after a confirm the first time per pin |
 | Lock detect, ADC inputs | read only |
-| Free GPIO | locked until **Expert** is ticked |
+| Free GPIO (EBAZ: the spare EMIO pins DATA2.14 to .19) | locked until **Expert** is ticked |
 | Power, ground, eMMC, HDMI (BBB); display, keys, LEDs, power, ground (EBAZ) | nothing, display only |
 
 On the BBB, SPI and I2C pins can be driven as GPIO for a wiring check where the image has `config-pin`; otherwise (and always on the EBAZ4205) they stay on their bus and the request is refused (check them with hardware SPI frames and an I2C read instead). This switches their mux with `config-pin`, and they return to the bus when a raw command needs them or with **Back to bus**.
@@ -105,17 +105,17 @@ On the BBB, SPI and I2C pins can be driven as GPIO for a wiring check where the 
 **Raw access page:**
 
 - **ADF4351:** send any 32-bit word in hex, one of R5..R0, or all six in order. The boxes check each word's address bits. `python tools/bringup.py pll --mhz <f>` prints the six words for a frequency; compare them with ADI's software before the first RF test. A word that enables an RF output is refused. To turn one on: send the registers, wait for LD = 1, tick the output, press Apply.
-- **PE4302:** set a dB value or V1..V6 through the driver (make-before-break; the actual write order is shown), or tick **Raw, no ordering** to write V1 to V6 in order for a wiring test. In that mode the attenuation can dip during the change.
-- **ADC:** ADS1115, the main ADC: convert a channel (code, volts, config and conversion registers), or read the registers without starting a conversion. AIN0: raw and volts at the pin and at the detector, as a cross-check.
+- **PE4302 (through the PCF8574):** set a dB value or V1..V6. The driver writes the port in one I2C transaction (two bytes where stages switch both in and out: new stages in first) and the page shows the bytes and the lines that changed. **Raw: one byte (wiring test)** writes exactly the ticked levels in one byte; the attenuation can dip during the change. The port is read back after each write: if a pin does not follow, a warning names the lines (each V line needs a 2.2 kohm pull-up to 3.3 V). The attenuator is not available while an I2C pin is driven as GPIO.
+- **ADC** (BeagleBone only): the on-chip AIN0, raw and volts at the pin and at the detector. The EBAZ4205 has no ADC in bench mode.
 
-**Patterns page:** walking one or zero, square wave on one pin, binary counter, PE4302 stage by stage (one out: never below 15.5 dB; one in: goes down to 0.5 dB), repeated ADF4351 frame.
+**Patterns page:** walking one or zero, square wave on one pin, binary counter, PE4302 stage by stage (one out: never below 15.5 dB; one in: goes down to 0.5 dB), repeated ADF4351 frame. The signals ATT_V1..V6 in the pin list are the PCF8574's outputs: each step that changes them is one I2C write, and they cannot be mixed with I2C pins driven as GPIO. A logic analyzer sees them on the PCF8574's pins or the PE4302 header.
 
 - The preview updates as you change things and warns when the pattern takes the attenuator low. Keep RF off the input then.
 - **Run** once or in a loop, **Stop** at any time. Afterwards the lines go back to safe.
 - **Export CSV** writes the line levels after each edge, to compare with a DSLogic capture. It gives edge order, not timing.
 - **Rates:** Python on sysfs GPIO (BBB; the EBAZ numbers will differ and are not measured) manages roughly a few kHz at best, fewer steps/s when a step changes several lines. The figure in the preview is an estimate, not measured on a BBB. While running, the page shows the measured rate. Expect jitter: Linux is not real time here. A square wave's frequency is half the step rate. For the ADF4351 frame the step rate is the word rate, and the SPI clock itself is much faster.
 
-**Tested only on the fake backend.** Unverified on a real BBB or EBAZ4205 (the EBAZ pin locations and EMIO numbers are still to be probed at the bench): the pin map, pin multiplexing and `config-pin` mode names, PE4302 weights and polarity, ADS1115 registers and bus number, SPI device number, and the rate estimates. See `bringup.md` stage 0.
+**Tested only on the fake backend.** Unverified on a real BBB or EBAZ4205 (the EBAZ pin locations and EMIO numbers are still to be probed at the bench): the pin map, pin multiplexing and `config-pin` mode names, PE4302 weights and polarity, the PCF8574 (address, bus number, pull-ups, never run with a real one), SPI device number, and the rate estimates. See `bringup.md` stage 0.
 
 ## Synth tab
 

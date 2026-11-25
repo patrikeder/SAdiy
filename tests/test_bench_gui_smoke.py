@@ -80,15 +80,15 @@ def test_clicking_a_pin_shows_its_details(rig):
 
 def test_clicking_a_board_row_selects_its_pin(rig):
     _, tab, *_ = rig
-    block = next(b for b in bench_core.blocks() if b.board.title == "PE4302")
-    x, y, w, h = block.rows[2].rect
+    block = next(b for b in bench_core.blocks() if b.board.title == "PCF8574")
+    x, y, w, h = block.rows[1].rect
     click_canvas(tab, x + w / 2, y + h / 2)
-    assert tab.selected == "P8.9"
+    assert tab.selected == "P9.20"
 
 
 def test_controls_follow_the_pin_kind_and_the_mode(rig):
     _, tab, daemon, _ = rig
-    tab.select_pin("P8.7")
+    tab.select_pin("P9.27")
     assert not tab.drive1_btn.isEnabled()                           # bench mode off
     enter(tab, daemon)
     assert tab.drive1_btn.isEnabled() and not tab.bus_btn.isEnabled()
@@ -130,15 +130,16 @@ def test_enter_refused_keeps_the_sweep(rig):
 def test_drive_pin_end_to_end(rig):
     _, tab, daemon, backend = rig
     enter(tab, daemon)
-    tab.select_pin("P8.7")
-    tab.drive(0)
-    assert backend.lines[66].level == 0
-    assert "Level: 0" in tab.pin_level.text() and "out" in tab.pin_level.text()
+    tab.select_pin("P9.27")
+    tab.drive(1)
+    assert backend.lines[115].level == 1
+    assert "Level: 1" in tab.pin_level.text() and "out" in tab.pin_level.text()
     tab.read_pin()
     tab.release()
-    assert backend.lines[66].output is False
+    assert backend.lines[115].output is False
+    tab.drive(1)
     tab.leave()
-    assert backend.lines[66].output is True and backend.lines[66].level == 1     # safe state
+    assert backend.lines[115].output is False                       # safe state: released
 
 
 def test_raw_access_page(rig):
@@ -175,10 +176,9 @@ def test_raw_access_page(rig):
     tab.apply_levels()
     assert "16.5 dB" in tab.att_label.text()
 
-    tab.read_ads()
-    assert "1.13" in tab.ads_label.text() and "config 0x" in tab.ads_label.text()
-    tab.read_ads_regs()
-    assert "conversion 0x" in tab.ads_label.text()
+    assert backend.pcf.port == 0xC9                                 # V1 on P0, V6 on P6, P3 backlight, P7 high
+    assert "0xC9" in tab.writes_label.text()
+
     tab.read_ain()
     assert "raw 1500.0" in tab.ain_label.text()
     tab.leave()
@@ -215,7 +215,7 @@ def test_pattern_page_preview_run_stop_and_csv(rig, tmp_path):
     tab.stop_pattern()
     assert not daemon.bench.pattern_running
     assert "Stopped" in tab.run_label.text()
-    assert [backend.lines[n].level for n in (66, 67, 69, 68, 45, 44)] == [1] * 6
+    assert backend.pcf.port == 0xFF                                 # all six stages in again
     tab.leave()
 
 
@@ -270,7 +270,7 @@ def test_closing_the_window_returns_to_safe(rig):
     enter(tab, daemon)
     tab.set_db(0.0)
     win.close()
-    assert not daemon.bench_active and backend.lines[66].level == 1
+    assert not daemon.bench_active and backend.pcf.port == 0xFF
 
 
 def test_bench_end_to_end_through_sweepd_sim(app):
@@ -285,9 +285,9 @@ def test_bench_end_to_end_through_sweepd_sim(app):
         assert w.pins.session.active and w.pins.session.limits["simulated"]
         assert "SIMULATED" in w.pins.mode_label.text()
         n = w._frames
-        w.pins.select_pin("P8.7")
+        w.pins.select_pin("P9.27")
         w.pins.drive(0)
-        assert w.pins.session.level("P8.7") == (0, "out")
+        assert w.pins.session.level("P9.27") == (0, "out")
         w._run()
         assert "bench" in w.status_msg.text()
         w.pins.rate_sb.setValue(500.0)
@@ -298,8 +298,10 @@ def test_bench_end_to_end_through_sweepd_sim(app):
         status = w.pins.session.poll()
         assert status["pattern"]["running"] and status["pattern"]["measured_hz"] > 50
         w.pins.stop_pattern()
-        w.pins.read_ads()
-        assert "1.13" in w.pins.ads_label.text()
+        w.pins.set_db(16.0)
+        assert "16 dB" in w.pins.att_label.text() and "0xC8" in w.pins.writes_label.text()
+        w.pins.read_ain()
+        assert "raw 1500.0" in w.pins.ain_label.text()
         w.pins.leave()
         assert not w.pins.session.active
         w._run()

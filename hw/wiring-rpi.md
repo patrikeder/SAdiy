@@ -1,5 +1,7 @@
 # Wiring: Raspberry Pi 3 / 4 / 400
 
+> **Outdated and no longer developed** (the adapter board has been BBB only since 2026-11-01). Since 2026-11-25 the ADS1115 and the six attenuator GPIO lines are gone from the design as well (the PE4302 sits behind a PCF8574 on I2C); this page has not been updated.
+
 Diagrams: [wiring](diagrams/rpi-wiring.png) ([svg](diagrams/rpi-wiring.svg)) and [40-pin pinout](diagrams/rpi-gpio-pinout.png) ([svg](diagrams/rpi-gpio-pinout.svg)). Full net list: [netlist.md](netlist.md).
 
 ![RPi wiring](diagrams/rpi-wiring.png)

@@ -38,7 +38,7 @@ RF input cable -> PE4302 `RFin`; PE4302 `RFout` -> amp `RFin`; amp `RFout` -> AD
 
 ## Changes after the photos (2026-11-23)
 
-- **Detector module:** dead; no log detector is bought (AD8310 not ordered either). The analog branch (IF filter, IF amp, detector, ADS1115) has no detector until one is added. Everything above about the detector is kept as the record of the first photos.
+- **Detector module:** dead; no log detector is bought (AD8310 not ordered either). The analog branch (IF filter, IF amp, detector, ADC) has no detector until one is added. Everything above about the detector is kept as the record of the first photos.
 - **Mixer output:** the user looked at it with the scope's FFT function (2026-11-23) and the mixer does its job; that is the basis for ordering the ADC. What load the AD831 IF port wants is still an open question (no measurement of levels recorded yet).
 - **Digitizer:** an AD9226 module (12 bit, 65 MS/s, 50 ohm SMA input) is ordered for the EBAZ4205 PL engine, with two 30 MHz low-pass modules in series in front of it. Facts from the seller's listing, nothing measured yet: [boards/ad9226-module.md](boards/ad9226-module.md).
-
+- **Attenuator control and ADC (2026-11-25, user decision):** the ADS1115 is removed. The PE4302's V1..V6 are driven by a PCF8574 on an LCD backpack board (P0..P2 = V1..V3, P4..P6 = V4..V6, P3 = its backlight) instead of six SBC GPIO lines. Decided and written in software; not yet wired or measured here.

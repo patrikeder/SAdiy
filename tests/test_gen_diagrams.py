@@ -74,7 +74,7 @@ def test_other_tools_take_the_platform():
     out = subprocess.run([sys.executable, str(ROOT / "tools" / "bringup.py"), "--platform", "ebaz", "gpio-map"],
                          capture_output=True, text=True, env={"PYTHONPATH": str(ROOT / "src")})
     assert out.returncode == 0, out.stderr
-    assert "DATA2.14" in out.stdout and "ATT_V1" in out.stdout and "P8.7" not in out.stdout
+    assert "DATA2.13" in out.stdout and "SYN_CE" in out.stdout and "ATT_V1" not in out.stdout and "P9." not in out.stdout
 
 
 def test_sweepd_ebaz_hardware_fails_cleanly_without_the_board():

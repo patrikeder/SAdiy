@@ -73,10 +73,10 @@ Needed by `sweepd`, **in the rootfs now** (added with the user's consent, baseli
 ## Device names to expect (verify in S4)
 
 - SPI: `/dev/spidev0.0` (bus 0 = PS SPI0, CS0 = LE).
-- I2C: `/dev/i2c-0` (PS I2C0), ADS1115 at 0x48.
-- EMIO GPIO: gpiochip of `zynq-gpio`, line = 54 + n, with n = 0..5 PE4302 V1..V6, 6 ADF4351 CE,
+- I2C: `/dev/i2c-0` (PS I2C0), the PCF8574 of the PE4302 attenuator at 0x27. While the PL engine owns the pins it owns this bus too.
+- EMIO GPIO: gpiochip of `zynq-gpio`, line = 54 + n, with n = 0..5 spare (the PE4302 lines until 2026-11-25), 6 ADF4351 CE,
   7 ADF4351 LD. (Kernels 6.x also expose a sysfs base such as 512 + 54 + n; use libgpiod.)
-- The PE4302 and CE pins are tri-stated until software sets the direction, so the adapter's pull-ups
+- The CE and spare pins are tri-stated until software sets the direction; the PCF8574 powers up with all ports high, so with the V pull-ups the attenuator starts at 31.5 dB. For CE set the value first, then switch the line to output, as `hal` already does
   give 31.5 dB at boot. Set the value first, then switch the line to output, as `hal` already does
   for the BBB (check this when writing S5).
 

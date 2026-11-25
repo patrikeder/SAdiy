@@ -452,7 +452,7 @@ class PinsTab(QtWidgets.QWidget):
         self.platform_cb.setCurrentIndex(max(0, self.platform_cb.findData(pm.name)))
         self.platform_cb.blockSignals(False)
         self._set_active_ui()
-        self.select_pin(pm.by_net["ATT_V1"].id)
+        self.select_pin(pm.by_net["I2C_SCL"].id)
 
     def set_view(self, view: str) -> None:
         """"adapter" (picture of the adapter board) or "connectors" (clickable drawing). A platform without a picture
@@ -581,8 +581,9 @@ class PinsTab(QtWidgets.QWidget):
             chk.setChecked(True)
             self.v_checks.append(chk)
             g.addWidget(chk, 0, i)
-        self.raw_order_chk = QtWidgets.QCheckBox("Raw, no ordering (wiring test)")
-        self.raw_order_chk.setToolTip("Writes V1 to V6 in that order. Attenuation can dip during the change.")
+        self.raw_order_chk = QtWidgets.QCheckBox("Raw: one byte (wiring test)")
+        self.raw_order_chk.setToolTip("Writes exactly these levels in one byte, without the make-before-break byte "
+                                      "first. Attenuation can dip during the change.")
         g.addWidget(self.raw_order_chk, 1, 0, 1, 6)
         g.addWidget(_button("Apply V1..V6", self.apply_levels), 2, 0, 1, 3)
         g.addWidget(_button("Max (31.5 dB)", lambda: self.set_db(31.5)), 2, 3, 1, 3)
@@ -597,41 +598,28 @@ class PinsTab(QtWidgets.QWidget):
         self.att_label.setWordWrap(True)
         g.addWidget(self.att_label, 4, 0, 1, 6)
         self.writes_label = QtWidgets.QLabel("Writes: -")
+        self.writes_label.setToolTip("The bytes written to the PCF8574 (P0..P2 = V1..V3, P3 backlight, P4..P6 = V4..V6) "
+                                     "and the lines each one changed")
         self.writes_label.setFont(_mono())
         self.writes_label.setWordWrap(True)
         g.addWidget(self.writes_label, 5, 0, 1, 6)
-        col.addWidget(_group("PE4302", g))
+        col.addWidget(_group("PE4302 (through the PCF8574)", g))
 
-        # ADCs: the ADS1115 is the main one on every platform, AIN0 the cross-check on the BBB
-        g = QtWidgets.QGridLayout()
-        self.ads_ch_cb = QtWidgets.QComboBox()
-        self.ads_ch_cb.addItems([f"A{i}" for i in range(4)])
-        self.ads_ch_cb.setMinimumWidth(60)
-        g.addWidget(QtWidgets.QLabel("ADS1115"), 0, 0)
-        g.addWidget(self.ads_ch_cb, 0, 1)
-        g.addWidget(_button("Convert", self.read_ads), 0, 2)
-        g.addWidget(_button("Read regs", self.read_ads_regs), 0, 3)
-        self.ads_label = QtWidgets.QLabel("-")
-        self.ads_label.setFont(_mono())
-        self.ads_label.setWordWrap(True)
-        g.addWidget(self.ads_label, 1, 0, 1, 4)
-        self.ain_n_sb = QtWidgets.QSpinBox()
-        self.ain_n_sb.setRange(1, 256)
-        self.ain_n_sb.setPrefix("mean of ")
-        g.addWidget(QtWidgets.QLabel("AIN0 (check)"), 2, 0)
-        g.addWidget(self.ain_n_sb, 2, 1)
-        g.addWidget(_button("Read", self.read_ain), 2, 2, 1, 2)
-        self.ain_label = QtWidgets.QLabel("-")
-        self.ain_label.setFont(_mono())
-        self.ain_label.setWordWrap(True)
-        g.addWidget(self.ain_label, 3, 0, 1, 4)
-        if not any(pin.ain is not None for pin in self.pm.pins.values()):    # EBAZ4205: no on-chip ADC input wired
-            for i in range(g.count()):
-                item = g.itemAt(i)
-                row = g.getItemPosition(i)[0]
-                if item.widget() is not None and row in (2, 3):
-                    item.widget().hide()
-        col.addWidget(_group("ADC", g))
+        # The on-chip ADC input (BBB AIN0). The EBAZ4205 has none; the ADS1115 was removed.
+        self.ain_label: Optional[QtWidgets.QLabel] = None
+        if any(pin.ain is not None for pin in self.pm.pins.values()):
+            g = QtWidgets.QGridLayout()
+            self.ain_n_sb = QtWidgets.QSpinBox()
+            self.ain_n_sb.setRange(1, 256)
+            self.ain_n_sb.setPrefix("mean of ")
+            g.addWidget(QtWidgets.QLabel("AIN0"), 0, 0)
+            g.addWidget(self.ain_n_sb, 0, 1)
+            g.addWidget(_button("Read", self.read_ain), 0, 2, 1, 2)
+            self.ain_label = QtWidgets.QLabel("-")
+            self.ain_label.setFont(_mono())
+            self.ain_label.setWordWrap(True)
+            g.addWidget(self.ain_label, 1, 0, 1, 4)
+            col.addWidget(_group("ADC", g))
         col.addStretch(1)
         return page
 
@@ -697,16 +685,21 @@ class PinsTab(QtWidgets.QWidget):
         checked = set(self.checked_pins())
         self.pin_list.blockSignals(True)
         self.pin_list.clear()
+        for i, net in enumerate(self.pm.att_nets):          # outputs of the PCF8574, not SBC pins: always offered
+            self._add_pattern_signal(f"{net}  (PCF8574 {pinmap.EXPANDER_LINKS[i].port})", net,
+                                     net in checked or not checked)
         for pin in self.pm.pins.values():
             if pin.access == pinmap.WIRED or (pin.access == pinmap.EXPERT and self.expert_chk.isChecked()):
                 label = f"{pin.id}  {pin.net}" if pin.net else f"{pin.id}  {pin.name}  (expert)"
-                item = QtWidgets.QListWidgetItem(label)
-                item.setData(QtCore.Qt.ItemDataRole.UserRole, pin.signal)
-                item.setFlags(QtCore.Qt.ItemFlag.ItemIsUserCheckable | QtCore.Qt.ItemFlag.ItemIsEnabled)
-                on = pin.signal in checked or (not checked and pin.net in self.pm.att_nets)
-                item.setCheckState(QtCore.Qt.CheckState.Checked if on else QtCore.Qt.CheckState.Unchecked)
-                self.pin_list.addItem(item)
+                self._add_pattern_signal(label, pin.signal, pin.signal in checked)
         self.pin_list.blockSignals(False)
+
+    def _add_pattern_signal(self, label: str, signal: str, on: bool) -> None:
+        item = QtWidgets.QListWidgetItem(label)
+        item.setData(QtCore.Qt.ItemDataRole.UserRole, signal)
+        item.setFlags(QtCore.Qt.ItemFlag.ItemIsUserCheckable | QtCore.Qt.ItemFlag.ItemIsEnabled)
+        item.setCheckState(QtCore.Qt.CheckState.Checked if on else QtCore.Qt.CheckState.Unchecked)
+        self.pin_list.addItem(item)
 
     def checked_pins(self) -> List[str]:
         return [
@@ -778,10 +771,10 @@ class PinsTab(QtWidgets.QWidget):
         self.ld_label.setText(f"LD: {'-' if ld is None else ld}")
         att = status.get("attenuation_db")
         if att is not None:
-            self.att_label.setText(f"Attenuation: {att:g} dB")
-        for chk, pid in zip(self.v_checks, (self.pm.by_net[n].id for n in self.pm.att_nets)):
-            level = self.session.level(pid)[0]
-            if level is not None and not chk.underMouse():
+            note = "" if status.get("att_ok", True) else " (pins differ from what was written: V pull-ups to 3.3 V?)"
+            self.att_label.setText(f"Attenuation: {att:g} dB{note}")
+        for chk, level in zip(self.v_checks, status.get("att_levels") or ()):
+            if not chk.underMouse():
                 chk.blockSignals(True)
                 chk.setChecked(bool(level))
                 chk.blockSignals(False)
@@ -917,8 +910,11 @@ class PinsTab(QtWidgets.QWidget):
     def _after_atten(self, reply: dict) -> None:
         if self._show(reply):
             writes = " ".join(f"{name.replace('ATT_', '')}={level}" for name, level in reply.get("writes", ())) or "(none)"
+            sent = " ".join(reply.get("port_bytes", ())) or "(nothing)"
             self.att_label.setText(f"Attenuation: {reply['attenuation_db']:g} dB")
-            self.writes_label.setText(f"Writes: {writes}")
+            self.writes_label.setText(f"Writes: {sent}  [{writes}]")
+            if reply.get("warning"):
+                self._message(reply["warning"], warn=True)
         self.poll()
 
     def apply_levels(self) -> None:
@@ -927,18 +923,6 @@ class PinsTab(QtWidgets.QWidget):
 
     def set_db(self, db: float) -> None:
         self._after_atten(self.session.set_db(db))
-
-    def read_ads(self) -> None:
-        reply = self.session.read_ads1115(self.ads_ch_cb.currentIndex())
-        if self._show(reply):
-            self.ads_label.setText(
-                f"A{reply['channel']}: code {reply['code']}, {reply['volts']:.4f} V (±{reply['full_scale_v']:g} V)\n"
-                f"config 0x{reply['config']:04X}  conversion 0x{reply['conversion']:04X}")
-
-    def read_ads_regs(self) -> None:
-        reply = self.session.read_ads1115(self.ads_ch_cb.currentIndex(), single=False)
-        if self._show(reply):
-            self.ads_label.setText(f"config 0x{reply['config']:04X}  conversion 0x{reply['conversion']:04X}")
 
     def read_ain(self) -> None:
         reply = self.session.read_ain(0, self.ain_n_sb.value())

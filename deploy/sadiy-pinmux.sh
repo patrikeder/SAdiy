@@ -24,15 +24,8 @@ set_mode P9_18 spi
 set_mode P9_22 spi_sclk
 set_mode P9_23 gpio
 set_mode P9_27 gpio
-# ADS1115
+# PCF8574 (the PE4302 attenuator sits behind it)
 set_mode P9_19 i2c
 set_mode P9_20 i2c
-# PE4302
-set_mode P8_07 gpio
-set_mode P8_08 gpio
-set_mode P8_09 gpio
-set_mode P8_10 gpio
-set_mode P8_11 gpio
-set_mode P8_12 gpio
 
 exit "$status"
