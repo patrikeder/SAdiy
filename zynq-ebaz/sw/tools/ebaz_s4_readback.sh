@@ -8,7 +8,8 @@
 #   sudo sh ~/sadiy/tools/ebaz_s4_readback.sh > /tmp/s4_readback.txt 2>&1
 #
 # Pins are driven for a few milliseconds each and are returned to input (high impedance) at the end, also on Ctrl-C.
-# Run it with the adapter DISCONNECTED. With the PE4302 connected this would change the attenuation, with the
+# n = 0..5 are spare EMIO GPIO since 2026-11-25 (they were the PE4302 lines V1..V6).
+# Run it with the adapter DISCONNECTED. With old attenuator wires connected this would drive those lines, with the
 # ADF4351 connected CE would drop low briefly. LD (n = 7) is an input in the design: read only.
 # Never touches 0x43C00000.
 BASE=512                 # sysfs base of zynq_gpio (see ebaz-baseline.md)
@@ -16,7 +17,7 @@ EMIO0=54
 DATA_RO=0xE000A068
 DIRM=0xE000A284
 OEN=0xE000A288
-names="V1(0.5dB) V2(1dB) V3(2dB) V4(4dB) V5(8dB) V6(16dB) CE"
+names="spare0 spare1 spare2 spare3 spare4 spare5 CE"
 fail=0
 
 release() {
@@ -30,7 +31,7 @@ trap release EXIT INT TERM
 bit() { v=$(devmem $DATA_RO 32); echo $(( (v >> $1) & 1 )); }
 
 echo "start: DIRM_2=$(devmem $DIRM 32) OEN_2=$(devmem $OEN 32) DATA_2_RO=$(devmem $DATA_RO 32)"
-echo "(floating pads: the start level of V1..V6 and CE is arbitrary with nothing connected)"
+echo "(floating pads: the start level of the spare lines and CE is arbitrary with nothing connected)"
 n=0
 for name in $names; do
   g=$((BASE + EMIO0 + n))

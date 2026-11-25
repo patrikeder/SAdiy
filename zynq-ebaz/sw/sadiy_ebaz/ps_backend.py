@@ -1,9 +1,9 @@
 """Bench mode on the real EBAZ4205 with Linux as the owner of the pins (lane L, plan S5).
 
-`sweepd --platform ebaz --bench-only` uses this backend: the PE4302 lines, CE and lock detect are EMIO GPIO
-lines of the PS (Linux line = 54 + EMIO n = the pin map number), the ADF4351 sits on `/dev/spidev0.0` (PS SPI0)
-and the ADS1115 on `/dev/i2c-0` (PS I2C0). No pin mux exists here (the buses are wired in the bitstream), and
-there is no on-chip ADC input.
+`sweepd --platform ebaz --bench-only` uses this backend: CE and lock detect are EMIO GPIO lines of the PS (Linux
+line = 54 + EMIO n = the pin map number), the ADF4351 sits on `/dev/spidev0.0` (PS SPI0) and the PCF8574 of the PE4302
+attenuator on `/dev/i2c-0` (PS I2C0). No pin mux exists here (the buses are wired in the bitstream), and there is no
+on-chip ADC input. While the PL engine owns the pins it owns I2C0 as well: the bus is then not opened.
 
 The PL sweep engine's pin mux must hand the pins to the PS for this to work. After a reset it does
 (`CTRL.pin_owner = 0`); `prepare()` checks, and releases the pins if a killed `sweepd` left the engine owning
@@ -24,6 +24,9 @@ from .devmem import FPGA_STATE, pl_not_ready
 from .regmap_toml import REGS
 
 log = logging.getLogger("sadiy.ebaz_ps")
+
+
+STILL_OWNS = "the PL engine still owns the pins (a sweep is running?): bench writes will not reach the board"
 
 
 def release_pl_pins(regs, *, timeout_s: float = 0.5, sleep: Callable[[float], None] = time.sleep,
@@ -48,15 +51,16 @@ def release_pl_pins(regs, *, timeout_s: float = 0.5, sleep: Callable[[float], No
         if not act.get(regs.read(status.offset)):
             return "the PL engine owned the pins (left over from a sweep): handed back to Linux"
         sleep(0.01)
-    return "the PL engine still owns the pins (a sweep is running?): bench writes will not reach the board"
+    return STILL_OWNS
 
 
 class EbazPsBackend(BenchBackend):
     name = "EBAZ4205 (PS: sysfs EMIO GPIO, spidev, i2c-dev)"
+    _engine_has_bus = False                         # set by prepare() when the pins could not be taken back
     can_mux = False
 
     def __init__(self, spi_bus: int = 0, spi_device: int = 0, spi_hz: int = 1_000_000, i2c_bus: int = 0,
-                 i2c_address: int = 0x48, regs_base: Optional[int] = None, gpio_root: Optional[Path] = None,
+                 i2c_address: int = 0x27, regs_base: Optional[int] = None, gpio_root: Optional[Path] = None,
                  state_path: Path = FPGA_STATE, open_regs: Optional[Callable[[], object]] = None) -> None:
         self._spi_args = (spi_bus, spi_device, spi_hz)
         self._i2c_args = (i2c_bus, i2c_address)
@@ -81,16 +85,23 @@ class EbazPsBackend(BenchBackend):
             raise OSError(f"could not open /dev/spidev{bus}.{device} ({exc}); run sweepd as root") from exc
 
     def i2c(self) -> I2cBus:
-        return LinuxI2c(*self._i2c_args)
+        if self._engine_has_bus:
+            raise OSError("the PL engine owns the I2C bus (it still owns the pins)")
+        bus, address = self._i2c_args
+        try:
+            return LinuxI2c(bus, address)
+        except OSError as exc:
+            raise OSError(f"could not open /dev/i2c-{bus} for address 0x{address:02X} ({exc}); run sweepd as root") from exc
 
     def ain(self, channel: int) -> AnalogInput:
-        raise OSError("the EBAZ4205 has no on-chip ADC input: use the ADS1115")
+        raise OSError("the EBAZ4205 has no on-chip ADC input")
 
     def set_mux(self, config_pin_name: str, mode: str) -> None:
         raise OSError("the EBAZ4205 has no pin mux: SPI and I2C are wired to the PS in the bitstream")
 
     def prepare(self) -> List[str]:
         """Called when bench mode opens: hand the pins to the PS if the PL engine holds them."""
+        self._engine_has_bus = False
         why = pl_not_ready(self._state_path)
         if why:
             return [f"{why}: pin ownership not checked"]
@@ -104,6 +115,7 @@ class EbazPsBackend(BenchBackend):
             return [f"PL registers not reachable ({exc}): pin ownership not checked"]
         try:
             note = release_pl_pins(regs)
+            self._engine_has_bus = note == STILL_OWNS
         finally:
             close = getattr(regs, "close", None)
             if close:

@@ -8,7 +8,7 @@
  | SweepEngine, per point:                |  PUB   | sa_gui / cli_client        |
  |   tune -> settle -> lock detect ->     | -----> |  "sweep": dBm + flags      |
  |   n ADC reads -> median -> cal -> flags|        |  "log": errors, warnings   |
- | PE4302 (GPIO) ADF4351 (SPI) ADC (I2C)  |  REP   | plot, markers, hold,       |
+ | PE4302 (I2C) ADF4351 (SPI) ADC         |  REP   | plot, markers, hold,       |
  | log ring (last 500 records)            | <----- | Device log (Advanced tab)  |
  +----------------------------------------+        | set / run / stop / log     |
         |                                           +----------------------------+
@@ -24,7 +24,7 @@
 
 ## Layering
 
-`hal` (pins, buses) <- `drivers` (PE4302, ADF4351, ADS1115, on-chip ADC) <- `core` (sweep, cal, plan) <- `server` <- `ui`.
+`hal` (pins, buses) <- `drivers` (PE4302 through a PCF8574, ADF4351, on-chip ADC) <- `core` (sweep, cal, plan) <- `server` <- `ui`.
 `pinmap.py` (the BBB map and the shared `NETS` table), `pinmap_ebaz.py` (EBAZ4205) and `platforms.py` (`get(name)`) sit beside them: plain data with no dependencies, read by `server`, `ui` and `tools/gen_diagrams.py`. `drivers/synth_ce.py` is the ADF4351 chip enable (see Bench mode). So does `logs.py` (levels, ring buffer, standard library only), used by `server` and `ui`.
 Only `hal` touches the OS. Everything above runs against fakes and the simulator on a PC.
 Inside `ui`, everything that is not drawing lives in `sa_core.py` and `log_core.py` (no Qt, unit-tested); `sa_gui.py` is the thin Qt layer, `sweep_client.py` the ZeroMQ side and `sim_runner.py` the simulator launcher.
@@ -61,11 +61,13 @@ Direct pin control for wiring tests on the BBB or the EBAZ4205 (`server/bench.py
 
 | Pins | Access |
 |---|---|
-| Wired to a board input: ATT_V1..V6, SYN_CLK / DATA / LE, SYN_CE, I2C_SCL / SDA | drive after `confirm: true`; without it the reply has `needs_confirm` |
+| Wired to a board input: SYN_CLK / DATA / LE, SYN_CE, I2C_SCL / SDA | drive after `confirm: true`; without it the reply has `needs_confirm` |
+| ATT_V1..V6 | not SBC pins: outputs of the PCF8574. Set them with `bench_atten`, or by name in a pattern (after a confirm) |
 | SYN_LD, AIN0..6 | input-only |
 | Other free GPIO | needs `expert: true` |
 | Power, ground, eMMC, HDMI, reset, GNDA_ADC, VDD_ADC | display-only |
 
+- **Attenuator:** `bench_atten` writes the PCF8574 (`drivers/pe4302.py`, `PE4302Pcf8574`) and reads the port back; a difference is reported as a warning (missing pull-up or short) and in `status` as `att_ok`. While an I2C pin is driven as GPIO the expander cannot be reached: attenuator commands are refused then, and the last value is written again when both pins are back on the bus.
 - **RF outputs:** a raw R4 that enables an output is refused. Outputs turn on only through `bench_rf` or `bench_synth` (the Synth tab: plan, outputs off, R5..R0, wait for LD, then the output if asked, with its own confirm every time and never above the AD831's 500 MHz), after an R0 was sent in the session and LD reads high. While an output is on, raw SPI words other than an R4 that turns it off are refused, and so is using the SPI pins as GPIO.
 - **Safe state:** PE4302 at maximum attenuation, outputs off, every other line an input or back on its bus. It is restored on `bench_close`, on any hardware error, on daemon exit and when the client's lease runs out (no bench command for `bench.lease_s`, 5 s by default), which covers a crashed GUI or a lost network. A pattern also returns its lines to safe when it ends.
 - **Bus pins as GPIO:** where the image has `config-pin` (the Trixie image does not; the request is then refused), SPI and I2C pins change function with it, and go back when a bus command needs them or the mode closes. Clocking SPI lines by hand can latch junk into the ADF4351, so an outputs-off R4 is sent as soon as they are back on SPI.
@@ -102,9 +104,9 @@ The sweep samples the response of the IF filter, so the step must be no larger t
 | Log as a second PUB topic plus a `log` command, with a numbered ring | live and cheap, and a late or lossy client can still fill in what it missed |
 | Per-sweep and per-fault log lines throttled, per-point lines only at trace | a fault that recurs on every point must not flood the ring, the network or the sweep time |
 | No PRU for now | see "Time per point and the PRUs" below |
-| PE4302 on 6 GPIO lines (parallel V1..V6), make-before-break write order, safe default | the module has no serial interface. Stages turning on are written first so no step is less attenuating than min(old, new); the module's own pull-downs default to 0 dB; optional 2.2 kohm pull-ups give maximum attenuation before the SBC drives the lines |
+| PE4302 behind a PCF8574 on I2C (2026-11-25, user decision), make-before-break byte order, safe default | the module has no serial interface; the expander replaces six SBC lines with the I2C bus. All six lines change in one byte; where stages switch both in and out, the first byte of the transaction adds the new ones, so no step is less attenuating than min(old, new). The PCF8574 drives high only weakly and the module has 10 kohm pull-downs, so 2.2 kohm pull-ups are required; they also give 31.5 dB from power-up. P3 is the backlight of the LCD adapter board the expander sits on |
 | GUI as a client with its own simulator launcher | the same GUI runs on a PC against the simulator, on the RPi locally and on a PC against the BBB; sim parameters go through a temporary TOML override (`[sim]` section), so `sweepd` has no GUI-specific code |
-| ADS1115 as the main ADC on every platform | same code path and same calibration whichever SBC is used. 16 bits, but at most 860 SPS (1.2 ms per conversion, plus the I2C transfers, see below). BBB AIN0 stays wired on the adapter (through a 0.751 divider) as a cross-check, read from the bench mode |
+| ADS1115 removed (2026-11-25, user decision) | the detector of the next chain is the AD9226 on the EBAZ4205's PL. The BBB keeps only its on-chip AIN0 (through a 0.751 divider, 1.8 V maximum), read in bench mode or with `[adc] kind = "bbb_iio"`; the EBAZ4205 has no ADC in bench mode. This replaces the earlier decision of one external ADC on every platform |
 | Bench mode inside `sweepd` | one owner of the hardware; exclusivity with sweeping without any locking |
 | One pin map source per platform (`pinmap.py` with the `NETS` table, `pinmap_ebaz.py`) | netlist, diagrams, daemon rules and the clickable board can not disagree; the EBAZ balls are checked against `zynq-ebaz/rtl/vivado/pins.toml` by a test |
 | ADF4351 CE is Linux's, not part of a sweep (`SynthCe`) | it is set once before the registers are written; low powers the chip down and loses the registers, so the driver flags `needs_reprogram`. On the EBAZ4205 CE goes through the PL pin mux (register map 1.1): while the engine owns the pins (`STATUS.pin_owner_act`) it drives CE (`ADF_PINS.ce`) and Linux writes are remembered but ignored |
@@ -115,8 +117,9 @@ The sweep samples the response of the IF filter, so the step must be no larger t
 
 Estimates from the code and `config/default.toml`, **not measured on a BBB**; measure them once `build_hw_engine` runs (the per-point split: tune, settle, ADC, CPU idle).
 
-- The ADC path dominates. An ADS1115 read is the conversion (1.2 ms at 860 SPS, 7.8 ms at the default 128 SPS) plus about five I2C transfers, roughly 1.4 ms at 100 kHz (the bus clock of I2C2 is unverified). With the defaults (128 SPS, 4 averages) that is about 40 ms per point, 17 s for 401 points. At 860 SPS and one read it is about 3 ms per point.
-- One ADS1115 LSB is about 0.005 dB at 24.5 mV/dB, so averaging several reads per point probably buys little. Check with the standard deviation of 100 reads at a fixed frequency; repeated sweeps (the GUI's Average mode) are cheaper than reads per point.
+- The ADC path would be AIN0 through IIO (the only ADC the BBB has left; its read time is unmeasured, and there is no detector). On the EBAZ4205 the PL does the per-point work and the ADC is the AD9226.
+- An attenuator change is one I2C transaction of one or two bytes, about 0.3 ms at 100 kHz. It happens between sweeps (auto-ranging), not per point.
+- AIN0 has 12 bits over 1.8 V (about 0.44 mV, about 0.024 dB through the divider at 24.5 mV/dB). Check with the standard deviation of 100 reads at a fixed frequency how many reads per point are worth it.
 - The floor under any ADC is PLL lock plus the detector's RC (1 kohm, 100 nF: about 0.1 ms, so about 0.6 ms to settle to 0.1 dB after a 40 dB step), so about 1 ms per point.
 - The CPU is idle most of the time in this loop and the numpy work per sweep is below a millisecond, so neither the filtering above nor the frame size (16 kB for 4001 points) loads the BBB.
-- **PRUs.** They would remove syscall overhead and jitter (about 0.3 to 0.5 ms per point), only worth it once the ADC is fast. They have no SPI, I2C or ADC peripheral, no FPU and 8 kB of program memory. The ADF4351 SPI (P9.17, 18, 22) and the ADS1115 I2C (P9.19, 20) are not PRU pins, and the adapter board is made, so a PRU could only bit-bang them as GPIO. The ADS1115 has no ready line wired. So: no PRU. The order of measures is a faster ADS1115 setting (860 SPS, fewer reads), then the on-chip ADC through the IIO buffer (a change to the cross-platform decision above), then the `native/` extension, and a PRU sweep sequencer only after a board respin with SPI on PRU pins and a fast ADC. Zero-span (time-domain) mode would be the other use; the IIO buffer covers it without a PRU. The PRU pin names for P9 are from memory: verify before a respin.
+- **PRUs.** They would remove syscall overhead and jitter (about 0.3 to 0.5 ms per point), only worth it with a fast ADC. They have no SPI, I2C or ADC peripheral, no FPU and 8 kB of program memory. The ADF4351 SPI (P9.17, 18, 22) and I2C2 (P9.19, 20) are not PRU pins, and the adapter board is made, so a PRU could only bit-bang them as GPIO. So: no PRU. The order of measures is the on-chip ADC through the IIO buffer, then the `native/` extension, and a PRU sweep sequencer only after a board respin with SPI on PRU pins and a fast ADC. Zero-span (time-domain) mode would be the other use; the IIO buffer covers it without a PRU. The PRU pin names for P9 are from memory: verify before a respin.

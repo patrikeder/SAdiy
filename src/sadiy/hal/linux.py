@@ -149,7 +149,7 @@ class LinuxBackend(BenchBackend):
     DEV = Path("/dev")
 
     def __init__(self, spi_bus: int = 1, spi_device: int = 0, spi_hz: int = 1_000_000, i2c_bus: int = 2,
-                 i2c_address: int = 0x48, iio_device: str = "iio:device0") -> None:
+                 i2c_address: int = 0x27, iio_device: str = "iio:device0") -> None:
         self._spi_args = (spi_bus, spi_device, spi_hz)
         self._i2c_args = (i2c_bus, i2c_address)
         self._iio_device = iio_device

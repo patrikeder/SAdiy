@@ -28,7 +28,8 @@ Rules:
 - Behaviour of the hardware is specified in `docs/rtl-spec.md`. If software needs something else, change the
   spec and the RTL (agents `regmap-editor`, `rtl-maintainer`), not just the model.
 - RF outputs: enable them only after the PLL locked once with them off (`first_lock` in `ebaz_pl.py`). The
-  attenuator starts from the level the pins show (`acquire_pins`).
+  engine cannot read the PCF8574: `acquire_pins` sends the levels it sent last (`ATT_STAT.levels`) unless given others.
+  Read `ATT_STAT.err_nack` only through `wait_att()`.
 - A missing ADC, a refused start, a timeout must raise with a message that names the likely cause; never return
   zeros silently.
 - Old bitstreams: check `VERSION` before using a register that came later.

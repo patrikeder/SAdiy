@@ -45,7 +45,6 @@ that drives a line wired to a board input gets {"ok": false, "needs_confirm": tr
       output only if asked and locked. `confirm` is for driving the SPI lines, `confirm_rf` for turning an output
       on; a missing one gives {"needs_confirm": true, "confirm_kind": "pins" | "rf"} before anything is written.
       Reply: ok, locked (true / false / null without LD), note, ld, f_target_hz, f_actual_hz, sent, rf, synth.
-  {"cmd": "bench_adc", "source": "ads1115", "channel": 0, "read": "single" | "regs"}
   {"cmd": "bench_adc", "source": "ain", "channel": 0, "n": 1}
   {"cmd": "bench_pattern", "action": "start", "spec": {...}, "rate_hz": 100, "loop": false, "confirm":..., "expert":...}
   {"cmd": "bench_pattern", "action": "stop"}

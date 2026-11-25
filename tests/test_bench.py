@@ -5,11 +5,12 @@ import pytest
 
 from sadiy import config, pinmap
 from sadiy.drivers.adf4351 import Output, Outputs, pack_r4, r4_enables_output, r4_with_outputs
+from sadiy.drivers.pcf8574 import levels_of, port_byte
 from sadiy.hal.fake import FakeBackend
 from sadiy.server.bench import Bench
 from sadiy.server.sweepd import Sweepd, build_sim_engine
 
-ATT_GPIO = [pinmap.BY_NET[n].gpio for n in pinmap.ATT_NETS]
+CE_GPIO = pinmap.BY_NET["SYN_CE"].gpio
 LD_GPIO = pinmap.BY_NET["SYN_LD"].gpio
 R4_OFF = 0x0080C004                # an R4 with no output enabled
 R4_MAIN_ON = R4_OFF | (1 << 5)
@@ -50,7 +51,11 @@ class Rig:
         return r
 
     def att_levels(self):
-        return [self.backend.lines[n].level for n in ATT_GPIO]
+        """V1..V6 on the expander's pins."""
+        return [(levels_of(self.backend.pcf.port) >> i) & 1 for i in range(6)]
+
+    def ce_level(self):
+        return self.backend.lines[CE_GPIO].level
 
     def r4_words(self):
         return [w for w in self.backend.spi_sent if w[3] & 7 == 4]
@@ -79,7 +84,7 @@ def test_bench_is_refused_while_sweeping(rig):
     r = rig.cmd("open")
     assert not r["ok"] and r["sweep_running"]
     assert not rig.bench.active
-    assert not rig.cmd("pin", pin="P8.7", action="read")["ok"]
+    assert not rig.cmd("pin", pin="P9.27", action="read")["ok"]
 
 
 def test_status_of_bench_is_allowed_while_sweeping(rig):
@@ -119,6 +124,8 @@ def test_open_goes_to_the_safe_state(rig):
     r = rig.open()
     assert r["warnings"] == [] and r["limits"]["simulated"] is True
     assert rig.att_levels() == [1] * 6 and r["attenuation_db"] == 31.5
+    assert r["attenuator"] is True and r["att_levels"] == [1] * 6 and r["att_ok"] is True
+    assert rig.backend.pcf.writes == [bytes([0xFF])]                  # one write: every stage in, backlight on
     first = int.from_bytes(rig.backend.spi_sent[0], "big")
     assert first & 7 == 4 and not r4_enables_output(first)        # outputs-off R4 before anything else
     assert rig.backend.lines[LD_GPIO].output is False
@@ -129,12 +136,12 @@ def test_open_twice_is_refused(opened):
 
 
 def test_commands_need_the_token(opened):
-    assert "another client" in opened.cmd("pin", pin="P8.7", token="wrong")["error"]
+    assert "another client" in opened.cmd("pin", pin="P9.27", token="wrong")["error"]
     assert opened.cmd("status", token="wrong")["owner"] is False
 
 
 def test_commands_need_an_open_bench(rig):
-    assert "not open" in rig.cmd("pin", pin="P8.7", action="read")["error"]
+    assert "not open" in rig.cmd("pin", pin="P9.27", action="read")["error"]
 
 
 def test_unknown_bench_command(opened):
@@ -142,8 +149,8 @@ def test_unknown_bench_command(opened):
 
 
 def test_lease_expiry_returns_to_safe(opened):
-    opened.cmd("pin", pin="P8.7", action="write", value=0, confirm=True)
-    assert opened.att_levels()[0] == 0
+    opened.cmd("atten", db=0.0, confirm=True)
+    assert opened.att_levels() == [0] * 6
     opened.clock.t += 4.0
     opened.daemon.service_bench()
     assert opened.bench.active                                     # still inside the lease
@@ -167,7 +174,7 @@ def test_shutdown_returns_to_safe(opened):
 def test_close_closes_the_buses(opened):
     spi = opened.backend.spi_bus
     opened.cmd("close")
-    assert spi.closed and opened.backend.ads.closed
+    assert spi.closed and opened.backend.pcf.closed
 
 
 # ---------------------------------------------------------------- pin rules
@@ -200,35 +207,33 @@ def test_free_gpio_needs_expert(opened):
 
 
 def test_wired_pin_needs_a_confirm(opened):
-    r = opened.cmd("pin", pin="P8.7", action="write", value=0)
-    assert not r["ok"] and r["needs_confirm"] and "ATT_V1" in r["error"]
-    assert opened.att_levels()[0] == 1                           # nothing happened
-    assert opened.cmd("pin", pin="P8.7", action="write", value=0, confirm=True)["ok"]
-    assert opened.att_levels()[0] == 0
+    r = opened.cmd("pin", pin="P9.27", action="write", value=1)
+    assert not r["ok"] and r["needs_confirm"] and "SYN_CE" in r["error"]
+    assert opened.backend.lines[CE_GPIO].output is False           # nothing happened
+    assert opened.cmd("pin", pin="P9.27", action="write", value=1, confirm=True)["ok"]
+    assert opened.ce_level() == 1
 
 
-def test_pin_write_keeps_the_attenuator_in_step(opened):
-    r = opened.cmd("pin", pin="P8.12", action="write", value=0, confirm=True)
-    assert r["attenuation_db"] == 15.5
-    # the driver must see the new state: 15.5 -> 16 still has to go through make-before-break
-    opened.backend.log.events.clear()
-    opened.cmd("atten", db=16.0, confirm=True)
-    assert opened.backend.log.events[0] == (f"gpio{ATT_GPIO[5]}", 1)
+def test_attenuator_lines_are_not_sbc_pins(opened):
+    r = opened.cmd("pin", pin="ATT_V1", action="write", value=0, confirm=True)
+    assert not r["ok"] and "PCF8574" in r["error"]
+    assert opened.att_levels() == [1] * 6
+    # the former GPIO pins of the PE4302 are ordinary free pins now
+    assert "Expert" in opened.cmd("pin", pin="P8.7", action="write", value=0, confirm=True)["error"]
 
 
 def test_bad_values_are_refused(opened):
-    assert not opened.cmd("pin", pin="P8.7", action="write", value=2, confirm=True)["ok"]
+    assert not opened.cmd("pin", pin="P9.27", action="write", value=2, confirm=True)["ok"]
     assert not opened.cmd("pin", pin="P99.1", action="read")["ok"]
-    assert not opened.cmd("pin", pin="P8.7", action="fly")["ok"]
+    assert not opened.cmd("pin", pin="P9.27", action="fly")["ok"]
     assert not opened.cmd("pin", action="read")["ok"]
 
 
 def test_input_releases_a_line_without_confirm(opened):
-    r = opened.cmd("pin", pin="P8.7", action="input")
-    assert r["ok"] and r["dir"] == "in"
-    assert opened.backend.lines[ATT_GPIO[0]].output is False
-    assert opened.cmd("atten", db=31.5, confirm=True)["ok"]       # driven again for the driver
-    assert opened.backend.lines[ATT_GPIO[0]].output is True
+    opened.cmd("pin", pin="P9.27", action="write", value=1, confirm=True)
+    r = opened.cmd("pin", pin="P9.27", action="input")
+    assert r["ok"] and r["dir"] == "in" and r["attenuation_db"] == 31.5
+    assert opened.backend.lines[CE_GPIO].output is False
 
 
 # ---------------------------------------------------------------- bus pins as GPIO
@@ -251,9 +256,25 @@ def test_spi_send_takes_the_pins_back(opened):
     assert opened.sent()[-1] == 0x00580005
 
 
-def test_i2c_read_takes_the_pins_back(opened):
+def test_attenuator_takes_the_i2c_pins_back_and_is_written_again(opened):
+    """While the I2C pins are GPIO anything could reach the expander: back on the bus its setting is sent again."""
+    opened.cmd("atten", db=16.0, confirm=True)
     opened.cmd("pin", pin="P9.19", action="write", value=1, confirm=True)
-    assert opened.cmd("adc", source="ads1115")["ok"]
+    assert opened.cmd("status")["attenuation_db"] is None          # not readable while the pins are GPIO
+    opened.backend.pcf.port = 0x00                                 # the junk
+    assert opened.cmd("pin", pin="P9.19", action="bus")["ok"]
+    assert ("P9_19", "i2c") in opened.backend.mux_log and opened.cmd("status")["attenuation_db"] == 16.0
+    opened.cmd("pin", pin="P9.20", action="write", value=1, confirm=True)
+    assert opened.cmd("atten", db=3.0, confirm=True)["ok"]         # takes the pins back by itself
+    assert ("P9_20", "i2c") in opened.backend.mux_log and opened.cmd("status")["attenuation_db"] == 3.0
+
+
+def test_safe_state_with_the_i2c_pins_as_gpio(opened):
+    opened.cmd("atten", db=0.0, confirm=True)
+    opened.cmd("pin", pin="P9.19", action="write", value=0, confirm=True)
+    del opened.backend.pcf.bytes[:]
+    opened.cmd("close")
+    assert opened.backend.pcf.bytes == [0xFF]                      # straight to 31.5 dB, not back through 0 dB
     assert ("P9_19", "i2c") in opened.backend.mux_log
 
 
@@ -268,28 +289,60 @@ def test_close_restores_bus_and_expert_pins(opened):
 
 
 # ---------------------------------------------------------------- attenuator
-def test_set_db_uses_make_before_break_and_reports_the_writes(opened):
+def test_set_db_is_one_i2c_write_with_make_before_break(opened):
     opened.cmd("atten", db=15.5, confirm=True)
+    del opened.backend.pcf.writes[:]
     r = opened.cmd("atten", db=16.0, confirm=True)
-    assert r["ok"] and r["attenuation_db"] == 16.0
+    assert r["ok"] and r["attenuation_db"] == 16.0 and r["warning"] == ""
+    assert opened.backend.pcf.writes == [bytes([port_byte(0x3F), port_byte(0x20)])]
+    assert r["port_bytes"] == ["0xFF", "0xC8"]
     assert r["writes"][0] == ["ATT_V6", 1]                       # the stage turning on goes first
+    assert [w[0] for w in r["writes"][1:]] == list(pinmap.ATT_NETS[:5])
 
 
 def test_atten_needs_a_confirm(opened):
     r = opened.cmd("atten", db=0.0)
-    assert r["needs_confirm"] and opened.att_levels() == [1] * 6
+    assert r["needs_confirm"] and "I2C_SCL" in r["error"] and opened.att_levels() == [1] * 6
 
 
 def test_levels_ordered_vs_raw(opened):
     opened.cmd("atten", db=15.5, confirm=True)
     target = [0, 0, 0, 0, 0, 1]                                  # 16 dB
     ordered = opened.cmd("atten", levels=target, confirm=True)
-    assert ordered["writes"][0] == ["ATT_V6", 1]
+    assert ordered["writes"][0] == ["ATT_V6", 1] and len(ordered["port_bytes"]) == 2
     opened.cmd("atten", db=15.5, confirm=True)
     raw = opened.cmd("atten", levels=target, raw=True, confirm=True)
-    assert [w[0] for w in raw["writes"]] == list(pinmap.ATT_NETS)  # plain V1..V6 order, every line
-    assert raw["attenuation_db"] == 16.0
+    assert raw["port_bytes"] == [f"0x{port_byte(0x20):02X}"] and raw["attenuation_db"] == 16.0
     assert not opened.cmd("atten", levels=[1, 0], confirm=True)["ok"]
+
+
+def test_missing_pull_ups_show_in_the_readback(opened):
+    """The PCF8574 drives high only weakly: without pull-ups the PE4302 module's resistors win and the pin reads low."""
+    opened.backend.pcf.pulled_down = 1 << 6                     # P6 = V6
+    r = opened.cmd("atten", db=31.5, confirm=True)
+    assert r["ok"] and r["attenuation_db"] == 15.5 and "V6" in r["warning"] and "pull-up" in r["warning"]
+    assert opened.cmd("status")["att_ok"] is False
+
+
+def test_missing_pull_ups_are_said_at_open():
+    rig = Rig()
+    rig.backend.pcf.pulled_down = 0xFF
+    r = rig.open()
+    assert any("pull-up" in w for w in r["warnings"]) and r["attenuation_db"] == 0.0
+
+
+def test_backlight_and_address_come_from_the_config():
+    from sadiy.server.bench import linux_backend
+
+    cfg = config.load()
+    assert linux_backend(cfg)._i2c_args == (2, 0x27)
+    cfg["attenuator"]["pcf8574_address"] = 0x3F
+    cfg["attenuator"]["pcf8574_backlight"] = 0
+    assert linux_backend(cfg)._i2c_args == (2, 0x3F)
+    rig = Rig()
+    rig.bench.pcf_backlight = 0
+    rig.open()
+    assert rig.backend.pcf.writes == [bytes([0xF7])]
 
 
 # ---------------------------------------------------------------- ADF4351
@@ -375,18 +428,10 @@ def test_close_turns_outputs_off(opened):
 
 
 # ---------------------------------------------------------------- ADCs
-def test_ads1115_single_shot_and_registers(opened):
-    opened.backend.ads.volts[1] = 2.0
-    r = opened.cmd("adc", source="ads1115", channel=1)
-    assert r["ok"] and r["volts"] == pytest.approx(2.0, abs=2e-4) and r["code"] == 16000
-    assert r["conversion"] == 16000 and r["config"] >> 15 == 1
-    assert (r["config"] >> 12) & 7 == 0b101
-    r = opened.cmd("adc", source="ads1115", read="regs")
-    assert r["conversion"] == 16000 and "volts" not in r
-
-
-def test_ads1115_is_the_default_adc(opened):
-    assert opened.cmd("adc")["source"] == "ads1115"
+def test_ain_is_the_only_adc(opened):
+    assert opened.cmd("adc")["source"] == "ain"
+    r = opened.cmd("adc", source="ads1115")
+    assert not r["ok"] and "removed" in r["error"] and "safe state" not in r["error"]
 
 
 def test_ain_raw_and_volts(opened):
@@ -398,7 +443,7 @@ def test_ain_raw_and_volts(opened):
     assert not opened.cmd("adc", source="dmm")["ok"]
 
 
-def test_ads1115_missing_is_a_warning_not_a_failure():
+def test_missing_i2c_bus_is_a_warning_not_a_failure():
     rig = Rig()
 
     def no_bus():
@@ -406,9 +451,12 @@ def test_ads1115_missing_is_a_warning_not_a_failure():
 
     rig.backend.i2c = no_bus
     r = rig.open()
-    assert r["ok"] and any("ADS1115" in w for w in r["warnings"])
-    assert "not available" in rig.cmd("adc")["error"]
-    assert rig.cmd("atten", db=3.0, confirm=True)["ok"]           # the rest still works
+    assert r["ok"] and any("PE4302" in w and "/dev/i2c-2" in w for w in r["warnings"])
+    assert r["attenuator"] is False and r["attenuation_db"] is None
+    assert "not available" in rig.cmd("atten", db=3.0, confirm=True)["error"]
+    assert not rig.cmd("pattern", action="start", spec={"kind": "walking", "signals": ["ATT_V1"]}, confirm=True)["ok"]
+    assert rig.cmd("spi", word=0x00580005, confirm=True)["ok"]      # the rest still works
+    assert rig.cmd("close")["ok"]
 
 
 def test_spi_missing_is_a_warning_that_says_rf_state_is_unknown():
@@ -479,13 +527,18 @@ def test_pattern_runs_on_schedule_and_writes_what_was_previewed(opened):
     expected = patterns.from_spec(spec, pinmap.ATT_NETS)
     assert start(opened, spec, rate=100.0)["ok"]
     t0 = opened.clock.t
-    opened.backend.log.events.clear()
+    del opened.backend.pcf.writes[:]
     r = opened.cmd("status")["pattern"]
     assert r["running"] and r["total"] == 4
     run_for(opened, 10.0)
-    written = opened.backend.log.events[:len(expected.edges)]
-    name = {f"gpio{pinmap.find(s).gpio}": s for s in expected.idle}
-    assert [(name[n], v) for n, v in written] == [(e.signal, e.level) for e in expected.edges]
+    # one write per step; its last byte has the lines of the preview (the others stay in), then back to safe
+    level, finals = {n: 1 for n in pinmap.ATT_NETS}, []
+    level.update(expected.idle)
+    for group in expected.groups:
+        level.update({e.signal: e.level for e in group})
+        finals.append(sum(level[n] << i for i, n in enumerate(pinmap.ATT_NETS)))
+    writes = opened.backend.pcf.writes
+    assert [levels_of(w[-1]) for w in writes[:len(finals)]] == finals and writes[len(finals):] == [bytes([0xFF])]
     assert opened.clock.t - t0 == pytest.approx(0.03, abs=0.015)  # 4 steps at 100 per s, the first at once
     done = opened.cmd("status")["pattern"]
     assert done["running"] is False and done["end"] == "finished" and done["steps"] == 4
@@ -512,7 +565,7 @@ def test_loop_runs_until_stopped(opened):
 def test_other_commands_are_refused_during_a_pattern(opened):
     start(opened, {"kind": "square", "signals": ["ATT_V1"]}, loop=True)
     for reply in (opened.cmd("atten", db=1.0, confirm=True), opened.cmd("spi", word=5, confirm=True),
-                  opened.cmd("pin", pin="P8.8", action="read"), opened.cmd("adc"),
+                  opened.cmd("pin", pin="P9.27", action="read"), opened.cmd("adc"),
                   start(opened, {"kind": "square", "signals": ["ATT_V2"]})):
         assert not reply["ok"] and "running" in reply["error"]
     assert opened.cmd("status")["ok"]
@@ -534,18 +587,29 @@ def test_close_during_a_pattern(opened):
 
 def test_hardware_error_during_a_pattern_stops_it_safely(opened):
     start(opened, {"kind": "square", "signals": ["ATT_V1"]}, loop=True)
+    pcf = opened.backend.pcf
+    original = pcf.write
 
-    def boom(_value):
-        raise OSError("gpio went away")
+    def boom(_data):
+        pcf.write = original                                       # only once: the safe state must get through
+        raise OSError("i2c went away")
 
-    line = opened.backend.lines[ATT_GPIO[0]]
-    original = line.write
-    line.write = boom
+    pcf.write = boom
     opened.bench.service(0.01)
-    line.write = original
-    assert not opened.bench.pattern_running
+    assert not opened.bench.pattern_running and opened.att_levels() == [1] * 6
     st = opened.cmd("status")
-    assert "gpio went away" in st["last_error"] and st["pattern"]["end"] == "error"
+    assert "i2c went away" in st["last_error"] and st["pattern"]["end"] == "error"
+
+
+def test_pattern_over_expander_and_sbc_pins(opened):
+    assert start(opened, {"kind": "walking", "signals": ["ATT_V1", "P9.15"]}, expert=True)["ok"]
+    run_for(opened, 10.0)
+    assert opened.att_levels() == [1] * 6 and opened.backend.lines[pinmap.PINS["P9.15"].gpio].output is False
+
+
+def test_pattern_cannot_use_the_attenuator_and_the_i2c_pins_as_gpio(opened):
+    r = start(opened, {"kind": "walking", "signals": ["ATT_V1", "I2C_SCL"]})
+    assert not r["ok"] and "I2C bus" in r["error"] and opened.backend.mux_log == []
 
 
 def test_spi_pin_pattern_restores_the_bus_and_rewrites_r4(opened):
@@ -719,8 +783,8 @@ def test_missing_gpio_chips_only_warn_at_open(tmp_path, monkeypatch):
     rig.bench.backend.spi = rig.backend.spi
     rig.bench.backend.i2c = rig.backend.i2c
     r = rig.open()
-    assert r["ok"] and any("PE4302 lines not available" in w for w in r["warnings"])
-    assert r["attenuation_db"] is None and rig.cmd("atten", db=3.0, confirm=True)["ok"] is False
+    assert r["ok"] and any("SYN_LD not available" in w for w in r["warnings"])
+    assert r["attenuation_db"] == 31.5                         # the attenuator needs only the I2C bus
     assert rig.cmd("close")["ok"]
 
 
@@ -742,17 +806,18 @@ def test_without_config_pin_bus_pins_stay_on_their_bus(no_mux, pin):
 
 def test_without_config_pin_a_bus_pattern_is_refused_before_touching_anything(no_mux):
     no_mux.backend.log.events.clear()
+    del no_mux.backend.pcf.bytes[:]
     r = no_mux.cmd("pattern", action="start", spec={"kind": "walking", "signals": ["ATT_V1", "SYN_CLK"]}, confirm=True)
     assert not r["ok"] and "config-pin" in r["error"]
-    assert no_mux.backend.log.events == [] and not no_mux.bench.pattern_running
+    assert no_mux.backend.log.events == [] and no_mux.backend.pcf.bytes == [] and not no_mux.bench.pattern_running
 
 
 def test_without_config_pin_everything_else_still_works(no_mux):
     assert no_mux.cmd("status")["ok"]
-    assert no_mux.cmd("pin", pin="P8.7", action="write", value=0, confirm=True)["ok"]
+    assert no_mux.cmd("pin", pin="P9.27", action="write", value=1, confirm=True)["ok"]
     assert no_mux.cmd("atten", db=3.0, confirm=True)["ok"]
     assert no_mux.cmd("spi", word=0x00580005, confirm=True)["ok"]
-    assert no_mux.cmd("adc", source="ads1115")["ok"]
+    assert no_mux.cmd("adc", source="ain")["ok"]
     assert no_mux.cmd("pattern", action="start", spec={"kind": "adf4351_frame", "words": [5]}, confirm=True)["ok"]
     assert no_mux.cmd("close")["ok"] and no_mux.backend.mux_log == []
 
@@ -762,17 +827,12 @@ def test_open_reports_whether_pins_can_change_function(rig):
 
 
 def test_nothing_on_the_i2c_bus_closes_it_and_only_warns():
-    """The dry test: nothing connected, so the ADS1115 does not answer."""
+    """The dry test: nothing connected, so the PCF8574 does not answer."""
     rig = Rig()
-    ads = rig.backend.ads
-
-    def no_answer(_data):
-        raise OSError(121, "Remote I/O error")
-
-    ads.write = no_answer
+    rig.backend.pcf.present = False
     r = rig.open()
-    assert r["ok"] and any("ADS1115 not available" in w for w in r["warnings"])
-    assert ads.closed and "not available" in rig.cmd("adc")["error"]
+    assert r["ok"] and any("no answer from the PCF8574 at I2C address 0x27" in w for w in r["warnings"])
+    assert rig.backend.pcf.closed and "not available" in rig.cmd("atten", db=1.0, confirm=True)["error"]
     assert rig.cmd("close")["ok"]
 
 

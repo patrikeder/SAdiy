@@ -30,5 +30,6 @@ Steps, all of them:
 8. Entry in `log_rtl.md`. If software of session L is affected, say so there under "for L".
 
 Old bitstreams stay in use: software that needs a new register checks `VERSION` first (see how
-`RegOffload.__init__` refuses the PL ADC on map 1.0, and how `pl_bringup.py` skips stages).
+`RegOffload.__init__` refuses another major version, and how `pl_bringup.py` skips a stage a bitstream is too old for;
+compare the whole version, not only the minor number).
 Install nothing. Commit only when asked.

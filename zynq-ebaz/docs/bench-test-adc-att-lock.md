@@ -1,6 +1,6 @@
-# Bench test: ADS1115, PE4302, ADF4351 lock (EBAZ4205, Linux owns the pins)
+# Bench test: PE4302 via PCF8574, ADF4351 lock (EBAZ4205, Linux owns the pins)
 
-Goal: check the detector ADC, the attenuator and whether the LO locks at the frequencies set in the GUI. Nothing here has run on the board yet; every "expect" below is from the datasheets and the code, not a measurement. Mode: `./bench.sh` (= `sweepd --platform ebaz --bench-only`) (PS path: `/dev/spidev0.0`, `/dev/i2c-0`, EMIO GPIO; the sweep engine is not used).
+Goal: check the attenuator and whether the LO locks at the frequencies set in the GUI. (The file name still says "adc": the ADS1115 and its test step were removed on 2026-11-25.) Nothing here has run on the board with the PCF8574 yet; every "expect" below is from the datasheets and the code, not a measurement. Mode: `./bench.sh` (= `sweepd --platform ebaz --bench-only`) (PS path: `/dev/spidev0.0`, `/dev/i2c-0`, EMIO GPIO; the sweep engine is not used). The software needs a bitstream of register map 2.x.
 
 ## Safety
 
@@ -27,7 +27,7 @@ python3 tools/bringup.py --platform ebaz gpio-map                    # EMIO numb
 python3 tools/bringup.py --platform ebaz synth-ce read --pl-owner    # CE pad, owner must be the PS
 ```
 
-The EMIO signals reach the pads only through a loaded bitstream: an unconfigured PL means no signal anywhere. A bitstream loaded at run time is gone after a reboot; the SD card holds it only when `BOOT.BIN` and `image.ub` of 2026-11-15 14:53 (PetaLinux project, `images/linux/`) were copied to it.
+The EMIO signals reach the pads only through a loaded bitstream: an unconfigured PL means no signal anywhere. A bitstream loaded at run time is gone after a reboot. The `BOOT.BIN` of 2026-11-15 14:53 in the PetaLinux project holds register map 1.2, which the software now refuses: load the map 2.x bitstream with `./fpga.sh`.
 
 Start the server and the GUI:
 
@@ -38,20 +38,20 @@ sh zynq-ebaz/sw/pc/gui.sh <ebaz-ip>                 # PC, from the checkout
 
 `sweepd` logs `build: sadiy ..., commit <hash> (main)`: it must be the commit you deployed (`python -m sadiy.buildinfo` in the checkout). In the GUI: Pins tab, **Enter bench mode**, answer the confirm. The status bar shows `LO not programmed`.
 
-## 1. ADS1115 (detector ADC)
+## 1. PCF8574 (the attenuator's port expander)
 
-Pins tab, Raw access, ADC: convert channel 0 (AIN0 of the ADS1115 is the detector).
+Wiring: `hw/boards/pe4302.md` (SCL = DATA2.20, SDA = DATA2.11, expander board on **3.3 V**, P0..P2 = V1..V3, P4..P6 = V4..V6, 2.2 kohm pull-ups from each V line to 3.3 V). Take the old attenuator wires off DATA2.14 to .19.
 
-- Expect: no error; code, volts, config and conversion register shown. An I2C error (nack) means wiring (SDA = DATA2.11, SCL = DATA2.20), address pin (0x48 = ADDR to GND), supply or pull-ups.
-- Compare the volts with a DMM at the detector output: agree within a few mV (ADS1115 default range 4.096 V, 125 microvolt per code). With no RF the AD8318-class detector sits high, up to about 1.9 V.
-- Repeat on channels 1 to 3 (open inputs float: only the error-free read counts).
+- On the board, `sweepd` stopped: `sudo i2cdetect -y -r 0`. Expect the PCF8574 at 0x27 (a PCF8574A: 0x38..0x3F; then set `[attenuator] pcf8574_address`).
+- Enter bench mode. Expect no warning. "PE4302 not available: no answer from the PCF8574 ..." means wiring, supply or address. "the PCF8574 pins do not follow what was written (V...)" means that these lines have no working pull-up, or a short.
+- With a DMM at power-up of the expander and in bench mode (31.5 dB): all six V lines above 2.3 V.
 
 ## 2. PE4302
 
 First the logic, then the RF:
 
-1. Patterns page, "PE4302 stage by stage" with a DMM or the DSLogic on V1..V6 (DATA2.14 to .19): V1 = 0.5 dB, V2 = 1, V3 = 2, V4 = 4, V5 = 8, V6 = 16, high = stage in. If polarity is as assumed (high = stage in): default 31.5 dB = all six high, 0 dB = all low; if you see the opposite, report it, the polarity in `config/default.toml` is then wrong. V6 goes through a 10 kohm series resistor: check that 3.3 V really switches the 16 dB stage.
-2. RF check (needs the LO running, so do step 3 first, with the main output on, at LO = RF + 10.7 MHz): generator at -40 dBm into the PE4302 input, read the detector through step 1 while changing the attenuation in 8 dB steps. Expect the detector voltage to move about 25 mV per dB (negative slope: more attenuation, higher voltage), so 8 dB is about 200 mV. A constant offset or a wrong step means a wrong weight or polarity: report which dB value gave which voltage.
+1. Pins tab, Raw access, PE4302: "Raw: one byte (wiring test)", tick one V box at a time and measure V1..V6 at the PE4302 header; or the Patterns page, "PE4302 stage by stage", with the DSLogic. V1 = 0.5 dB, V2 = 1, V3 = 2, V4 = 4, V5 = 8, V6 = 16, high = stage in. If polarity is as assumed (high = stage in): default 31.5 dB = all six high, 0 dB = all low; if you see the opposite, report it, the polarity in `config/default.toml` is then wrong. V6 goes through a 10 kohm series resistor: check that 3.3 V really switches the 16 dB stage. P3 is the backlight LED of the expander board (`pcf8574_backlight`).
+2. RF check (needs the LO running if you measure after the mixer, so do step 3 first, with the main output on, at LO = RF + 10.7 MHz): generator at -40 dBm into the PE4302 input, measure behind it with the scope (the log detector is dead) while changing the attenuation in 8 dB steps. Expect 8 dB steps in level. A constant offset or a wrong step means a wrong weight or polarity: report which dB value gave which level. `python3 tools/bringup.py --platform ebaz pe4302-walk` (as root, `sweepd` stopped) does the same one stage at a time.
 
 ## 3. ADF4351 lock from the GUI
 
@@ -72,10 +72,10 @@ Also try: Apply twice in a row (must stay locked), and Apply a new frequency whi
 
 ## 4. After
 
-**Leave bench mode** (or close the GUI: the lines go back to safe), stop `sweepd` with Ctrl-C. To sweep again run `./sweep.sh` (needs map 1.1 or newer in the PL).
+**Leave bench mode** (or close the GUI: the lines go back to safe), stop `sweepd` with Ctrl-C. To sweep again run `./sweep.sh` (needs register map 2.x in the PL; with no detector there is nothing to measure yet).
 
 ## Send back
 
-The `sweepd` log lines of the session (GUI Advanced tab, Device log, or the ssh terminal), the status bar line per frequency, the DMM and scope readings, and which dB value gave which detector voltage. Write them into `ebaz-bringup.md` (S4/S7 table) from what you report.
+The `sweepd` log lines of the session (GUI Advanced tab, Device log, or the ssh terminal), the status bar line per frequency, the DMM and scope readings, and which dB value gave which level. Write them into `ebaz-bringup.md` (S4/S7 table) from what you report.
 
 Known: the GUI may show "sweepd sent no log" while a sweep runs; in bench-only mode `sweepd` answers at once, so it should not appear here.

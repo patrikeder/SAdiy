@@ -17,9 +17,10 @@ Who owns what:
 - `rtl/fpga/extract_ps7.py` (list `OVERRIDES`) makes `ps7_config.tcl`; `rtl/fpga/bd_ebaz_sadiy.tcl` is the
   block design; pads and IOBUFs are in `rtl/fpga/ebaz_sadiy_top.sv`.
 
-EMIO GPIO lines (Linux line = 54 + n): 0..5 PE4302 V1..V6, 6 ADF4351 CE, 7 lock detect, 8 LCD DC, 9 LCD RES,
-10..12 adapter LEDs, 13..17 adapter keys. SPI0 = ADF4351, SPI1 = adapter LCD, I2C0 = ADS1115. CE, the SPI0 pins,
-the PE4302 pins and the I2C pins pass the engine's `pin_mux`.
+EMIO GPIO lines (Linux line = 54 + n): 0..5 spare (the PE4302 lines until 2026-11-25), 6 ADF4351 CE, 7 lock detect, 8 LCD DC, 9 LCD RES,
+10..12 adapter LEDs, 13..17 adapter keys. SPI0 = ADF4351, SPI1 = adapter LCD, I2C0 = the PCF8574 of the PE4302
+attenuator (P0..P2 = V1..V3, P3 backlight, P4..P6 = V4..V6, address 0x27). CE, the SPI0 pins and the I2C pins pass the
+engine's `pin_mux`; the spare EMIO pins go straight to the pads (port names `pe4302_v[0..5]` kept).
 
 When a pin changes:
 1. Constraint in the right XDC file, with the source of the information in a comment (photo, schematic,

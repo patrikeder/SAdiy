@@ -1,5 +1,11 @@
 # STATUS (session L, Linux) - 2026-11-14
 
+## Update 2026-11-25: register map 2.0, PE4302 through a PCF8574, ADS1115 removed (newest)
+- User decision (relayed by R): the ADS1115 and the six PE4302 GPIO lines are removed; the PE4302 is driven by a PCF8574 on I2C (P0..P2 = V1..V3, P4..P6 = V4..V6, P3 = backlight, 0x27). R: PL engine and register map 2.0 (on `main`). L: drivers, bench mode, `ps_backend`, tools, pin maps and figures, GUI, `pins.toml` (notes; port names unchanged), documents, tests. **Nothing of it has run on the board.**
+- `pins.toml` changed (announced here as its header asks): DATA2-14..19 are spare EMIO GPIO (`inout`, port names `pe4302_v[0..5]` kept), notes of the two I2C pins. The PCB files are untouched.
+- At the bench: PCF8574 board on 3.3 V, 2.2 kohm pull-ups on V1..V6, old attenuator wires off DATA2-14..19, a map 2.x bitstream (the deployed software refuses 1.x). `/dev/i2c-0` must not be used while the engine owns the pins (`ps_backend` refuses).
+- Not mirrored: the comments in `sw/deploy/petalinux/system-user.dtsi` changed; the copy in the PetaLinux project still has the old comments (no functional difference, no rebuild needed).
+
 Branch `linux`, worktree `../SAdiy-linux`; everything below is committed on `main` (CE control, `4beac24`). The newer updates further down take precedence over this block.
 
 ## Done
@@ -13,7 +19,7 @@ Branch `linux`, worktree `../SAdiy-linux`; everything below is committed on `mai
 
 ## Next (needs the user at the board or bench)
 1. Boot the rebuilt image (copy `BOOT.BIN` and `image.ub`; the rootfs stays): LCD, LEDs, keys (`docs/ebaz-bringup.md`). For a usable LCD: `sudo sh ebaz_lcd_top.sh install` shows `top` on it instead of the login prompt (written 2026-11-15, works on the board).
-2. S4 rest: pin locations on DATA2, SPI frames on the logic analyzer, adapter connected, `synth-ce`, PE4302 walk, ADF4351 at 100 MHz, ADS1115.
+2. S4 rest: pin locations on DATA2, SPI frames on the logic analyzer, adapter connected, `synth-ce`, PCF8574 and PE4302 walk, ADF4351 at 100 MHz.
 3. Then S5 (`ebaz-ps` backend, sysvinit script for `sweepd`) and S7 (`ebaz-pl`, `/dev/mem` registers).
 
 ## Blockers / questions to R

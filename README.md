@@ -1,6 +1,6 @@
 # SAdiy: DIY swept spectrum analyzer
 
-A swept low-IF spectrum analyzer built from ready-made RF modules and controlled by a BeagleBone Black (BBB). A port to the EBAZ4205 (Zynq-7010, Linux on the PS, optional sweep engine in the PL) is under way in [zynq-ebaz/](zynq-ebaz/README.md); both boards use the same adapter board and the same `sweepd`. The software runs on a PC today against a simulated RF chain. It has not run on the real RF hardware yet: see [Status](#status).
+A swept low-IF spectrum analyzer built from ready-made RF modules. The main controller board is the EBAZ4205 (Zynq-7010, Linux on the PS, optional sweep engine in the PL; its part is in [zynq-ebaz/](zynq-ebaz/README.md)); the BeagleBone Black (BBB), the original controller, is only a backup. Both run the same `sweepd`. The software runs on a PC today against a simulated RF chain. It has not run on the real RF hardware yet: see [Status](#status).
 
 The code is Python. C++ or Rust comes in only if a measured time per point demands it (`native/`).
 
@@ -9,7 +9,7 @@ The code is Python. C++ or Rust comes in only if a measured time per point deman
 Planned:
 
 ```
-RF in -> DC block/ESD -> PE4302 -> 500 MHz LPF -> 30 dB amp -> AD831 mixer -> 10.7 MHz IF filter -> IF amp -> log detector -> ADS1115 -> BBB
+RF in -> DC block/ESD -> PE4302 -> 500 MHz LPF -> 30 dB amp -> AD831 mixer -> 10.7 MHz IF filter -> IF amp -> log detector -> ADC -> BBB
                                                                   ^
 ADF4351 (LO = RF + 10.7 MHz) -> LPF + pad -----------------------+
 ```
@@ -26,7 +26,8 @@ Built so far: PE4302, amp, AD831, ADF4351 (the detector module is dead). Ordered
 
 - **Range:** 30 to 480 MHz by default (`config/default.toml`). The AD831 LO limit puts the ceiling at about 489 MHz.
 - **Image:** the low IF puts an image 21.4 MHz above each RF, so every signal also shows a copy 21.4 MHz lower on the sweep axis. The optional **Image reject** setting (two sweeps per trace with the LO on both sides, lower reading kept) removes it above about 45 MHz at twice the sweep time; tested in the simulator only.
-- **ADC:** an ADS1115 on I2C reads the detector (analog path; the detector is dead for now). The BBB on-chip AIN0 stays wired as an optional cross-check. On the EBAZ4205 the AD9226 module (parallel, 50 MS/s) feeds the PL IF path instead.
+- **ADC:** on the EBAZ4205 the AD9226 module (parallel, 50 MS/s) feeds the PL IF path. The BBB has only its on-chip AIN0, behind a divider, for the analog path (the detector is dead for now). The ADS1115 of the earlier design was removed on 2026-11-25.
+- **Attenuator:** the PE4302 is set through a PCF8574 port expander on I2C (an LCD backpack board): P0..P2 = V1..V3, P4..P6 = V4..V6, P3 = the board's backlight, default address 0x27. Each V line needs a 2.2 kohm pull-up to 3.3 V. See [hw/boards/pe4302.md](hw/boards/pe4302.md).
 
 ## Quick start (PC, no hardware)
 
@@ -84,7 +85,7 @@ python -m sadiy.ui.sa_gui --host <bbb-ip> --connect   # on the PC
 The GUI's **Pins** tab then gives wiring tests over the network:
 
 - a clickable drawing of P8 and P9 with the boards, and live pin levels
-- raw access to the ADF4351, PE4302 and both ADCs
+- raw access to the ADF4351, the PE4302 (through the PCF8574) and, on the BBB, the on-chip ADC
 - check patterns with a preview and CSV export, to compare with a logic analyzer capture
 
 The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outputs stay off until the PLL is locked, and all lines return to a safe state if the client disappears. See [docs/gui.md](docs/gui.md).
@@ -98,8 +99,8 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
  +-----------------------------------+          +---------------------------+
  | sweep engine or bench mode        |   PUB    | sa_gui / cli_client       |
  | lock detect, median, flags, cal   | -------> |  sweeps: dBm + flags      |
- | PE4302 (GPIO) ADF4351 (SPI)       |          |  log: errors, warnings    |
- | ADS1115 (I2C) AIN0 (IIO)          |   REP    | plot, markers, Pins,      |
+ | ADF4351 (SPI) AIN0 (IIO)          |          |  log: errors, warnings    |
+ | PE4302 via PCF8574 (I2C)          |   REP    | plot, markers, Pins,      |
  | log ring                          | <------- | Device log                |
  +-----------------------------------+          | commands (JSON)           |
         +--> stderr / journald (ssh)             +---------------------------+
@@ -113,7 +114,7 @@ The daemon enforces the safety rules: the attenuator starts at 31.5 dB, RF outpu
 |---|---|
 | `src/sadiy/pinmap.py`, `pinmap_ebaz.py`, `platforms.py` | the pin maps (BBB P8/P9, EBAZ4205 DATA1/2/3): nets, GPIO numbers, what each pin may do, and the layout of the drawn board; `platforms.get(name)` picks one. Read by the diagram generator, the daemon and the GUI |
 | `src/sadiy/hal/` | SPI, GPIO, I2C and ADC abstraction: Linux backends and recording fakes |
-| `src/sadiy/drivers/` | PE4302, ADF4351 (and its chip enable, `synth_ce.py`), ADS1115 and on-chip ADC drivers |
+| `src/sadiy/drivers/` | PE4302 and the PCF8574 it hangs on, ADF4351 (and its chip enable, `synth_ce.py`), on-chip ADC drivers |
 | `src/sadiy/core/` | frequency plan, detector model, calibration, sweep engine with lock gating, median and flags (no hardware access) |
 | `src/sadiy/server/` | `sweepd` daemon, wire protocol, bench mode |
 | `src/sadiy/logs.py` | log levels, the numbered ring buffer the GUI fetches from, repeat folding; standard library only |
@@ -157,11 +158,11 @@ The adapter board has no Raspberry Pi connector any more; it carries the modules
 | Logging on the BBB (levels, journald, ring, `log` command) and the GUI Device log | done, tested; never run on a real BBB |
 | Spectrum analyzer GUI | done, smoke-tested offscreen against the simulator; not yet used with real hardware or on a real display |
 | PE4302 driver | done, tested with fakes; weights and polarity not yet confirmed on the module (`pe4302-walk`) |
-| ADS1115 driver | done, tested against a register model only; sweeps do not use it yet |
+| PE4302 through the PCF8574 (2026-11-25) | driver, bench mode, GUI and PL engine done, tested with fakes, models and simulation only; **never run with a real expander**. The ADS1115 was removed |
 | Bench mode (Pins tab) | done, **tested on the fake backend only**; the Linux backend has never run on a BBB |
 | ADF4351 register packing | R0..R5 written and unit-tested for field positions; **not yet checked against the datasheet text or ADI's software** |
 | Sweeping on real hardware (`build_hw_engine`) | **not written** for the BBB; the EBAZ4205 has a PL-engine backend (`sadiy_ebaz.platforms.ebaz_pl`, register access) that is untested on the board |
-| Platform choice BBB / EBAZ4205 (`--platform`, GUI selector, pin maps, figures) | done, tested on the fake backend and the simulator; `sweepd --platform ebaz --bench-only` gives the Pins tab the real board (Linux owns the pins; worked on the board 2026-11-16: ADF4351 frequencies, attenuation, ADS1115 values) |
+| Platform choice BBB / EBAZ4205 (`--platform`, GUI selector, pin maps, figures) | done, tested on the fake backend and the simulator; `sweepd --platform ebaz --bench-only` gives the Pins tab the real board (Linux owns the pins; worked on the board 2026-11-16 with the old attenuator wiring: ADF4351 frequencies, attenuation, ADC values) |
 | EBAZ4205 port (`zynq-ebaz/`) | image boots, EMIO readback checked at the bench (2026-11-14); LCD, LEDs and keys image built but not booted; PL sweep engine written and simulated, not run on the board; see `zynq-ebaz/docs/STATUS-linux.md` and `log_rtl.md` |
 | ADF4351 chip enable from Linux (`drivers/synth_ce.py`, `bringup.py synth-ce`) | done, tested with fakes; never run on a board. A PL mux that takes CE over is only a request to the RTL lane so far |
 | GPIO backend | sysfs; moves to libgpiod once the image is fixed |

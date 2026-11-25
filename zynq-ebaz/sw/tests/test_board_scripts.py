@@ -73,19 +73,19 @@ def test_probe_without_fpga_manager_and_without_registers(tmp_path):
 
 
 # ------------------------------------------------------------------ deploy and scripts
-def _deploy(tmp_path, home):
-    """Run deploy_to_board.sh into `home`/sadiy through a stub ssh (the second call, `sh -s`, reads the script on stdin)."""
+def _deploy(tmp_path, home, ok=True):
+    """Run deploy_to_board.sh into `home`/sadiy through a stub ssh that runs the remote command with HOME=`home`."""
     stub = tmp_path / "bin"
     stub.mkdir(exist_ok=True)
-    (stub / "ssh").write_text(f'#!/bin/sh\nexport HOME="{home}"\n[ "$2" = "sh -s" ] && exec sh -s\n'
-                              f'cd "{home}" && mkdir -p sadiy && cd sadiy && tar -xzf - && ls >/dev/null\n')
+    (stub / "ssh").write_text(f'#!/bin/sh\nexport HOME="{home}"\nexec sh -c "$2"\n')
     (stub / "ssh").chmod(0o755)
     bit = tmp_path / "ebaz_sadiy.bit.bin"
     bit.write_bytes(b"\x00bitstream")
     env = {**os.environ, "PATH": f"{stub}:{os.environ['PATH']}", "BITSTREAM": str(bit)}
     out = subprocess.run(["sh", str(SW / "deploy" / "deploy_to_board.sh"), "1.2.3.4"], cwd=ROOT, env=env,
                          capture_output=True, text=True, timeout=120)
-    assert out.returncode == 0, out.stderr
+    if ok:
+        assert out.returncode == 0, out.stderr
     return out
 
 
@@ -111,6 +111,14 @@ def test_deploy_is_quiet_when_the_package_has_the_same_bitstream(tmp_path):
     (home / "sadiy" / "bringup-pkg").mkdir(parents=True)
     (home / "sadiy" / "bringup-pkg" / "ebaz_sadiy.bit.bin").write_bytes(b"\x00bitstream")
     assert "WARNING" not in _deploy(tmp_path, home).stdout
+
+
+def test_deploy_fails_when_the_board_cannot_unpack(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "sadiy").write_text("a file where the folder should be\n")      # mkdir -p fails on the "board"
+    out = _deploy(tmp_path, home, ok=False)
+    assert out.returncode != 0 and "on the board, from" not in out.stdout
 
 
 def sh(board_dir, script, tmp_path, *args, **plenv):
@@ -266,3 +274,10 @@ def test_python_module_run_fails_the_way_the_user_saw_without_pythonpath(board, 
                         "SADIY_NO_SUDO": "1", "SADIY_PROC_PATTERN": "sadiy-test-no-such-process",
                         "PROBE_ARGS": f"--base 0 --state {tmp_path}/s --mem {tmp_path}/m"}, capture_output=True, text=True, timeout=30)
     assert ok.returncode == 0 and ok.stdout.startswith("software: sadiy ")       # from another directory, by full path
+
+
+def test_bringup_sh_runs_the_stages_of_the_deployed_software(board, tmp_path):
+    base, _ = board
+    out = sh(base, "bringup.sh", tmp_path, "--model", "version")
+    assert out.returncode == 0, out.stderr + out.stdout
+    assert "VERSION = 0x" in out.stdout and "register map 2." in out.stdout and "0 failed" in out.stdout

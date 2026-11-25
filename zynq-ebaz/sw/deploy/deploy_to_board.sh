@@ -9,7 +9,7 @@
 #   ~/sadiy/BUILD_INFO               commit, branch, time of this copy (every program prints it when it starts)
 #   ~/sadiy/tools/bringup.py         gpio-map, synth-ce, pe4302-walk ... (run from ~/sadiy)
 #   ~/sadiy/zynq-ebaz/sw/tools/      pl_bringup.py, ebaz_pl_probe.py, ebaz_lcd_test.py, ebaz_s4_*.sh, ebaz_baseline.sh
-#   ~/sadiy/{fpga,bench,sweep,sim,status,stop}.sh   the day-to-day scripts (from zynq-ebaz/sw/board/), run from ~/sadiy
+#   ~/sadiy/{fpga,bench,sweep,sim,status,stop,selftest,bringup}.sh   the day-to-day scripts (from zynq-ebaz/sw/board/), run from ~/sadiy
 #   ~/sadiy/fpga/                    ebaz_sadiy.bit.bin (the engine bitstream, see BITSTREAM below) and sadiy_pl_load.sh
 # Load it with ~/sadiy/fpga.sh. Packages copied by hand (~/sadiy/bringup-pkg, ~/engine-pkg) are NOT updated; the script warns
 # at the end when their bitstream differs from the deployed one.
@@ -47,15 +47,7 @@ if [ -n "$bit" ]; then
 else
   echo "bitstream: none found (set BITSTREAM=<ebaz_sadiy.bit.bin>); the board keeps the one it has, ./fpga.sh will tell"
 fi
-echo "deploying: $paths"
-ex=""
-for f in src/sadiy/ui/*.py; do
-  case $(basename "$f") in __init__.py|cli_client.py|sweep_client.py) ;; *) ex="$ex --exclude=$f" ;; esac
-done
-tar -czf - --exclude='__pycache__' --exclude='*.pyc' $ex $paths -C "$STAGE" . \
-  | ssh "$USER_@$IP" 'mkdir -p ~/sadiy && cd ~/sadiy && tar -xzf - && printf "export PYTHONPATH=\$HOME/sadiy/src:\$HOME/sadiy/zynq-ebaz/sw\n" > env.sh && echo "unpacked to ~/sadiy" && ls ~/sadiy'
-# second ssh call: the first one reads the tar stream on stdin
-ssh "$USER_@$IP" 'sh -s' <<'REMOTE' || true
+cat > "$STAGE/.deploy_check.sh" <<'CHECK'
 # Other copies of the bitstream (R's bringup-pkg, engine-pkg) are not touched by this script: say so when they differ,
 # because sadiy_pl_load.sh run from there loads the OLD engine (a stale bringup-pkg once loaded VERSION 0x10002).
 if command -v sha256sum >/dev/null 2>&1; then
@@ -67,5 +59,12 @@ if command -v sha256sum >/dev/null 2>&1; then
     echo "         Load the deployed one with ./fpga.sh --force from ~/sadiy, or copy the newer package over that folder."
   done
 fi
-REMOTE
-echo "on the board, from ~/sadiy: ./status.sh | ./fpga.sh | ./bench.sh | ./sweep.sh | ./selftest.sh | ./sim.sh | ./stop.sh   (. ~/sadiy/env.sh sets PYTHONPATH for python -m ...)"
+CHECK
+echo "deploying: $paths"
+ex=""
+for f in src/sadiy/ui/*.py; do
+  case $(basename "$f") in __init__.py|cli_client.py|sweep_client.py) ;; *) ex="$ex --exclude=$f" ;; esac
+done
+tar -czf - --exclude='__pycache__' --exclude='*.pyc' $ex $paths -C "$STAGE" . \
+  | ssh "$USER_@$IP" 'mkdir -p ~/sadiy && cd ~/sadiy && tar -xzf - && printf "export PYTHONPATH=\$HOME/sadiy/src:\$HOME/sadiy/zynq-ebaz/sw\n" > env.sh && echo "unpacked to ~/sadiy" && ls ~/sadiy && sh ./.deploy_check.sh; rc=$?; rm -f ~/sadiy/.deploy_check.sh; exit $rc'
+echo "on the board, from ~/sadiy: ./status.sh | ./fpga.sh | ./bench.sh | ./sweep.sh | ./selftest.sh | ./bringup.sh | ./sim.sh | ./stop.sh   (. ~/sadiy/env.sh sets PYTHONPATH for python -m ...)"

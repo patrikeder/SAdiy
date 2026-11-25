@@ -10,14 +10,16 @@ names are copied from `zynq-ebaz/rtl/vivado/pins.toml`, the master list of the P
 Pins are PL IOs. Only the DATA2 signals of the Phase 1 design (EMIO SPI0, I2C0 and GPIO) exist in the bitstream:
 everything else is display-only. SPI and I2C are hardware controllers in the PS, wired to their pins in the
 bitstream, so those pins can not be turned into GPIO (the backend has no pin mux, `can_mux` is False).
-GPIO numbers are offsets on the Zynq gpiochip: EMIO line n is 54 + n (V1..V6 = 54..59, CE = 60, LD = 61).
+GPIO numbers are offsets on the Zynq gpiochip: EMIO line n is 54 + n (CE = 60, LD = 61). EMIO 0..5 (DATA2-14..19)
+carried the PE4302 inputs until register map 1.3; since 2.0 the PE4302 hangs on a PCF8574 on I2C and these six are
+spare GPIO straight to the pads (expert pins in bench mode). pins.toml and the bitstream keep their old port names.
 """
 from __future__ import annotations
 
 from typing import Dict, Optional, Tuple
 
-from .pinmap import (BoardBlock, DISPLAY, Layout, NETS, Pin, PinMap, _access, _category, _short,
-                     ATT_NETS)
+from .pinmap import (BoardBlock, DISPLAY, EXPERT, Layout, NETS, PCF8574_STRAPS, Pin, PinMap, _access, _category,
+                     _short)
 
 HEADERS = ("DATA1", "DATA2", "DATA3")
 
@@ -54,9 +56,9 @@ DATA3_ADAPTER: Dict[int, str] = {
 SUPPLY = {1: ("VCC in (5 to 12 V)", "power"), 2: ("VCC in (5 to 12 V)", "power"), 3: ("GND", "gnd"),
           4: ("GND", "gnd"), 10: ("NC", "special"), 12: ("GND", "gnd")}
 
-# EMIO line n of the Zynq gpiochip is 54 + n. LD is input only; V1..V6 and CE are outputs (tri-stated at boot).
-EMIO_GPIO = {"ATT_V1": 54, "ATT_V2": 55, "ATT_V3": 56, "ATT_V4": 57, "ATT_V5": 58, "ATT_V6": 59,
-             "SYN_CE": 60, "SYN_LD": 61}
+# EMIO line n of the Zynq gpiochip is 54 + n. LD is input only; CE is an output (tri-stated at boot).
+EMIO_GPIO = {"SYN_CE": 60, "SYN_LD": 61}
+SPARE_EMIO = {14: 54, 15: 55, 16: 56, 17: 57, 18: 58, 19: 59}     # DATA2 pin -> gpiochip offset (EMIO 0..5)
 
 PIN_NOTES = {
     "DATA2.9": "pulled down inside the FPGA, so a missing cable reads unlocked",
@@ -64,8 +66,9 @@ PIN_NOTES = {
     "DATA2.20": "pulled up inside the FPGA",
     "DATA2.13": "tri-stated until software drives it; the adapter jumper holds CE high",
 }
-for _n in range(14, 20):
-    PIN_NOTES[f"DATA2.{_n}"] = "tri-stated at boot, the adapter's 2.2k pull-ups give 31.5 dB"
+for _n, _gpio in SPARE_EMIO.items():
+    PIN_NOTES[f"DATA2.{_n}"] = (f"spare EMIO GPIO {_gpio - 54}, tri-stated at boot. Was a PE4302 input until 2026-11-25: "
+                                "take any old wire to the PE4302 off before driving it")
 
 
 def _net_by_pin() -> Dict[str, dict]:
@@ -95,14 +98,19 @@ def _build() -> Dict[str, Pin]:
                     name, kind = f"{ball}  spare", "special"
                 else:
                     name, kind = f"{ball}  PL IO, spare", "special"
+            gpio = EMIO_GPIO.get(net["id"]) if net else None
+            if header == "DATA2" and number in SPARE_EMIO:
+                name, kind, gpio = f"{BALLS[header][number]}  spare EMIO {SPARE_EMIO[number] - 54}", "free", SPARE_EMIO[number]
             if net is not None:
                 access, category = _access(kind, net), _category(kind, net)
+            elif header == "DATA2" and number in SPARE_EMIO:
+                access, category = EXPERT, "free"
             else:
                 access, category = DISPLAY, {"power": "power", "gnd": "gnd"}.get(kind, "reserved")
             out[pid] = Pin(
                 id=pid, header=header, number=number, name=name, kind=kind, access=access, category=category,
                 short=_short(name, net) if net is not None else name.split("  ")[-1].split(" (")[0],
-                gpio=EMIO_GPIO.get(net["id"]) if net else None, ain=None,
+                gpio=gpio, ain=None,
                 net=net["id"] if net else None, board=net["dev"] if net else None,
                 board_pin=net["dpin"] if net else None, direction=net["dir"] if net else None, mux=None,
                 note=" ".join(x for x in ((net.get("note_ebaz", net["note"]) if net else ""), PIN_NOTES.get(pid, "")) if x),
@@ -114,17 +122,14 @@ PINS: Dict[str, Pin] = _build()
 BY_NET: Dict[str, Pin] = {p.net: p for p in PINS.values() if p.net}
 
 BOARDS: Tuple[BoardBlock, ...] = (
-    BoardBlock("PE4302", "attenuator, parallel only", ATT_NETS,
-               ("VDD on two pads, 3.3 V", "2.2k pull-ups: open = 31.5 dB", "weights and polarity: verify")),
+    BoardBlock("PCF8574", "I2C0 0x27, drives the PE4302", ("I2C_SCL", "I2C_SDA"), PCF8574_STRAPS),
     BoardBlock("ADF4351", "LO, 25 MHz reference", ("SYN_LE", "SYN_DATA", "SYN_CLK", "SYN_LD", "SYN_CE"),
                ("PDR: tied high (JP5)", "CE: adapter jumper picks 3V3 or DATA2-13", "5 V jack; never feed 3V3 pin")),
-    BoardBlock("ADS1115", "main ADC, I2C0 at 0x48", ("I2C_SCL", "I2C_SDA"),
-               ("A0 from detector; GND: board GND",)),
 )
 
 _LEGEND = (
-    ("spi", "SPI (PS SPI0)"), ("pe4302", "PE4302"), ("lock", "Lock detect"), ("synth", "ADF4351 CE"),
-    ("i2c", "I2C (ADS1115)"), ("power", "Power in"), ("gnd", "Ground"),
+    ("spi", "SPI (PS SPI0)"), ("lock", "Lock detect"), ("synth", "ADF4351 CE"),
+    ("i2c", "I2C (PCF8574, PE4302)"), ("power", "Power in"), ("gnd", "Ground"), ("free", "Spare EMIO GPIO"),
     ("reserved", "AD9226 later / NC / spare"),
 )
 
@@ -135,7 +140,7 @@ EBAZ = PinMap(
         headers=(("DATA2", 270.0, 58.0), ("DATA1", 460.0, 58.0), ("DATA3", 650.0, 58.0)), rows=10,
         board_rect=(232.0, 8.0, 600.0, 58.0 + 10 * 23.0 - 2), board_title="EBAZ4205",
         canvas=(850.0, 700.0),
-        blocks=(("PE4302", 8, 60, 214, True), ("ADF4351", 8, 300, 214, True), ("ADS1115", 8, 516, 214, True)),
+        blocks=(("PCF8574", 8, 300, 214, True), ("ADF4351", 8, 60, 214, True)),
         legend=_LEGEND,
     ),
 )

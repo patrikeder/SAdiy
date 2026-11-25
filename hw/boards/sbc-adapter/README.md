@@ -1,10 +1,21 @@
 # SBC adapter (KiCad project)
 
-One board that lets the **BeagleBone Black** reach the module boards (PE4302, ADF4351, detector, ADS1115). The board sits on the BBB like a cape: P8 and P9 are male pin headers on the **bottom** side, everything else (module headers, jumpers, test points) is on the **top** side.
+One board that lets the **BeagleBone Black** reach the module boards (PE4302, ADF4351, detector; and a PCF8574 since 2026-11-25). The board sits on the BBB like a cape: P8 and P9 are male pin headers on the **bottom** side, everything else (module headers, jumpers, test points) is on the **top** side.
 
 **Raspberry Pi support was removed (2026-11-01)** to keep the board to one SBC: J3 (2x20 IDC), the 13 RPi-side series resistors (R2, R4 .. R26) and the RPi supply jumpers JP2 / JP4 are gone from the schematic and the board. Every BBB signal keeps its 220 ohm series resistor at the BBB header (R1, R3 .. R25), as source termination and fault-current limit.
 
 The pin map comes from `../../netlist.md` and `../../wiring-bbb.md`. Nothing was remapped.
+
+## Attenuator and ADC change (2026-11-25): the board is older than it
+
+The ADS1115 is removed from the design, and the PE4302's V1..V6 are driven by a PCF8574 on I2C. **The schematic and the board here still show the old wiring** (P8.7..P8.12 to J4, ADS1115 header J10); they were not edited. Until they are, use the board as built like this:
+
+- PCF8574 board: 3V3, GND, SCL and SDA from J10 pins 1 to 4 (wire by name: its own header usually has another order).
+- Its P0, P1, P2, P4, P5, P6 to the V1..V6 nets (test points TP_PE_V1..V6). The PE4302 stays on J4; R27..R32 are the pull-ups the expander needs.
+- BBB P8.7..P8.12 stay connected to the same nets through their 220 ohm resistors: they must stay inputs. (Leaving those six resistors unfitted, or removing them, takes the BBB off the lines.)
+- J10 pin 7 (the former ADS1115 A0 path from J8) is unused.
+
+The sections below describe the board as drawn.
 
 ## Files
 

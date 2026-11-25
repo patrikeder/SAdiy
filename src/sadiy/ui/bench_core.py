@@ -263,10 +263,6 @@ class BenchSession:
                 cmd = dict(cmd, confirm=True)
         return self._call(cmd)
 
-    def read_ads1115(self, channel: int, single: bool = True) -> dict:
-        return self._call({"cmd": "bench_adc", "source": "ads1115", "channel": channel,
-                           "read": "single" if single else "regs"})
-
     def read_ain(self, channel: int = 0, n: int = 1) -> dict:
         return self._call({"cmd": "bench_adc", "source": "ain", "channel": channel, "n": n})
 
@@ -286,11 +282,11 @@ class BenchSession:
 # ---------------------------------------------------------------- board drawing
 # Fill colour per pin category, same family as the palette of tools/gen_diagrams.py.
 CATEGORY_COLOURS: Dict[str, str] = {
-    "spi": "#1971c2", "pe4302": "#2b8a3e", "lock": "#e67700", "synth": "#b08900", "adc": "#9c36b5", "i2c": "#0b7285",
+    "spi": "#1971c2", "lock": "#e67700", "synth": "#b08900", "adc": "#9c36b5", "i2c": "#0b7285",
     "gnd": "#495057", "power": "#e8590c", "reserved": "#adb5bd", "free": "#e9ecef",
 }
 CATEGORY_LABELS: Tuple[Tuple[str, str], ...] = (
-    ("spi", "SPI"), ("pe4302", "PE4302"), ("lock", "Lock detect"), ("synth", "ADF4351 CE"), ("i2c", "I2C (ADS1115)"),
+    ("spi", "SPI"), ("lock", "Lock detect"), ("synth", "ADF4351 CE"), ("i2c", "I2C (PCF8574, PE4302)"),
     ("adc", "ADC input"), ("power", "Power"), ("gnd", "Ground"), ("reserved", "eMMC / HDMI / reserved"), ("free", "Free"),
 )
 
@@ -514,8 +510,8 @@ def _block(board: pinmap.BoardBlock, x: float, y: float, w: float, anchor_right:
 
 
 def blocks(pm: pinmap.PinMap = pinmap.BBB) -> Tuple[Block, ...]:
-    """The boards beside the headers, placed as `pm.layout.blocks` says (BBB: PE4302 left of P8,
-    ADF4351, ADS1115 and AIN0 right of P9; EBAZ: all three left of DATA2)."""
+    """The boards beside the headers, placed as `pm.layout.blocks` says (BBB: ADF4351, PCF8574 and AIN0 right of
+    P9; EBAZ: ADF4351 and PCF8574 left of DATA2)."""
     by = {b.title: b for b in pm.boards}
     return tuple(_block(by[title], x, y, w, right, pm) for title, x, y, w, right in pm.layout.blocks)
 

@@ -31,11 +31,13 @@ def test_phase1_signal_names_follow_the_contract():
     assert names == expected
 
 
-def test_pe4302_bit_order_matches_weights():
-    # V1..V6 = 0.5, 1, 2, 4, 8, 16 dB -> pe4302_v[0..5]
-    notes = {s["name"]: s["note"] for s in _cfg()["signal"] if s["name"].startswith("pe4302")}
-    for i, w in enumerate(["0.5", "1", "2", "4", "8", "16"]):
-        assert notes[f"pe4302_v[{i}]"] == f"V{i+1} = {w} dB"
+def test_former_attenuator_ports_are_spare_gpio_in_emio_order():
+    # the port names stay (the top level uses them); the PE4302 is behind a PCF8574 on I2C since 2026-11-25
+    sigs = {s["name"]: s for s in _cfg()["signal"] if s["name"].startswith("pe4302")}
+    for i in range(6):
+        s = sigs[f"pe4302_v[{i}]"]
+        assert (s["connector"], s["pin"], s["dir"]) == ("DATA2", 14 + i, "inout")
+        assert s["note"].startswith(f"spare EMIO GPIO {i} ") and f"PE4302 V{i + 1} " in s["note"]
 
 
 def test_no_duplicate_balls_or_pins():

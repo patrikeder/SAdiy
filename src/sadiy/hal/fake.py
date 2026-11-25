@@ -1,7 +1,7 @@
 """Recording fakes for development on a PC and for tests."""
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from .base import AnalogInput, BenchBackend, GpioLine, I2cBus, SpiBus
 
@@ -61,37 +61,31 @@ class FakeSpi(SpiBus):
         self.closed = True
 
 
-class FakeAds1115(I2cBus):
-    """Register model of an ADS1115: a single-shot conversion finishes at once."""
+class FakePcf8574(I2cBus):
+    """Model of a PCF8574: each byte of a write sets the port; a read returns the pin levels. `pulled_down` is a
+    mask of pins that read low although written high (a missing pull-up); with `present` False nobody answers."""
 
-    FULL_SCALE_V = (6.144, 4.096, 2.048, 1.024, 0.512, 0.256, 0.256, 0.256)
-
-    def __init__(self, volts: Sequence[float] = (0.0, 0.0, 0.0, 0.0)) -> None:
-        self.volts = list(volts)
-        self.regs = {0: 0, 1: 0x8583, 2: 0x8000, 3: 0x7FFF}   # power-on values from the datasheet
-        self.pointer = 0
-        self.writes: List[bytes] = []
+    def __init__(self) -> None:
+        self.port = 0xFF                          # power-up: all pins high
+        self.writes: List[bytes] = []             # one entry per transaction
+        self.bytes: List[int] = []                # every port state, in order
+        self.pulled_down = 0
+        self.present = True
         self.closed = False
 
-    def write(self, data: bytes) -> None:
-        self.writes.append(bytes(data))
-        self.pointer = data[0] & 3
-        if len(data) == 3:
-            value = (data[1] << 8) | data[2]
-            if self.pointer == 1 and value & 0x8000:
-                self._convert(value)
-                value |= 0x8000                                # OS reads 1: not busy
-            self.regs[self.pointer] = value
+    def _check(self) -> None:
+        if not self.present:
+            raise OSError(121, "Remote I/O error (no acknowledge)")
 
-    def _convert(self, config: int) -> None:
-        mux = (config >> 12) & 7
-        volts = self.volts[mux - 4] if mux >= 4 else 0.0       # only single-ended inputs are modelled
-        fs = self.FULL_SCALE_V[(config >> 9) & 7]
-        code = max(-32768, min(32767, round(volts / fs * 32768)))
-        self.regs[0] = code & 0xFFFF
+    def write(self, data: bytes) -> None:
+        self._check()
+        self.writes.append(bytes(data))
+        self.bytes.extend(data)
+        self.port = data[-1]
 
     def read(self, count: int) -> bytes:
-        return self.regs[self.pointer].to_bytes(2, "big")[:count]
+        self._check()
+        return bytes([self.port & ~self.pulled_down & 0xFF]) * count
 
     def close(self) -> None:
         self.closed = True
@@ -115,14 +109,13 @@ class FakeBackend(BenchBackend):
     name = "fake backend"
     simulated = True
 
-    def __init__(self, lock_gpio: Optional[int] = None, ain_raw: int = 1500, ads_volts=(1.13, 0.0, 0.0, 0.0),
-                 can_mux: bool = True) -> None:
+    def __init__(self, lock_gpio: Optional[int] = None, ain_raw: int = 1500, can_mux: bool = True) -> None:
         self.can_mux = can_mux
         self.log = PinLog()
         self.lines: Dict[int, FakeGpio] = {}
         self.spi_bus: Optional[FakeSpi] = None
         self.spi_sent: List[bytes] = []          # every SPI word of every session
-        self.ads = FakeAds1115(ads_volts)
+        self.pcf = FakePcf8574()
         self.analog: Dict[int, FakeAnalog] = {0: FakeAnalog(ain_raw)}
         self.mux_log: List[Tuple[str, str]] = []
         self.lock_gpio = lock_gpio
@@ -149,9 +142,9 @@ class FakeBackend(BenchBackend):
         self.spi_bus = FakeSpi(self._on_xfer)
         return self.spi_bus
 
-    def i2c(self) -> FakeAds1115:
-        self.ads.closed = False
-        return self.ads
+    def i2c(self) -> FakePcf8574:
+        self.pcf.closed = False
+        return self.pcf
 
     def ain(self, channel: int) -> FakeAnalog:
         return self.analog.setdefault(channel, FakeAnalog(0))

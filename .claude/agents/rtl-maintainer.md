@@ -17,7 +17,8 @@ Rules that must survive every change (spec section 1):
 1. The PL only transports ADF4351 words. It never builds, changes or repeats a register word.
 2. The RTL sends nothing by itself: not at reset, not when taking the pins, not on abort. RF outputs are decided
    only by the R4 words in the table.
-3. PE4302 pins: tri-stated until driven (pull-ups give 31.5 dB), every change make-before-break.
+3. PE4302 (behind a PCF8574 on I2C, no FPGA pins of its own): it powers up at 31.5 dB (all ports high, pull-ups), every
+   change is make-before-break, and the engine drives the I2C bus only while it owns the pins.
 4. Pin ownership changes only while idle and makes no edge on LE or CLK. Pins are driven only from `pin_mux`.
 5. No vendor cells in `rtl/src/`. Pads and IOBUFs are in `rtl/fpga/ebaz_sadiy_top.sv`.
 

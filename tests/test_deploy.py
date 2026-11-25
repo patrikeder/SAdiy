@@ -54,7 +54,7 @@ def test_pinmux_script_sets_every_mode(tmp_path):
 def test_pinmux_script_tries_every_pin_and_reports_a_failure(tmp_path):
     log = stub(tmp_path, exit_code=1)
     result = run_script(tmp_path)
-    assert result.returncode == 1 and "P8_12" in result.stderr
+    assert result.returncode == 1 and "P9_20" in result.stderr             # the last pin was still tried
     assert len(log.read_text().splitlines()) == len(expected_modes())
 
 

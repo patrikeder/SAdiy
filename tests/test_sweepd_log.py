@@ -156,7 +156,7 @@ def test_bench_open_close_and_lease_are_logged(ring):
 def test_bench_refusals_are_debug_and_hardware_errors_are_errors(ring):
     daemon, _ = bench_rig(ring)
     token = daemon.apply({"cmd": "bench_open"})["token"]
-    daemon.apply({"cmd": "bench_pin", "token": token, "pin": "P8.7", "action": "write", "value": 1})
+    daemon.apply({"cmd": "bench_pin", "token": token, "pin": "P9.27", "action": "write", "value": 1})
     refused = [e for e in ring.entries() if "needs the operator's confirm" in e.msg]
     assert refused and refused[0].level == logging.DEBUG
     r = daemon.apply({"cmd": "bench_spi", "token": token, "word": 0x0080C004, "confirm": True})

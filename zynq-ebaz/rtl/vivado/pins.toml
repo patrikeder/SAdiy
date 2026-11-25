@@ -35,6 +35,9 @@ iostandard = "LVCMOS33"
 # dir: in, out, inout (documentation and gen_xdc sanity only).
 
 # ---- DATA2: control (Phase 1, EMIO) ----
+# 2026-11-25: the PE4302 attenuator hangs on a PCF8574 on I2C (DATA2-20 / DATA2-11). Its former six lines on DATA2-14..19
+# are spare GPIO. The port names pe4302_v[0..5] stay, because the top level and the XDC use them. Do not drive these pins
+# while old attenuator wires are still connected.
 [[signal]]
 name = "adf4351_clk"
 connector = "DATA2"
@@ -91,60 +94,60 @@ name = "pe4302_v[0]"
 connector = "DATA2"
 pin = 14
 ball = "J20"
-dir = "out"
+dir = "inout"
 phase = 1
 active = true
-note = "V1 = 0.5 dB"
+note = "spare EMIO GPIO 0 (was PE4302 V1 until 2026-11-25)"
 
 [[signal]]
 name = "pe4302_v[1]"
 connector = "DATA2"
 pin = 15
 ball = "L16"
-dir = "out"
+dir = "inout"
 phase = 1
 active = true
-note = "V2 = 1 dB"
+note = "spare EMIO GPIO 1 (was PE4302 V2 until 2026-11-25)"
 
 [[signal]]
 name = "pe4302_v[2]"
 connector = "DATA2"
 pin = 16
 ball = "L19"
-dir = "out"
+dir = "inout"
 phase = 1
 active = true
-note = "V3 = 2 dB"
+note = "spare EMIO GPIO 2 (was PE4302 V3 until 2026-11-25)"
 
 [[signal]]
 name = "pe4302_v[3]"
 connector = "DATA2"
 pin = 17
 ball = "M18"
-dir = "out"
+dir = "inout"
 phase = 1
 active = true
-note = "V4 = 4 dB"
+note = "spare EMIO GPIO 3 (was PE4302 V4 until 2026-11-25)"
 
 [[signal]]
 name = "pe4302_v[4]"
 connector = "DATA2"
 pin = 18
 ball = "L20"
-dir = "out"
+dir = "inout"
 phase = 1
 active = true
-note = "V5 = 8 dB"
+note = "spare EMIO GPIO 4 (was PE4302 V5 until 2026-11-25)"
 
 [[signal]]
 name = "pe4302_v[5]"
 connector = "DATA2"
 pin = 19
 ball = "M20"
-dir = "out"
+dir = "inout"
 phase = 1
 active = true
-note = "V6 = 16 dB"
+note = "spare EMIO GPIO 5 (was PE4302 V6 until 2026-11-25)"
 
 [[signal]]
 name = "i2c_scl"
@@ -155,7 +158,7 @@ dir = "inout"
 phase = 1
 active = true
 pulltype = "PULLUP"
-note = "PS I2C0 SCL via EMIO (ADS1115, address 0x48)"
+note = "I2C SCL, PS I2C0 via EMIO or the PL engine (PCF8574 of the PE4302, address 0x27)"
 
 [[signal]]
 name = "i2c_sda"
@@ -166,7 +169,7 @@ dir = "inout"
 phase = 1
 active = true
 pulltype = "PULLUP"
-note = "PS I2C0 SDA via EMIO"
+note = "I2C SDA, PS I2C0 via EMIO or the PL engine"
 
 [[signal]]
 name = "spare_d2_6"

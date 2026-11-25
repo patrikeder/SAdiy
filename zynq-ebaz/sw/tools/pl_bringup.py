@@ -243,6 +243,15 @@ def stage_ident(c: Ctx) -> None:
              f"ATT_I2C = 0x{r.rd('ATT_I2C'):08X}, ATT_STAT = 0x{r.rd('ATT_STAT'):08X}, PIN_STATE = 0x{r.rd('PIN_STATE'):08X}")
 
 
+def stage_version(c: Ctx) -> None:
+    """Only what is loaded: ID and VERSION (also printed by sadiy_pl_load.sh, fpga.sh and status.sh). Not part of 'auto'. 'ident' always runs first."""
+    magic, version = c.r.rd("ID"), c.r.rd("VERSION")
+    c.rep.info(f"ID = 0x{magic:08X}, VERSION = 0x{version:08X} (register map {version >> 16}.{version & 0xFFFF})")
+    if magic != ID_MAGIC:
+        print("The core is not there (bitstream not loaded, wrong base address, or a stale one).")
+        raise SystemExit(2)
+
+
 def stage_regs(c: Ctx) -> None:
     r, rep = c.r, c.rep
     c.reset()
@@ -798,7 +807,7 @@ def stage_att(c: Ctx) -> None:
     rep.check("I2C bus back with the PS (i2c_pl = 0)", r.get("PIN_STATE", "i2c_pl") == 0)
 
 
-STAGES = {"ident": stage_ident, "regs": stage_regs, "gen": stage_gen, "push": stage_push, "owner": stage_owner,
+STAGES = {"version": stage_version, "ident": stage_ident, "regs": stage_regs, "gen": stage_gen, "push": stage_push, "owner": stage_owner,
           "ctrl": stage_ctrl, "lock": stage_lock, "if": stage_if, "fe": stage_fe, "ce": stage_ce,
           "spi": stage_spi,
           "att": stage_att}

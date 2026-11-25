@@ -103,3 +103,12 @@ def test_client_keeps_the_flags_of_the_last_frame(rig):
     pub.send_multipart(protocol.encode_frame(2, 1e6, 1e3, 0.0, [1.0, 2.0, 3.0]))
     wait_for(client, frame=True)
     assert client.last_flags is None
+
+
+def test_log_command_and_reply_parsing():
+    assert SweepClient.log_command(7) == {"cmd": "log", "since": 7, "level": "debug"}
+    assert SweepClient.parse_log_reply(None) is None
+    assert SweepClient.parse_log_reply({"ok": False, "error": "unknown command"}) is None
+    assert SweepClient.parse_log_reply({"ok": True}) is None             # malformed: no entries
+    entries, boot, last = SweepClient.parse_log_reply({"ok": True, "entries": [], "boot": "b", "last_seq": 3})
+    assert (entries, boot, last) == ([], "b", 3)

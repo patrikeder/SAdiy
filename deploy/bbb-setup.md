@@ -23,7 +23,7 @@ The image was read from a real board (Debian Trixie, kernel 6.18, no `config-pin
    uboot_overlay_addr4=BB-SPIDEV0-00A0.dtbo
    ```
    Keep a copy of `uEnv.txt`, then reboot. Run `ls /dev/spidev*` and note the bus number: `/dev/spidev1.0` means 1, `/dev/spidev0.0` means 0.
-5. Check the wiring against the map: SPI0 (ADF4351) on P9.17 CS0, P9.18 MOSI, P9.22 SCLK. PE4302 V1..V6 as plain GPIO on P8.7, 8, 9, 10, 11, 12 (GPIO numbers 66, 67, 69, 68, 45, 44). See `hw/wiring-bbb.md`. Check how they map on this kernel; this only reads:
+5. Check the wiring against the map: SPI0 (ADF4351) on P9.17 CS0, P9.18 MOSI, P9.22 SCLK. PCF8574 (the PE4302 attenuator sits behind it) on I2C2, P9.19 SCL, P9.20 SDA, powered from 3.3 V. P8.7..P8.12 are no longer used; leave them as inputs. See `hw/wiring-bbb.md`. Check how they map on this kernel; this only reads:
    ```bash
    cd /opt/sadiy && PYTHONPATH=src python3 tools/bringup.py gpio-map
    ```
@@ -31,13 +31,13 @@ The image was read from a real board (Debian Trixie, kernel 6.18, no `config-pin
    ```bash
    sudo /opt/sadiy/deploy/sadiy-pinmux.sh
    ```
-   If a mode name differs on your image (`config-pin -l P9_17`), correct it in both the script and `src/sadiy/pinmap.py` (`mux=`). The Debian Trixie image has no `config-pin`: the script then says so and does nothing, I2C2 is already on, SPI0 comes from step 4, and the rest stay at their defaults. Check that the GPIO pins really are in GPIO mode, shown by a last digit of 7 (or `f`) in the register value. Pins 12, 13, 17, 36, 37, 38, 39 and 105 are P8.12, P8.11, P9.23, P8.7, P8.8, P8.10, P8.9 and P9.27:
+   If a mode name differs on your image (`config-pin -l P9_17`), correct it in both the script and `src/sadiy/pinmap.py` (`mux=`). The Debian Trixie image has no `config-pin`: the script then says so and does nothing, I2C2 is already on, SPI0 comes from step 4, and the rest stay at their defaults. Check that the GPIO pins really are in GPIO mode, shown by a last digit of 7 (or `f`) in the register value. Pins 17 and 105 are P9.23 and P9.27:
    ```bash
-   sudo grep -E '^pin (12|13|17|36|37|38|39|105) ' /sys/kernel/debug/pinctrl/*pinmux*/pins
+   sudo grep -E '^pin (17|105) ' /sys/kernel/debug/pinctrl/*pinmux*/pins
    ```
    Without `config-pin`, bench mode refuses to use SPI and I2C pins as GPIO.
-7. ADS1115 (main ADC, on I2C2, P9.19 / P9.20): `i2cdetect -y -r 2` should show 0x48. I2C2 is usually `/dev/i2c-2` on recent kernels and `/dev/i2c-1` on old 3.8 kernels. The same bus probes cape EEPROMs, so other addresses may show up.
-8. On-chip ADC, used as a cross-check: IIO, `/sys/bus/iio/devices/iio:device0/in_voltage0_raw`. 0 to 1.8 V only.
+7. PCF8574 (attenuator, on I2C2, P9.19 / P9.20): `i2cdetect -y -r 2` should show its address, 0x27 by default (a PCF8574A shows 0x38..0x3F; set `[attenuator] pcf8574_address`). I2C2 is usually `/dev/i2c-2` on recent kernels and `/dev/i2c-1` on old 3.8 kernels. The same bus probes cape EEPROMs, so other addresses may show up.
+8. On-chip ADC (AIN0, the BBB's only detector ADC): IIO, `/sys/bus/iio/devices/iio:device0/in_voltage0_raw`. 0 to 1.8 V only.
 9. CPU governor: `sudo cpufreq-set -g performance`.
 
 ## Configure

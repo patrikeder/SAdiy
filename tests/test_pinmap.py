@@ -11,8 +11,7 @@ def test_all_pins_present():
 
 
 @pytest.mark.parametrize("net, pin, gpio", [
-    ("ATT_V1", "P8.7", 66), ("ATT_V2", "P8.8", 67), ("ATT_V3", "P8.9", 69), ("ATT_V4", "P8.10", 68),
-    ("ATT_V5", "P8.11", 45), ("ATT_V6", "P8.12", 44), ("SYN_LD", "P9.23", 49), ("SYN_CE", "P9.27", 115),
+    ("SYN_LD", "P9.23", 49), ("SYN_CE", "P9.27", 115),
     ("SYN_CLK", "P9.22", 2), ("SYN_DATA", "P9.18", 4), ("SYN_LE", "P9.17", 5),
     ("I2C_SCL", "P9.19", 13), ("I2C_SDA", "P9.20", 12),
 ])
@@ -22,12 +21,18 @@ def test_nets_and_kernel_numbers(net, pin, gpio):
     assert pinmap.find(net) is p and pinmap.find(pin) is p
 
 
-def test_config_gpio_list_matches_the_pin_map():
-    assert config.load()["attenuator"]["gpio_bbb"] == [pinmap.BY_NET[n].gpio for n in pinmap.ATT_NETS]
+def test_attenuator_lines_are_expander_ports_not_bbb_pins():
+    assert [(l.net, l.port) for l in pinmap.EXPANDER_LINKS] == list(zip(pinmap.ATT_NETS, ("P0", "P1", "P2", "P4", "P5", "P6")))
+    assert not set(pinmap.ATT_NETS) & set(pinmap.BY_NET)
+    att = config.load()["attenuator"]
+    assert att["pcf8574_address"] == 0x27 and "gpio_bbb" not in att
+    for n in range(7, 13):                     # the former PE4302 pins: free, with a warning about the adapter board
+        pin = pinmap.PINS[f"P8.{n}"]
+        assert pin.net is None and pin.access == pinmap.EXPERT and "do not drive" in pin.note
 
 
 def test_access_rules():
-    assert pinmap.PINS["P8.7"].access == pinmap.WIRED
+    assert pinmap.PINS["P9.19"].access == pinmap.WIRED
     assert pinmap.PINS["P9.22"].access == pinmap.WIRED
     assert pinmap.PINS["P9.23"].access == pinmap.INPUT_ONLY
     assert pinmap.PINS["P9.39"].access == pinmap.ANALOG
@@ -67,10 +72,11 @@ def test_netlist_is_generated_from_this_map():
         assert row and f"{pin.id} " in row.group(0)
 
 
-def test_gnda_adc_belongs_to_the_ain0_cross_check_only():
-    assert pinmap.BY_NET["ADC_GND"].note == "optional, AIN0 cross-check only"
+def test_gnda_adc_belongs_to_ain0_only():
+    assert pinmap.BY_NET["ADC_GND"].note == "analog return of AIN0"
     by = {b.title: b for b in pinmap.BOARDS}
-    assert by["ADS1115"].nets == ("I2C_SCL", "I2C_SDA")
+    assert by["PCF8574"].nets == ("I2C_SCL", "I2C_SDA")
+    assert "ADS1115" not in by
     assert set(by["AIN0"].nets) == {"DET_ADC", "ADC_GND"}
 
 

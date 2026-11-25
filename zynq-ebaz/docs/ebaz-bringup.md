@@ -12,21 +12,23 @@ Status 2026-11-14: Phase 1 image boots (see `ebaz-baseline.md`); the EMIO readba
 - Root is mounted `ro` (mmcblk0p2 ext4).
 
 ## Checklist for the bench session
-Do each step with the PE4302 at 31.5 dB (nothing driven) before any RF is connected.
+Do each step with the PE4302 at 31.5 dB (the PCF8574 just powered, V lines pulled up) before any RF is connected. Since 2026-11-25 the PE4302 sits behind a PCF8574 on I2C and the ADS1115 is gone (register map 2.0, a matching bitstream is needed); the detailed steps are in `bench-test-adc-att-lock.md`.
 
 1. Boot the new image from the second SD card; `sh -s < sw/tools/ebaz_baseline.sh`. Expect
    `/dev/spidev0.0`, an I2C adapter, the Zynq gpiochip with 54+16 lines.
 2. EMIO line numbering: with `gpioset`/libgpiod toggle line 54 + n and probe the adapter pin
    with a DMM or the DSLogic (n = 0..6 outputs, 7 input).
-3. `python tools/bringup.py pe4302-walk` with the mapped lines: detector rises by weight x 24.5 mV.
+3. `python3 tools/bringup.py --platform ebaz pe4302-walk` (as root, `sweepd` stopped): one stage at a time through the PCF8574; check each V line with a DMM, the weights with a tone and the scope.
 4. DSLogic on CLK, DAT, LE: `adf4351-pattern` frames decode as in `patterns.py`.
 5. ADF4351 at 100 MHz on the MSO5354 (outputs off until enabled after lock).
-6. ADS1115 answers at 0x48 (`i2cdetect -y N`).
+6. The PCF8574 answers at 0x27 (`sudo i2cdetect -y -r 0`).
 7. CE from software: `python3 tools/bringup.py --platform ebaz synth-ce read` (then `off` / `on` / `release`, with sudo -E; DMM on DATA2.13 / the CE header pin, J12 1-2 holds it high). After `off` then `on` the ADF4351 needs its registers again. Deploy the tools first with `sw/deploy/deploy_to_board.sh`.
 
 Results go below (what was measured, instrument, date).
 
 ## Results, 2026-11-14 (nothing connected to DATA1/2/3; instruments: none)
+
+Recorded with the wiring of that day: EMIO 0..5 were the PE4302 lines V1..V6 (spare GPIO since 2026-11-25), and an ADS1115 was planned.
 
 Scripts: `sw/tools/ebaz_s4_readonly.sh`, `sw/tools/ebaz_s4_readback.sh`, run on the board with sudo; raw output was read from
 `/tmp/s4_*.txt` on the board.
@@ -43,9 +45,9 @@ What this proves: line numbering 54 + n and the PL IOBUF path. What it does not 
 (needs a DMM or the DSLogic at the connector) and anything about the PE4302, ADF4351 or ADS1115.
 
 ## Still open (needs the user at the bench)
-- Pin location: drive each line and probe the DATA2 pins (G20 CLK, G19 DAT, H20 LE, J19 LD in, K19 CE, J20 L16 L19 M18 L20 M20 V1..V6, K18 L17 I2C).
+- Pin location: drive each line and probe the DATA2 pins (G20 CLK, G19 DAT, H20 LE, J19 LD in, K19 CE, K18 L17 I2C; the spare EMIO balls J20 L16 L19 M18 L20 M20 only with nothing wired to them).
 - SPI frames from `/dev/spidev0.0` on the DSLogic (needs `adf4351-pattern`-style words; mode 0, 10 MHz, LE low for the whole word).
-- With the adapter connected: pad levels with pull-ups (expect V1..V6 = 1, CE = 1), PE4302 walk, ADF4351 at 100 MHz, ADS1115.
+- With the adapter connected: CE pad level with its pull-up (expect 1), PCF8574 and PE4302 walk, ADF4351 at 100 MHz.
 
 
 ## Adapter LCD, LEDs and keys (image rebuilt 2026-11-14, NOT yet booted)

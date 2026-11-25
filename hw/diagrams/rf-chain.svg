@@ -24,8 +24,9 @@
 <rect x="472.0" y="240.0" width="170.0" height="80.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
 <text x="557.0" y="264.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="13" text-anchor="middle" font-weight="bold" fill="#212529">PE4302</text>
 <text x="557.0" y="282.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6c757d">0 .. -31.5 dB, 0.5 dB steps</text>
-<rect x="482.0" y="231.0" width="37.2" height="18.0" rx="9" fill="#2b8a3e" stroke="none" stroke-width="1.5"/>
-<text x="500.6" y="244.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#ffffff">GPIO</text>
+<text x="557.0" y="297.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6c757d">via PCF8574</text>
+<rect x="482.0" y="231.0" width="30.9" height="18.0" rx="9" fill="#0b7285" stroke="none" stroke-width="1.5"/>
+<text x="497.4" y="244.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#ffffff">I2C</text>
 <path d="M642,280 L688,280" fill="none" stroke="#495057" stroke-width="2.4" marker-end="url(#a495057)" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="688.0" y="240.0" width="170.0" height="80.0" rx="8" fill="#fff9db" stroke="#e67700" stroke-width="2" stroke-dasharray="6 4"/>
 <text x="773.0" y="264.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="13" text-anchor="middle" font-weight="bold" fill="#212529">500 MHz LPF</text>
@@ -62,9 +63,9 @@
 <text x="773.0" y="472.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6c757d">adapter: 1k, 100 nF, clamp</text>
 <path d="M858,470 L904,470" fill="none" stroke="#9c36b5" stroke-width="2.4" marker-end="url(#a9c36b5)" stroke-linecap="round" stroke-linejoin="round"/>
 <rect x="904.0" y="430.0" width="170.0" height="80.0" rx="8" fill="#f8f9fa" stroke="#343a40" stroke-width="2"/>
-<text x="989.0" y="454.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="13" text-anchor="middle" font-weight="bold" fill="#212529">ADS1115</text>
-<text x="989.0" y="472.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6c757d">I2C 0x48, main ADC</text>
-<text x="989.0" y="487.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6c757d">(BBB AIN0: cross-check)</text>
+<text x="989.0" y="454.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="13" text-anchor="middle" font-weight="bold" fill="#212529">BBB AIN0</text>
+<text x="989.0" y="472.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6c757d">divider 0.751, 1.8 V max</text>
+<text x="989.0" y="487.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6c757d">the only detector ADC left</text>
 <rect x="914.0" y="421.0" width="49.8" height="18.0" rx="9" fill="#9c36b5" stroke="none" stroke-width="1.5"/>
 <text x="938.9" y="434.0" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#ffffff">analog</text>
 <path d="M1205.0,320 L1205.0,390 L125.0,390 L125.0,430" fill="none" stroke="#495057" stroke-width="2.4" marker-end="url(#a495057)" stroke-linecap="round" stroke-linejoin="round"/>

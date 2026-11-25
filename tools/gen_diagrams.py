@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from sadiy import pinmap_ebaz  # noqa: E402
-from sadiy.pinmap import BBB_P8, BBB_P9, NETS  # noqa: E402
+from sadiy.pinmap import BBB_P8, BBB_P9, EXPANDER_LINKS, NETS  # noqa: E402
 
 HW = ROOT / "hw"
 OUT = HW / "diagrams"
@@ -36,8 +36,8 @@ FONT = "DejaVu Sans, Arial, Helvetica, sans-serif"
 
 # Static straps on the boards (no SBC pin involved). Verify against each PCB.
 STRAPS = [
-    ("PE4302", "V1 ... V6", "module: 10k pull-downs",
-     "open inputs = 0 dB attenuation (the unsafe state). The adapter board's 2.2k pull-ups to 3V3 (R27..R32) give about 2.7 V at the pin, above the 2.3 V threshold, so the default is maximum attenuation; remove them for 0 dB"),
+    ("PE4302", "V1 ... V6", "PCF8574 P0..P2, P4..P6, each with 2.2k to 3V3",
+     "the module has 10k pull-downs (open = 0 dB, the unsafe state) and the PCF8574 drives high only weakly (about 100 uA): without a pull-up a line stays low. With 2.2k about 2.7 V at the pin, above the 2.3 V threshold, so the expander's power-up state (all high) is maximum attenuation. The adapter board's R27..R32 are such pull-ups on its V1..V6 nets"),
     ("PE4302", "VDD pad", "3V3 (SBC pin)",
      "the module has no regulator and is meant for 3.3 V (Silicon Chip). Two separate pads next to the chip, not on the 7-pin header (GND, V1 ... V6)"),
     ("ADF4351", "DC jack", "5 V",
@@ -48,9 +48,9 @@ STRAPS = [
      "RF power-down pin (PDBRF): high = RF outputs on. Tied high on the adapter board (JP5); remove JP5 if the eval board already pulls it up"),
     ("ADF4351", "AOUT- / AOUT+", "50 ohm on the unused output",
      "differential outputs, use one for the LO and terminate the other; MCLK is the external reference input (25 MHz oscillator fitted)"),
-    ("ADS1115", "A0", "detector VOUT via 1k, 100 nF, clamp", "adapter board; no divider, the clamp holds A0 within 0 to 3.3 V"),
-    ("ADS1115", "ADDR", "GND", "I2C address 0x48"),
-    ("ADS1115", "VDD", "3V3 (SBC pin)", "2.0 to 5.5 V"),
+    ("PCF8574", "VCC", "3V3 (SBC pin)", "never 5 V: the SDA / SCL pull-ups of the board go to its VCC and the controller pins are 3.3 V only"),
+    ("PCF8574", "A0, A1, A2", "open (high)", "I2C address 0x27 (a PCF8574A answers at 0x3F); [attenuator] pcf8574_address"),
+    ("PCF8574", "P3", "backlight transistor of the LCD adapter board", "not part of the attenuator; [attenuator] pcf8574_backlight. There is no V0; P7 is written high"),
     ("Detector", "VCC pad", "5 V (verify)",
      "about 68 mA at 5 V per the listing; the board has its own regulator (SOT-223), read its marking for the allowed input range"),
     ("Detector", "OUT header", "check with a DMM", "2-pin header: find which pin is OUT and which is GND before connecting"),
@@ -314,14 +314,12 @@ def sbc_rows_bbb():
         return dict(t="sig", label=f"{h}.{p}  {name}", note=note, kind=usage("bbb", h)[p]["kind"], side=side, key=key)
 
     return [
+        dict(t="group", label="Analog input from detector (AIN0)"),
+        r(39, "ain", "R", "max 1.8 V"), r(34, "agnd", "R"),
         dict(t="group", label="SPI0 to ADF4351 board"),
         r(22, "clk", "L"), r(18, "data", "L"), r(17, "le", "L", "/dev/spidevN.0"), r(23, "ld", "L", "input"),
-        dict(t="group", label="GPIO to PE4302 board (V1..V6 on P8.7-P8.12)"),
-        r("P8.7", "v1", "L"), r("P8.8", "v2", "L"), r("P8.9", "v3", "L"), r("P8.10", "v4", "L"), r("P8.11", "v5", "L"), r("P8.12", "v6", "L"),
-        dict(t="group", label="I2C2 to ADS1115 (main ADC)"),
+        dict(t="group", label="I2C2 to PCF8574 (attenuator)"),
         r(20, "sda", "R"), r(19, "scl", "R"),
-        dict(t="group", label="Analog input from detector (cross-check)"),
-        r(39, "ain", "R", "max 1.8 V"), r(34, "agnd", "R"),
         dict(t="group", label="Ground"),
         dict(t="sig", label="P9.1 / P9.2 / P9.43-46 / P8.1 / P8.2  GND", note="star point", kind="gnd", side=None, key=None),
     ]
@@ -336,12 +334,9 @@ def sbc_rows_ebaz():
     return [
         dict(t="group", label="EMIO SPI0 to ADF4351 board"),
         r("DATA2.5", "clk", "L"), r("DATA2.7", "data", "L"), r("DATA2.8", "le", "L", "spidev0.0"), r("DATA2.9", "ld", "L", "input"),
-        dict(t="group", label="EMIO GPIO to PE4302 board (V1..V6 on DATA2.14-19)"),
-        r("DATA2.14", "v1", "L"), r("DATA2.15", "v2", "L"), r("DATA2.16", "v3", "L"), r("DATA2.17", "v4", "L"),
-        r("DATA2.18", "v5", "L"), r("DATA2.19", "v6", "L"),
         dict(t="group", label="EMIO GPIO, optional CE"),
         r("DATA2.13", "ce", None, "adapter jumper holds CE high"),
-        dict(t="group", label="EMIO I2C0 to ADS1115 (main ADC)"),
+        dict(t="group", label="EMIO I2C0 to PCF8574 (attenuator)"),
         r("DATA2.11", "sda", "R"), r("DATA2.20", "scl", "R"),
         dict(t="group", label="Ground and supply"),
         dict(t="sig", label="DATA2.3 / .4 / .12  GND", note="star point", kind="gnd", side=None, key=None),
@@ -357,9 +352,7 @@ def sbc_rows_rpi():
     return [
         dict(t="group", label="SPI0 to ADF4351 board"),
         r(23, "clk", "L"), r(19, "data", "L"), r(24, "le", "L"), r(35, "ld", "L", "input"),
-        dict(t="group", label="GPIO to PE4302 board (V1..V6)"),
-        r(29, "v1", "L"), r(31, "v2", "L"), r(32, "v3", "L"), r(33, "v4", "L"), r(38, "v5", "L"), r(40, "v6", "L"),
-        dict(t="group", label="I2C to ADS1115 (external ADC)"),
+        dict(t="group", label="I2C to PCF8574 (attenuator)"),
         r(3, "sda", "R"), r(5, "scl", "R"),
         dict(t="group", label="Ground"),
         dict(t="sig", label="pins 6, 9, 14, 20, 25, 30, 34, 39  GND", note="star point", kind="gnd", side=None,
@@ -368,8 +361,8 @@ def sbc_rows_rpi():
 
 
 def left_devices(svg: Svg, x: int, y: int, adapter: bool = False):
-    """The ADF4351 and PE4302 cards. `adapter`: the BBB adapter board carries the straps and pull-ups."""
-    p1, b1 = card(svg, x, y, 340, "ADF4351 board (LO)", "eval board 2019_1_v1.4, 25 MHz oscillator, 3-wire SPI", [
+    """The ADF4351 card. `adapter`: the BBB adapter board carries the straps."""
+    return card(svg, x, y, 340, "ADF4351 board (LO)", "eval board 2019_1_v1.4, 25 MHz oscillator, 3-wire SPI", [
         dict(t="sig", label="CLK", kind="spi", side="R", key="clk"),
         dict(t="sig", label="DAT", kind="spi", side="R", key="data"),
         dict(t="sig", label="LE", kind="spi", side="R", key="le"),
@@ -380,18 +373,30 @@ def left_devices(svg: Svg, x: int, y: int, adapter: bool = False):
         dict(t="pwr", label="DC jack", note="5 V (AMS1117-3.3 on board)", kind="v5"),
         dict(t="sig", label="GND", kind="gnd", side="L", key="gnd"),
     ])
-    p2, b2 = card(svg, x, b1 + 24, 340, "PE4302 board (attenuator)", "parallel control only: 6 GPIO inputs", [
-        dict(t="sig", label="V1  (0.5 dB)", note="assumed, verify", kind="gpio", side="R", key="v1"),
-        dict(t="sig", label="V2  (1 dB)", kind="gpio", side="R", key="v2"),
-        dict(t="sig", label="V3  (2 dB)", kind="gpio", side="R", key="v3"),
-        dict(t="sig", label="V4  (4 dB)", kind="gpio", side="R", key="v4"),
-        dict(t="sig", label="V5  (8 dB)", kind="gpio", side="R", key="v5"),
-        dict(t="sig", label="V6  (16 dB)", kind="gpio", side="R", key="v6"),
-        dict(t="strap", label="V1..V6", note="adapter 2.2k pull-ups: open = 31.5 dB" if adapter else "module 10k pull-downs: open = 0 dB"),
-        dict(t="pwr", label="VDD pad", note="3V3 from the SBC pin", kind="v33"),
-        dict(t="sig", label="GND", kind="gnd", side="L", key="gnd"),
+
+
+def attenuator_cards(svg: Svg, sbc_ports):
+    """The PCF8574 right of the SBC card, the PE4302 right of it, and their wires. Returns the lower edge."""
+    x, y = 1010, sbc_ports["sda"][1] - 64
+    pcf, b1 = card(svg, x, y, 240, "PCF8574 board", "I2C 0x27 (LCD adapter board)", [
+        dict(t="sig", label="SDA", kind="i2c", side="L", key="sda"),
+        dict(t="sig", label="SCL", kind="i2c", side="L", key="scl"),
+        dict(t="pwr", label="VCC", note="3V3, not 5 V", kind="v33"),
+        dict(t="strap", label="GND", note="board GND"),
+        dict(t="strap", label="P3", note="backlight LED"),
+    ] + [dict(t="sig", label=link.port, kind="gpio", side="R", key=link.net) for link in EXPANDER_LINKS])
+    pe, b2 = card(svg, 1330, y + 5 * 28, 210, "PE4302 attenuator", "parallel inputs V1..V6", [
+        dict(t="sig", label=link.dpin, kind="gpio", side="L", key=link.net) for link in EXPANDER_LINKS
+    ] + [
+        dict(t="strap", label="V1..V6", note="2.2k to 3V3"),
+        dict(t="pwr", label="VDD pad", note="3V3", kind="v33"),
+        dict(t="strap", label="GND", note="board GND"),
     ])
-    return p1, p2, b2
+    wire(svg, sbc_ports["sda"], pcf["sda"], PAL["i2c"][0], "I2C_SDA", arrow_end=True, arrow_start=True)
+    wire(svg, sbc_ports["scl"], pcf["scl"], PAL["i2c"][0], "I2C_SCL", arrow_end=True)
+    for link in EXPANDER_LINKS:
+        wire(svg, pcf[link.net], pe[link.net], PAL["gpio"][0], link.net, arrow_end=True)
+    return max(b1, b2)
 
 
 def ground_bus(svg: Svg, bus_x_left, bus_x_right, y_bar, stubs_left, stubs_right, sbc_x, sbc_bottom):
@@ -410,13 +415,11 @@ def ground_bus(svg: Svg, bus_x_left, bus_x_right, y_bar, stubs_left, stubs_right
     svg.text(sbc_x + 14, y_bar - 8, "GND star point (one place, near the SBC)", size=11.5, weight="bold", fill=g)
 
 
-def draw_left_wires(svg: Svg, sbc_ports, p1, p2):
-    pairs = [("clk", p1, "clk", "SYN_CLK", "spi", True), ("data", p1, "data", "SYN_DATA", "spi", True),
-             ("le", p1, "le", "SYN_LE", "spi", True), ("ld", p1, "ld", "SYN_LD", "gpio", False),
-             ] + [(f"v{i}", p2, f"v{i}", f"ATT_V{i}", "gpio", True) for i in range(1, 7)]
-    for sk, dev_ports, dk, net, kind, to_dev in pairs:
+def draw_left_wires(svg: Svg, sbc_ports, p1):
+    for sk, net, kind, to_dev in (("clk", "SYN_CLK", "spi", True), ("data", "SYN_DATA", "spi", True),
+                                  ("le", "SYN_LE", "spi", True), ("ld", "SYN_LD", "gpio", False)):
         c = PAL[kind][0]
-        a, b = dev_ports[dk], sbc_ports[sk]
+        a, b = p1[sk], sbc_ports[sk]
         if to_dev:
             wire(svg, b, a, c, net, arrow_end=True)
         else:
@@ -429,17 +432,18 @@ def wiring_bbb(path: Path) -> None:
               "3.3 V logic on all control lines. AIN0 is 0 to 1.8 V absolute maximum. Pin names: BBB system reference, verify on your image.")
     legend(svg, 24, 76, ["spi", "gpio", "i2c", "analog", "gnd", "v33"])
     top = 110
-    p1, p2, bl = left_devices(svg, 40, top, adapter=True)
+    p1, bl = left_devices(svg, 40, top, adapter=True)
     sbc_x, sbc_w = 560, 380
     sp, sb = card(svg, sbc_x, top, sbc_w, "BeagleBone Black", "headers P8 + P9, sweepd runs here", sbc_rows_bbb(),
                   fill="#e7f5ff", stroke="#1864ab")
-    draw_left_wires(svg, sp, p1, p2)
-    # right side: divider and detector
+    draw_left_wires(svg, sp, p1)
+    att_bottom = attenuator_cards(svg, sp)
+    # right side, top: divider and detector
     ay = sp["ain"][1]
     dv_x, dv_w = 1040, 170
     svg.rect(dv_x, ay - 26, dv_w, 38, fill="#e7f5ff", stroke="#1864ab", sw=2, rx=8)
     svg.text(dv_x + dv_w / 2, ay - 9, "divider 0.751 (adapter)", size=11.5, anchor="middle", weight="bold")
-    svg.text(dv_x + dv_w / 2, ay + 6, "AIN0 cross-check, <= 1.8 V", size=10.5, anchor="middle", fill=MUTED)
+    svg.text(dv_x + dv_w / 2, ay + 6, "AIN0, <= 1.8 V", size=10.5, anchor="middle", fill=MUTED)
     det_x = 1280
     dp, db = card(svg, det_x, ay - 52 - 14, 250, "Detector board", "AD8318 class, -24.5 mV/dB", [
         dict(t="sig", label="VOUT", kind="analog", side="L", key="vout"),
@@ -448,22 +452,12 @@ def wiring_bbb(path: Path) -> None:
         dict(t="strap", label="RF in", note="from IF amp"),
     ])
     pa = PAL["analog"][0]
-    ads, _ = card(svg, det_x, sp["sda"][1] - 216, 250, "ADS1115 breakout (main ADC)", "address 0x48, A0 via 1k + 100 nF + clamp", [
-        dict(t="strap", label="A0", note="VOUT via RC + clamp"),
-        dict(t="sig", label="SDA", kind="i2c", side="L", key="sda"),
-        dict(t="sig", label="SCL", kind="i2c", side="L", key="scl"),
-        dict(t="pwr", label="VDD", note="3V3", kind="v33"),
-        dict(t="sig", label="GND", note="board GND", kind="gnd", side=None, key=None),
-    ])
-    wire(svg, sp["sda"], ads["sda"], PAL["i2c"][0], "I2C_SDA", arrow_end=True, arrow_start=True)
-    wire(svg, sp["scl"], ads["scl"], PAL["i2c"][0], "I2C_SCL", arrow_end=True)
     wire(svg, dp["vout"], (dv_x + dv_w, ay), pa, "VOUT", arrow_end=True)
     wire(svg, (dv_x, ay), sp["ain"], pa, "DET_ADC", arrow_end=True)
     wire(svg, sp["agnd"], dp["gnd"], PAL["gnd"][0], "ADC_GND", arrow_end=False, arrow_start=False)
     # ground bus
-    y_bar = max(bl, sb) + 50
-    stubs_left = [p1["gnd"], p2["gnd"]]
-    ground_bus(svg, 20, 20, y_bar, stubs_left, [], sbc_x + sbc_w / 2, sb)
+    y_bar = max(bl, sb, att_bottom) + 50
+    ground_bus(svg, 20, 20, y_bar, [p1["gnd"]], [], sbc_x + sbc_w / 2, sb)
     svg.text(24, y_bar + 40, "Supplies are not wired from the SBC: see power-tree.svg. Boards share ground through the star point and the RF coax shields.",
              size=11.5, fill=MUTED)
     svg.h = int(y_bar + 70)
@@ -474,33 +468,16 @@ def wiring_ebaz(path: Path) -> None:
     W = 1560
     svg = Svg(W, 900, "EBAZ4205 wiring (proposed)",
               "3.3 V logic on the DATA2 connector. SPI0, I2C0 and the GPIO are Zynq EMIO signals routed to the pins in the bitstream. No on-chip ADC input.")
-    legend(svg, 24, 76, ["spi", "gpio", "i2c", "analog", "gnd", "v33"])
+    legend(svg, 24, 76, ["spi", "gpio", "i2c", "gnd", "v33"])
     top = 110
-    p1, p2, bl = left_devices(svg, 40, top, adapter=True)
+    p1, bl = left_devices(svg, 40, top, adapter=True)
     sbc_x, sbc_w = 560, 380
     sp, sb = card(svg, sbc_x, top, sbc_w, "EBAZ4205 (Zynq-7010)", "connector DATA2, sweepd runs here", sbc_rows_ebaz(),
                   fill="#e7f5ff", stroke="#1864ab")
-    draw_left_wires(svg, sp, p1, p2)
-    ads_x = 1300
-    ads, ab = card(svg, ads_x, sp["sda"][1] - 90, 250, "ADS1115 breakout (main ADC)", "address 0x48, A0 via 1k + 100 nF + clamp", [
-        dict(t="sig", label="A0", note="VOUT via RC + clamp", kind="analog", side="L", key="a0"),
-        dict(t="sig", label="SDA", kind="i2c", side="L", key="sda"),
-        dict(t="sig", label="SCL", kind="i2c", side="L", key="scl"),
-        dict(t="pwr", label="VDD", note="3V3", kind="v33"),
-        dict(t="sig", label="GND", note="board GND", kind="gnd", side=None, key=None),
-    ])
-    det_x = 1000
-    dp, db = card(svg, det_x, ab + 40, 250, "Detector board", "AD8318 class, -24.5 mV/dB", [
-        dict(t="sig", label="VOUT", kind="analog", side="R", key="vout"),
-        dict(t="sig", label="GND", kind="gnd", side=None, key=None),
-        dict(t="pwr", label="VCC", note="5 V", kind="v5"),
-        dict(t="strap", label="RF in", note="from IF amp"),
-    ])
-    wire(svg, sp["sda"], ads["sda"], PAL["i2c"][0], "I2C_SDA", arrow_end=True, arrow_start=True)
-    wire(svg, sp["scl"], ads["scl"], PAL["i2c"][0], "I2C_SCL", arrow_end=True)
-    wire(svg, dp["vout"], ads["a0"], PAL["analog"][0], "VOUT", arrow_end=True)
-    y_bar = max(bl, sb, db) + 50
-    ground_bus(svg, 20, 20, y_bar, [p1["gnd"], p2["gnd"]], [], sbc_x + sbc_w / 2, sb)
+    draw_left_wires(svg, sp, p1)
+    att_bottom = attenuator_cards(svg, sp)
+    y_bar = max(bl, sb, att_bottom) + 50
+    ground_bus(svg, 20, 20, y_bar, [p1["gnd"]], [], sbc_x + sbc_w / 2, sb)
     svg.text(24, y_bar + 40, "Supplies are not wired from the SBC. The pins of DATA1 (AD9226, later) and DATA3 are not used by the sweep: see ebaz-data1-pinout.svg and ebaz-data3-pinout.svg.",
              size=11.5, fill=MUTED)
     svg.h = int(y_bar + 70)
@@ -508,63 +485,24 @@ def wiring_ebaz(path: Path) -> None:
 
 
 def wiring_rpi(path: Path) -> None:
-    W, H = 1560, 900
-    svg = Svg(W, H, "Raspberry Pi 3 / 4 / 400 wiring (proposed)",
-              "3.3 V logic. The Pi has no analog input: an ADS1115 (I2C) reads the detector. Never put more than 3.3 V on any GPIO.")
-    legend(svg, 24, 76, ["spi", "gpio", "analog", "i2c", "gnd", "v33"])
+    W = 1560
+    svg = Svg(W, 900, "Raspberry Pi 3 / 4 / 400 wiring (proposed)",
+              "3.3 V logic. The Pi has no analog input and no detector ADC is left. Never put more than 3.3 V on any GPIO.")
+    legend(svg, 24, 76, ["spi", "gpio", "i2c", "gnd", "v33"])
     top = 110
-    p1, p2, bl = left_devices(svg, 40, top)
+    p1, bl = left_devices(svg, 40, top)
     sbc_x, sbc_w = 560, 380
     sp, sb = card(svg, sbc_x, top, sbc_w, "Raspberry Pi", "40-pin header, sweepd runs here",
                   sbc_rows_rpi(), fill="#e7f5ff", stroke="#1864ab")
-    draw_left_wires(svg, sp, p1, p2)
-    ax = 1120
-    ap, ab = card(svg, ax, top, 340, "ADS1115 board (ADC)", "16-bit, I2C 0x48, up to 860 SPS", [
-        dict(t="sig", label="SDA", kind="i2c", side="L", key="sda"),
-        dict(t="sig", label="SCL", kind="i2c", side="L", key="scl"),
-        dict(t="strap", label="ADDR", note="tie to GND = 0x48"),
-        dict(t="pwr", label="VDD", note="3V3 clean", kind="v33"),
-        dict(t="sig", label="GND", kind="gnd", side="R", key="gnd"),
-        dict(t="sig", label="A0 (from divider)", note="max VDD", kind="analog", side="R", key="a0"),
-    ])
-    wire(svg, sp["sda"], ap["sda"], PAL["i2c"][0], "I2C_SDA", arrow_end=True, arrow_start=True)
-    wire(svg, sp["scl"], ap["scl"], PAL["i2c"][0], "I2C_SCL", arrow_end=True)
-    # divider + detector stacked below, flowing upward into A0
-    cx = ax + 170
-    dv_y = ab + 50
-    svg.rect(ax + 40, dv_y, 260, 48, fill="#fff9db", stroke="#e67700", sw=2, rx=8, dash="6 4")
-    svg.text(cx, dv_y + 20, "divider + RC + clamp", size=11.5, anchor="middle", weight="bold")
-    svg.text(cx, dv_y + 36, "TODO part, Vadc <= VDD of the ADS1115", size=10.5, anchor="middle", fill=MUTED)
-    det_y = dv_y + 48 + 50
-    dp, db = card(svg, ax, det_y, 340, "Detector board", "AD8318 class, -24.5 mV/dB", [
-        dict(t="sig", label="VOUT", kind="analog", side=None, key=None),
-        dict(t="sig", label="GND", kind="gnd", side="R", key="gnd"),
-        dict(t="pwr", label="VCC", note="5 V", kind="v5"),
-        dict(t="strap", label="RF in", note="from IF amp"),
-    ])
-    pa = PAL["analog"][0]
-    svg.path(f"M{cx},{det_y} L{cx},{dv_y + 48}", pa, 2.4, arrow_end=True)
-    svg.text(cx + 10, det_y - 8, "VOUT", size=11, fill=pa, weight="bold")
-    a0 = ap["a0"]
-    route_x = a0[0] + 34
-    svg.path(f"M{ax + 300},{dv_y} L{ax + 300},{ab + 22} L{route_x},{ab + 22} L{route_x},{a0[1]} L{a0[0]},{a0[1]}",
-             pa, 2.4, arrow_end=True)
-    svg.text(ax + 310, ab + 40, "DET_ADC to A0", size=11, fill=pa, weight="bold")
-    # ground
-    y_bar = max(bl, sb, db) + 50
-    g = PAL["gnd"][0]
-    stubs_left = [p1["gnd"], p2["gnd"]]
-    right_x = 1530
-    stubs_right = [ap["gnd"], dp["gnd"]]
-    ground_bus(svg, 20, right_x, y_bar, stubs_left, stubs_right, sbc_x + sbc_w / 2, sb)
-    svg.dot(ap["gnd"][0], ap["gnd"][1], g)
-    svg.dot(dp["gnd"][0], dp["gnd"][1], g)
+    draw_left_wires(svg, sp, p1)
+    att_bottom = attenuator_cards(svg, sp)
+    y_bar = max(bl, sb, att_bottom) + 50
+    ground_bus(svg, 20, 20, y_bar, [p1["gnd"]], [], sbc_x + sbc_w / 2, sb)
     svg.text(24, y_bar + 40, "Supplies are not wired from the SBC: see power-tree.svg. Boards share ground through the star point and the RF coax shields.",
              size=11.5, fill=MUTED)
     svg.h = int(y_bar + 70)
     dots(svg, {k: v for k, v in sp.items()}, {k: PAL[kd][0] for k, kd in
-         {"clk": "spi", "data": "spi", "le": "spi", "ld": "gpio", **{f"v{i}": "gpio" for i in range(1, 7)},
-          "sda": "i2c", "scl": "i2c"}.items()})
+         {"clk": "spi", "data": "spi", "le": "spi", "ld": "gpio", "sda": "i2c", "scl": "i2c"}.items()})
     svg.save(path)
 
 
@@ -585,19 +523,19 @@ def box(svg: Svg, x, y, w, h, title, sub="", todo=False, fill="#f8f9fa", stroke=
 def hierarchy(path: Path) -> None:
     svg = Svg(1400, 790, "Board hierarchy",
               "Control hierarchy (who talks to whom) with the supply rail of each board (badges, see power-tree.svg). Dashed orange = still to build or buy.")
-    legend(svg, 24, 76, ["spi", "gpio", "analog", "v5", "v10", "v33"])
+    legend(svg, 24, 76, ["spi", "gpio", "i2c", "analog", "v5", "v10", "v33"])
     box(svg, 560, 110, 280, 56, "Viewer PC", "sa_gui / cli_client")
     box(svg, 500, 250, 400, 84, "SBC: BeagleBone Black or Raspberry Pi",
-        "sweepd (real-time acquisition process)\nGPIO + SPI + I2C ADC, runs headless", fill="#e7f5ff", stroke="#1864ab",
+        "sweepd (real-time acquisition process)\nSPI + I2C + GPIO, runs headless", fill="#e7f5ff", stroke="#1864ab",
         badge=("5 V", "v5"))
     n = PAL["net"][0]
     svg.path("M700,250 L700,166", n, 2.4, arrow_end=True, arrow_start=True)
     svg.label(700, 208, "Ethernet / ZeroMQ: PUB 5556 (sweeps + log), REP 5557", color=n)
     cy, ch, cw = 450, 84, 300
     kids = [
-        (30, "PE4302 board", "6-bit attenuator, parallel control\n6 GPIO lines V1..V6", "gpio", "GPIO x6", "v33", "3.3 V"),
+        (30, "PCF8574 + PE4302", "6-bit attenuator, parallel control\nV1..V6 from a port expander", "i2c", "I2C", "v33", "3.3 V"),
         (365, "ADF4351 board", "LO synthesizer (eval board, 25 MHz osc.)\nSPI + lock-detect GPIO", "spi", "SPI + LD", "v5", "5 V jack"),
-        (700, "Detector board (AD8318: dead)", "log detector, analog out via RC + clamp\nto the ADS1115; not replaced", "analog", "analog in", "v5", "5 V"),
+        (700, "Detector board (AD8318: dead)", "log detector, analog out via RC + clamp\nto BBB AIN0 only; not replaced", "analog", "analog in", "v5", "5 V"),
         (1035, "AD9226 module (EBAZ PL only)", "12 bit ADC, 50 MS/s used, 50 ohm SMA in\n12 data + OTR in, clock out (DATA1)", "gpio", "DATA1 x14", "v5", "5 V"),
     ]
     for x, t, s_, kind, lab, rail, rtxt in kids:
@@ -635,7 +573,7 @@ def rf_chain(path: Path) -> None:
     svg.path(f"M{bx(3) + bw},{ly + 40} L{bx(4)},{ly + 40}", PAL["spi"][0], 2.4, arrow_end=True)
     ry = 240
     names = [("RF in", "SMA, 25-489 MHz", False, None), ("DC block + ESD", "limiter / protection", True, None),
-             ("PE4302", "0 .. -31.5 dB, 0.5 dB steps", False, ("GPIO", "gpio")),
+             ("PE4302", "0 .. -31.5 dB, 0.5 dB steps\nvia PCF8574", False, ("I2C", "i2c")),
              ("500 MHz LPF", "-1.5 dB, stops FM/GSM/LTE", True, None),
              ("30 dB amp", "+31 dB, P1dB +10 dBm\nNF 1.9 dB (claims)", False, None),
              ("AD831 mixer", "RF/LO to 500 MHz\nP1dB +10 dBm, NF 10-14 dB", False, None)]
@@ -649,7 +587,7 @@ def rf_chain(path: Path) -> None:
              ("IF amp", "+15..20 dB, variable", True, None),
              ("Detector (AD8318)", "module dead, not replaced\n-58..-1 dBm, -24.5 mV/dB", False, None),
              ("RC + clamp", "adapter: 1k, 100 nF, clamp", False, None),
-             ("ADS1115", "I2C 0x48, main ADC\n(BBB AIN0: cross-check)", False, ("analog", "analog"))]
+             ("BBB AIN0", "divider 0.751, 1.8 V max\nthe only detector ADC left", False, ("analog", "analog"))]
     for i, (t, s_, todo, bd) in enumerate(chain):
         box(svg, bx(i), iy, bw, bh + 8, t, s_, todo=todo, badge=bd)
         if i < len(chain) - 1:
@@ -690,8 +628,8 @@ def power_tree(path: Path) -> None:
           ("AD9226 module (EBAZ only)", "5 V (4.75-5.25), current not given; 3.3 V logic on board")]),
         ("v33", "SBC 3.3 V output pin", "BBB P9.3 / P9.4, RPi pin 1 / 17\ntiny loads only", "5V", False,
          [("PE4302 board (VDD pad)", "3.3 V required, tiny"),
-          ("ADS1115", "tiny"),
-          ("pull-ups on V1..V6 (adapter)", "few mA")]),
+          ("PCF8574 board", "3.3 V, not 5 V; + backlight LED"),
+          ("pull-ups on V1..V6 (2.2k)", "about 9 mA when low")]),
         ("v10", "10 V low-noise LDO", "from 12 V (2 V dropout)\nAD831 100-125 mA + amp (measure)", "12V", True,
          [("AD831 mixer module (VCC pad)", "9-11 V, ~100-125 mA"),
           ("30 dB amp (VCC pad)", "6-12 V, current TBD"),
@@ -715,7 +653,7 @@ def power_tree(path: Path) -> None:
             wire(svg, (rx + rw, y + 45), (lx, ly + 17), col, None, arrow_end=True, sw=2.2)
     svg.text(24, 580, "The ADF4351 eval board regulates its 5 V jack to 3.3 V itself. The PE4302 module has no regulator and wants 3.3 V: take it from the SBC pin, which is also the GPIO level.", size=11.5, fill=MUTED)
     svg.text(24, 600, "The rail voltage on the shared lever connector in the photos is not known yet: confirm it before connecting the PE4302 pads (3.3 V) and the AD831 (9 to 11 V).", size=11.5, fill=MUTED)
-    svg.text(24, 620, "Grounds meet at one star point near the SBC. GNDA_ADC (P9.34) is only for the optional BBB AIN0 cross-check.", size=11.5, fill=MUTED)
+    svg.text(24, 620, "Grounds meet at one star point near the SBC. GNDA_ADC (P9.34) is only for the BBB AIN0 input.", size=11.5, fill=MUTED)
     svg.save(path)
 
 
@@ -745,13 +683,16 @@ def netlist_md(sel: str = "all") -> str:
         if sel != "all" and all(x == "n/a" for x in cells):
             continue                     # a net the selected platform does not have
         L.append(f"| {n['id']} | {n['dev']} | {n['dpin']} | {n['dir']} | " + " | ".join(cells) + f" | {n.get('note_' + sel, n['note']) if sel != 'all' else n['note']} |")
+    L += ["", "## PCF8574 to PE4302 (no SBC pin)", "", "| Net | PCF8574 | Board | Board pin | Notes |", "|---|---|---|---|---|"]
+    for link in EXPANDER_LINKS:
+        L.append(f"| {link.net} | {link.port} | {link.dev} | {link.dpin} | {link.note} |")
     L += ["", "## Static straps on the boards (no SBC pin)", "", "| Board | Pin | Tie to | Why |", "|---|---|---|---|"]
     for dev, pin, tie, why in STRAPS:
         L.append(f"| {dev} | {pin} | {tie} | {why} |")
-    free = {"bbb": "- BBB: P9.11-P9.16, P8.13 to P8.19 and P8.26 (GPIO), SPI1 (P9.28-31), AIN1-AIN6, UART1 (P9.24/26).",
+    free = {"bbb": "- BBB: P9.11-P9.16, P8.7 to P8.19 and P8.26 (GPIO; the adapter board as drawn still routes P8.7-P8.12 to the PE4302 header), SPI1 (P9.28-31), AIN1-AIN6, UART1 (P9.24/26).",
             "rpi": "- RPi: SPI0 CE1 (pin 26), GPIO 17/27/22/23/24/25, UART (pins 8/10).",
-            "ebaz": "- EBAZ: DATA2.6 (J18) and every free pin of DATA3 are spare PL IOs (not in the Phase 1 bitstream); DATA1 is reserved for the AD9226 module."}
-    gnd = {"bbb": "- BBB: GND P9.1, P9.2, P9.43-46 and P8.1, P8.2; GNDA_ADC P9.34 (optional, AIN0 cross-check only); ADC reference VDD_ADC P9.32 (1.8 V, do not load).",
+            "ebaz": "- EBAZ: DATA2.14 to 19 are spare EMIO GPIO 0..5 (the former PE4302 lines); DATA2.6 (J18) and every free pin of DATA3 are spare PL IOs (not in the bitstream); DATA1 is reserved for the AD9226 module."}
+    gnd = {"bbb": "- BBB: GND P9.1, P9.2, P9.43-46 and P8.1, P8.2; GNDA_ADC P9.34 (analog return of AIN0); ADC reference VDD_ADC P9.32 (1.8 V, do not load).",
            "rpi": "- RPi: GND pins 6, 9, 14, 20, 25, 30, 34, 39.",
            "ebaz": "- EBAZ: GND pins 3, 4 and 12 of each DATA connector; pins 1 and 2 are the board supply input (5 to 12 V), pin 10 is not connected."}
     L += ["", "## Pins left free for later", ""] + [free[c] for c in cols] + ["", "## Ground and supply pins", ""] + [gnd[c] for c in cols]
@@ -798,17 +739,17 @@ def gen_bbb() -> list:
            BBB_P9, "bbb",
            ["AIN pins: 0 to 1.8 V absolute maximum. VDD_ADC (P9.32) is a 1.8 V reference output, do not load it.",
             "P9.17, P9.18 and P9.22 are SPI0 (ADF4351). P9.17 is CS0, which is /dev/spidevN.0 (N = bus number).",
-            "P9.19 and P9.20 are I2C2 (ADS1115). The PE4302 inputs V1..V6 are on P8.7-P8.12; P9.11-P9.16 stay free.",
-            "Check the pin modes on your image (the Trixie image has no config-pin). SPI0 is the only hardware SPI used; the PE4302 is plain GPIO.",
-            "P9.34 (GNDA_ADC) and P9.39 (AIN0) are optional, for the AIN0 cross-check only. The ADS1115 needs just I2C2 and board GND."],
+            "P9.19 and P9.20 are I2C2: the PCF8574 that drives the PE4302 attenuator (address 0x27). P9.11-P9.16 stay free.",
+            "Check the pin modes on your image (the Trixie image has no config-pin). SPI0 is the only hardware SPI used.",
+            "P9.34 (GNDA_ADC) and P9.39 (AIN0) are the on-chip ADC input, the only detector ADC left."],
            "P9 header (odd pins left, even pins right)")
     pinout(OUT / "bbb-p8-pinout.svg", "BeagleBone Black header P8: pinout and use",
            "Highlighted pins are used by SAdiy. P8.1 and P8.2 are the only ground pins on P8. Confirm the orientation with the silkscreen.",
            BBB_P8, "bbb",
            ["P8.7 to P8.19 and P8.26 are plain GPIO on a stock image. P8.3-6 and P8.20-25 are the eMMC, P8.27-46 the HDMI/LCD (free them only by disabling HDMI).",
-            "The PE4302 inputs V1..V6 use P8.7 to P8.12 (kernel GPIO 66, 67, 69, 68, 45, 44).",
+            "P8.7 to P8.12 carried the PE4302 inputs until 2026-11-25; the attenuator hangs on a PCF8574 on I2C2 now.",
             "There is no SPI on P8. P8.11 and P8.12 can be PRU0 outputs, P8.15 and P8.16 PRU0 inputs.",
-            "The PE4302 module has 10k pull-downs on V1..V6 (open = 0 dB); the adapter board's 2.2k pull-ups to 3V3 make the default maximum attenuation.",
+            "The adapter board as drawn still routes P8.7 to P8.12 to the PE4302 header: do not drive them while the PCF8574 is wired to it.",
             "Do not drive any pin before SYS_RESETn is high. Check the pin modes on your image (the Trixie image has no config-pin)."],
            "P8 header (odd pins left, even pins right)", header="P8")
     wiring_bbb(OUT / "bbb-wiring.svg")
@@ -819,9 +760,8 @@ def gen_rpi_and_shared() -> list:
     pinout(OUT / "rpi-gpio-pinout.svg", "Raspberry Pi 40-pin header: pinout and use",
            "Highlighted pins are used by SAdiy. Pin 1 is the corner nearest the SD card slot; odd pins are on the inner row.",
            RPI_40, "rpi",
-           ["All GPIO are 3.3 V and not 5 V tolerant. The Pi has no analog input: an external ADC (ADS1115) is required.",
-            "SPI0 (ADF4351) via raspi-config; I2C for the ADS1115. Pins 29, 31, 32, 33, 38, 40 drive the PE4302 inputs V1..V6.",
-            "The PE4302 module has 10k pull-downs on V1..V6 (open = 0 dB); optional 2.2k pull-ups to 3V3 make the default maximum attenuation."],
+           ["All GPIO are 3.3 V and not 5 V tolerant. The Pi has no analog input.",
+            "SPI0 (ADF4351) via raspi-config; I2C (pins 3 and 5) for the PCF8574 that drives the PE4302 attenuator."],
            "40-pin header (odd pins left, even pins right)")
     wiring_rpi(OUT / "rpi-wiring.svg")
     hierarchy(OUT / "board-hierarchy.svg")
@@ -832,10 +772,10 @@ def gen_rpi_and_shared() -> list:
 
 def gen_ebaz() -> list:
     notes = {
-        "DATA2": ["The Phase 1 design routes EMIO SPI0 (CLK 5, DAT 7, LE 8), the lock input (9), CE (13), the PE4302 inputs V1..V6 (14 to 19) and I2C0 (SDA 11, SCL 20) to these pins.",
+        "DATA2": ["The design routes EMIO SPI0 (CLK 5, DAT 7, LE 8), the lock input (9), CE (13) and I2C0 (SDA 11, SCL 20: PCF8574 of the attenuator) to these pins.",
                   "SPI and I2C are hardware controllers of the Zynq PS wired to the pins in the bitstream: unlike a pin-muxed SBC they can not be turned into GPIO.",
-                  "EMIO GPIO line n is Linux GPIO 54 + n: V1..V6 = 54..59, CE = 60, LD = 61. All lines are inputs (tri-stated) until software drives them.",
-                  "The PE4302 inputs are tri-stated at boot, so the adapter's 2.2k pull-ups give the default 31.5 dB. Pin 6 (J18) is a spare PL IO.",
+                  "EMIO GPIO line n is Linux GPIO 54 + n: CE = 60, LD = 61, spares 54..59. All lines are inputs (tri-stated) until software drives them.",
+                  "Pins 14 to 19 carried the PE4302 inputs until 2026-11-25 and are spare EMIO GPIO 0..5 now: take old wires to the PE4302 off before driving them. Pin 6 (J18) is a spare PL IO.",
                   "Pins 1 and 2 are the board's supply input (5 to 12 V): do not connect them to the boards. Pins 3, 4 and 12 are ground, pin 10 is not connected."],
         "DATA1": ["Reserved for the AD9226 ADC module (Phase 4): 12 data bits, OTR and the clock. Not in the Phase 1 bitstream, so none of these pins is driven.",
                   "Pins 1 and 2 are the board's supply input, pins 3, 4 and 12 ground, pin 10 is not connected."],

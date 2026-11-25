@@ -304,3 +304,49 @@ def test_our_platform_option_is_hidden_from_qt(monkeypatch):
     assert sa_gui._make_app() == "app"
     assert seen == [["sa_gui"]]
     assert sys.argv == ["sa_gui", "--platform", "ebaz", "--host", "1.2.3.4", "--connect"]      # restored
+
+
+class _FakeReq:
+    """An AsyncRequest that finishes after `after` polls with `reply` (None = timeout)."""
+
+    def __init__(self, reply, after=2):
+        self.reply, self.after, self.closed = reply, after, False
+
+    def poll(self):
+        self.after -= 1
+        return (True, self.reply) if self.after <= 0 else (False, None)
+
+    def close(self):
+        self.closed = True
+
+
+def test_log_fetch_waits_for_a_slow_sweepd_and_does_not_cry_old_version(win):
+    """sweepd on the PL engine answers commands only between sweeps: a slow log reply is not a missing log."""
+    started = []
+    reply = {"ok": True, "entries": [_entry(1, logging.INFO, "late but there").to_dict()], "boot": "b1", "last_seq": 1}
+    win.client.request_async = lambda cmd, timeout_ms: started.append((cmd, timeout_ms)) or _FakeReq(reply)
+    win._tick = 0
+    win._fetch_dev_log()                                  # starts one request, long timeout
+    assert started[0][0]["cmd"] == "log" and started[0][1] >= 10000
+    win._tick = 1
+    win._fetch_dev_log()                                  # still waiting: no second request, no message
+    assert len(started) == 1 and win._log_req is not None
+    win._fetch_dev_log()                                  # the reply arrives
+    assert win._log_req is None and "late but there" in win.dev_log_view.toPlainText()
+    assert "sent no log" not in win.dev_log_view.toPlainText()
+
+
+def test_log_fetch_timeouts_never_say_older_version_but_an_unknown_command_does(win):
+    win.client.request_async = lambda cmd, timeout_ms: _FakeReq(None, after=1)
+    for _ in range(4):
+        win._tick = 0
+        win._fetch_dev_log()                              # start
+        win._fetch_dev_log()                              # finished: timeout
+    text = win.dev_log_view.toPlainText()
+    assert "did not answer the log request" in text and "sent no log" not in text
+    win.client.request_async = lambda cmd, timeout_ms: _FakeReq({"ok": False, "error": "unknown command"}, after=1)
+    for _ in range(3):
+        win._tick = 0
+        win._fetch_dev_log()
+        win._fetch_dev_log()
+    assert "sent no log" in win.dev_log_view.toPlainText()

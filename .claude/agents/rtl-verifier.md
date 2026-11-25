@@ -17,7 +17,7 @@ Conventions of the existing testbenches (`sim/tb_*.sv`, copy their structure):
 - Expected values come from Python, not from the RTL: golden vectors in `sim/vectors/*.hex`, written by
   `sim/gen_vectors.py` (engine, IF path) or `dsp/gen_dsp.py` (standalone modules) from the model
   (`sw/sadiy_ebaz/ebaz_pl_model.py`) or the references (`ifpath.py`, `dspref.py`). Compare word for word.
-- External parts are behavioural models inside the testbench (see the ADS1115 I2C slave in `tb_adc.sv`, the ADC
+- External parts are behavioural models inside the testbench (see the PCF8574 I2C slave in `tb_att.sv`, the ADC
   models in `tb_dsp_adc.sv`). Let a model drive `x` where the real part's output is not valid: that catches
   sampling at the wrong moment.
 

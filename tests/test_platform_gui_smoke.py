@@ -69,9 +69,9 @@ def test_fixed_platform_hides_the_selector_and_the_other_board(app):
         # nothing of the BeagleBone anywhere in the pin list
         tab._fill_pin_list()
         ids = [tab.pin_list.item(i).text() for i in range(tab.pin_list.count())]
-        assert ids and all(t.startswith("DATA2.") for t in ids)
+        assert ids and all(t.startswith(("DATA2.", "ATT_V")) for t in ids)     # ATT_Vx: outputs of the PCF8574
         assert not any(t.startswith(("P8", "P9")) for t in ids)
-        assert tab.selected == "DATA2.14"
+        assert tab.selected == "DATA2.20"
     finally:
         win.close()
 
@@ -82,7 +82,7 @@ def test_fixed_bbb_stays_bbb(app):
         tab = win.pins
         assert tab.fixed and tab.platform_cb.isHidden()
         assert tab.set_platform("ebaz") is False
-        assert tab.selected == "P8.7"
+        assert tab.selected == "P9.19"
     finally:
         win.close()
 
@@ -95,12 +95,13 @@ def test_selector_switches_the_board(app):
         tab.platform_cb.setCurrentIndex(tab.platform_cb.findData("ebaz"))
         assert tab.platform() == "ebaz" and tab.canvas is not before
         assert tab.canvas.pm is pinmap_ebaz.EBAZ and tab.session.pm is pinmap_ebaz.EBAZ
-        assert tab.selected == "DATA2.14"
+        assert tab.selected == "DATA2.20"
+        assert tab.ain_label is None                            # no on-chip ADC input on this board
         # the pin list and the V check boxes follow the new pin map
         assert len(tab.v_checks) == 6
         assert tab.canvas.canvas_w == bench_core.canvas_size(pinmap_ebaz.EBAZ)[0]
         tab.platform_cb.setCurrentIndex(tab.platform_cb.findData("bbb"))
-        assert tab.platform() == "bbb" and tab.selected == "P8.7"
+        assert tab.platform() == "bbb" and tab.selected == "P9.19" and tab.ain_label is not None
         tab.canvas.resize(930, 640)
         tab.canvas.grab()                                       # paints without an exception
     finally:
@@ -122,8 +123,8 @@ def test_ebaz_canvas_paints_and_is_clickable(app):
         QtTest.QTest.mouseClick(tab.canvas, QtCore.Qt.LeftButton,
                                 pos=tab.canvas.to_widget(row.rect[0] + 20, row.rect[1] + row.rect[3] / 2))
         assert tab.selected == "DATA2.9"
-        # no AIN0 on this board: the cross-check row is hidden
-        assert tab.ain_label.isHidden()
+        # no AIN0 on this board: no ADC group
+        assert tab.ain_label is None
     finally:
         win.close()
 
@@ -131,7 +132,7 @@ def test_ebaz_canvas_paints_and_is_clickable(app):
 def test_bbb_keeps_the_ain_row(app):
     win = MainWindow(platform="bbb")
     try:
-        assert not win.pins.ain_label.isHidden() or win.pins.ain_label.isVisibleTo(win.pins.side)
+        assert win.pins.ain_label is not None
     finally:
         win.close()
 
@@ -143,11 +144,13 @@ def test_bench_against_an_ebaz_daemon(app):
         wire(win, request)
         tab = win.pins
         tab.enter()
-        assert tab.session.active and "DATA2.14" in tab.session.status["pins"]
+        assert tab.session.active and "DATA2.13" in tab.session.status["pins"]
         assert not tab.platform_cb.isEnabled() or tab.fixed
-        tab.select_pin("DATA2.14")
+        tab.select_pin("DATA2.13")
         tab.drive(1)
-        assert tab.session.level("DATA2.14")[0] == 1
+        assert tab.session.level("DATA2.13")[0] == 1
+        tab.set_db(16.0)
+        assert "16 dB" in tab.att_label.text() and "0xC8" in tab.writes_label.text()
         tab.set_db(31.5)
         tab.leave()
         assert not tab.session.active

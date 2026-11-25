@@ -75,7 +75,7 @@ class BenchBackend(ABC):
 
     @abstractmethod
     def i2c(self) -> I2cBus:
-        """The ADS1115 on its I2C bus."""
+        """The PCF8574 of the attenuator on its I2C bus."""
 
     @abstractmethod
     def ain(self, channel: int) -> AnalogInput:

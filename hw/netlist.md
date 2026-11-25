@@ -13,42 +13,47 @@ BBB = BeagleBone Black headers P8 and P9. RPi = 40-pin header (physical pin numb
 | SYN_LE | ADF4351 | LE | SBC to board | P9.17 SPI0_CS0 / GPIO0_5 | pin 24 GPIO8 / SPI0 CE0 | DATA2.8 H20  adf4351_le | SPI0 CS0, which is /dev/spidevN.0 (N = bus number, spi_device = 0); used as SPI chip select; data latches on the rising edge at the end of a transfer |
 | SYN_LD | ADF4351 | LD | board to SBC | P9.23 GPIO1_17 | pin 35 GPIO19 / PCM_FS | DATA2.9 J19  adf4351_ld | digital lock detect output (Lock_Flag LED on the board), GPIO input; the MUX pin stays unused |
 | SYN_CE | ADF4351 | CE | SBC to board | P9.27 GPIO3_19 | pin 36 GPIO16 | DATA2.13 K19  adf4351_ce | optional; tie the CE header pin to 3V3 until needed |
-| ATT_V1 | PE4302 | V1 (0.5 dB) | SBC to board | P8.7 GPIO2_2 / TIMER4 | pin 29 GPIO5 | DATA2.14 J20  pe4302_v[0] | assumed weight; verify order and polarity with pe4302-walk |
-| ATT_V2 | PE4302 | V2 (1 dB) | SBC to board | P8.8 GPIO2_3 / TIMER7 | pin 31 GPIO6 | DATA2.15 L16  pe4302_v[1] | assumed 1 dB stage |
-| ATT_V3 | PE4302 | V3 (2 dB) | SBC to board | P8.9 GPIO2_5 / TIMER5 | pin 32 GPIO12 / PWM0 | DATA2.16 L19  pe4302_v[2] | assumed 2 dB stage |
-| ATT_V4 | PE4302 | V4 (4 dB) | SBC to board | P8.10 GPIO2_4 / TIMER6 | pin 33 GPIO13 / PWM1 | DATA2.17 M18  pe4302_v[3] | assumed 4 dB stage |
-| ATT_V5 | PE4302 | V5 (8 dB) | SBC to board | P8.11 GPIO1_13 / PRU0 R30_15 | pin 38 GPIO20 / PCM_DIN | DATA2.18 L20  pe4302_v[4] | assumed 8 dB stage |
-| ATT_V6 | PE4302 | V6 (16 dB) | SBC to board | P8.12 GPIO1_12 / PRU0 R30_14 | pin 40 GPIO21 / PCM_DOUT | DATA2.19 M20  pe4302_v[5] | assumed 16 dB stage |
-| DET_ADC | Detector | VOUT via divider | board to SBC | P9.39 AIN0 | n/a | n/a | BBB: AIN0 through the divider, a cross-check only (the ADS1115 is the main ADC); 0 to 1.8 V absolute maximum. RPi: ADS1115 only |
-| ADC_GND | Detector | GND | return | P9.34 GNDA_ADC | n/a | n/a | optional, AIN0 cross-check only |
-| I2C_SDA | ADS1115 | SDA | bidirectional | P9.20 I2C2_SDA / GPIO0_12 | pin 3 GPIO2 / SDA1 | DATA2.11 K18  i2c_sda | main ADC on both platforms. BBB: I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted) |
-| I2C_SCL | ADS1115 | SCL | SBC to board | P9.19 I2C2_SCL / GPIO0_13 | pin 5 GPIO3 / SCL1 | DATA2.20 L17  i2c_scl | main ADC on both platforms. BBB: I2C2 on the adapter board |
+| DET_ADC | Detector | VOUT via divider | board to SBC | P9.39 AIN0 | n/a | n/a | BBB: AIN0 through the divider, the only detector ADC left (the ADS1115 was removed); 0 to 1.8 V absolute maximum. RPi: no analog input |
+| ADC_GND | Detector | GND | return | P9.34 GNDA_ADC | n/a | n/a | analog return of AIN0 |
+| I2C_SDA | PCF8574 | SDA | bidirectional | P9.20 I2C2_SDA / GPIO0_12 | pin 3 GPIO2 / SDA1 | DATA2.11 K18  i2c_sda | attenuator port expander (PE4302 behind it). BBB: I2C2 on the adapter board, which already has pull-ups (4.7k on the adapter not fitted) |
+| I2C_SCL | PCF8574 | SCL | SBC to board | P9.19 I2C2_SCL / GPIO0_13 | pin 5 GPIO3 / SCL1 | DATA2.20 L17  i2c_scl | attenuator port expander. BBB: I2C2 on the adapter board; 100 kHz maximum |
+
+## PCF8574 to PE4302 (no SBC pin)
+
+| Net | PCF8574 | Board | Board pin | Notes |
+|---|---|---|---|---|
+| ATT_V1 | P0 | PE4302 | V1 (0.5 dB) | pull-up to 3.3 V needed (2.2k): the PCF8574 only drives high weakly; assumed weight, verify with pe4302-walk |
+| ATT_V2 | P1 | PE4302 | V2 (1 dB) | pull-up to 3.3 V needed (2.2k): the PCF8574 only drives high weakly; assumed weight, verify with pe4302-walk |
+| ATT_V3 | P2 | PE4302 | V3 (2 dB) | pull-up to 3.3 V needed (2.2k): the PCF8574 only drives high weakly; assumed weight, verify with pe4302-walk |
+| ATT_V4 | P4 | PE4302 | V4 (4 dB) | pull-up to 3.3 V needed (2.2k): the PCF8574 only drives high weakly; assumed weight, verify with pe4302-walk |
+| ATT_V5 | P5 | PE4302 | V5 (8 dB) | pull-up to 3.3 V needed (2.2k): the PCF8574 only drives high weakly; assumed weight, verify with pe4302-walk |
+| ATT_V6 | P6 | PE4302 | V6 (16 dB) | pull-up to 3.3 V needed (2.2k): the PCF8574 only drives high weakly; assumed weight, verify with pe4302-walk |
 
 ## Static straps on the boards (no SBC pin)
 
 | Board | Pin | Tie to | Why |
 |---|---|---|---|
-| PE4302 | V1 ... V6 | module: 10k pull-downs | open inputs = 0 dB attenuation (the unsafe state). The adapter board's 2.2k pull-ups to 3V3 (R27..R32) give about 2.7 V at the pin, above the 2.3 V threshold, so the default is maximum attenuation; remove them for 0 dB |
+| PE4302 | V1 ... V6 | PCF8574 P0..P2, P4..P6, each with 2.2k to 3V3 | the module has 10k pull-downs (open = 0 dB, the unsafe state) and the PCF8574 drives high only weakly (about 100 uA): without a pull-up a line stays low. With 2.2k about 2.7 V at the pin, above the 2.3 V threshold, so the expander's power-up state (all high) is maximum attenuation. The adapter board's R27..R32 are such pull-ups on its V1..V6 nets |
 | PE4302 | VDD pad | 3V3 (SBC pin) | the module has no regulator and is meant for 3.3 V (Silicon Chip). Two separate pads next to the chip, not on the 7-pin header (GND, V1 ... V6) |
 | ADF4351 | DC jack | 5 V | on-board AMS1117-3.3 supplies the chip; check the polarity marking next to the jack. The 3V3 header pin is the regulator output: do not feed it |
 | ADF4351 | CE | 3V3 | header pin, chip enable. Adapter board jumper J12: 1-2 tied high (default), 2-3 from the SBC pin (see SYN_CE) |
 | ADF4351 | PDR | 3V3 | RF power-down pin (PDBRF): high = RF outputs on. Tied high on the adapter board (JP5); remove JP5 if the eval board already pulls it up |
 | ADF4351 | AOUT- / AOUT+ | 50 ohm on the unused output | differential outputs, use one for the LO and terminate the other; MCLK is the external reference input (25 MHz oscillator fitted) |
-| ADS1115 | A0 | detector VOUT via 1k, 100 nF, clamp | adapter board; no divider, the clamp holds A0 within 0 to 3.3 V |
-| ADS1115 | ADDR | GND | I2C address 0x48 |
-| ADS1115 | VDD | 3V3 (SBC pin) | 2.0 to 5.5 V |
+| PCF8574 | VCC | 3V3 (SBC pin) | never 5 V: the SDA / SCL pull-ups of the board go to its VCC and the controller pins are 3.3 V only |
+| PCF8574 | A0, A1, A2 | open (high) | I2C address 0x27 (a PCF8574A answers at 0x3F); [attenuator] pcf8574_address |
+| PCF8574 | P3 | backlight transistor of the LCD adapter board | not part of the attenuator; [attenuator] pcf8574_backlight. There is no V0; P7 is written high |
 | Detector | VCC pad | 5 V (verify) | about 68 mA at 5 V per the listing; the board has its own regulator (SOT-223), read its marking for the allowed input range |
 | Detector | OUT header | check with a DMM | 2-pin header: find which pin is OUT and which is GND before connecting |
 
 ## Pins left free for later
 
-- BBB: P9.11-P9.16, P8.13 to P8.19 and P8.26 (GPIO), SPI1 (P9.28-31), AIN1-AIN6, UART1 (P9.24/26).
+- BBB: P9.11-P9.16, P8.7 to P8.19 and P8.26 (GPIO; the adapter board as drawn still routes P8.7-P8.12 to the PE4302 header), SPI1 (P9.28-31), AIN1-AIN6, UART1 (P9.24/26).
 - RPi: SPI0 CE1 (pin 26), GPIO 17/27/22/23/24/25, UART (pins 8/10).
-- EBAZ: DATA2.6 (J18) and every free pin of DATA3 are spare PL IOs (not in the Phase 1 bitstream); DATA1 is reserved for the AD9226 module.
+- EBAZ: DATA2.14 to 19 are spare EMIO GPIO 0..5 (the former PE4302 lines); DATA2.6 (J18) and every free pin of DATA3 are spare PL IOs (not in the bitstream); DATA1 is reserved for the AD9226 module.
 
 ## Ground and supply pins
 
-- BBB: GND P9.1, P9.2, P9.43-46 and P8.1, P8.2; GNDA_ADC P9.34 (optional, AIN0 cross-check only); ADC reference VDD_ADC P9.32 (1.8 V, do not load).
+- BBB: GND P9.1, P9.2, P9.43-46 and P8.1, P8.2; GNDA_ADC P9.34 (analog return of AIN0); ADC reference VDD_ADC P9.32 (1.8 V, do not load).
 - RPi: GND pins 6, 9, 14, 20, 25, 30, 34, 39.
 - EBAZ: GND pins 3, 4 and 12 of each DATA connector; pins 1 and 2 are the board supply input (5 to 12 V), pin 10 is not connected.
 - Board supplies come from the power tree, not from SBC pins (`power-tree.svg`).

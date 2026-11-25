@@ -11,9 +11,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sadiy import config, pinmap_ebaz  # noqa: E402
+from sadiy.hal.fake import FakePcf8574  # noqa: E402
 from sadiy.hal.linux import SysfsGpio  # noqa: E402
 from sadiy.server.bench import Bench  # noqa: E402
 from sadiy.server.sweepd import Sweepd, hardware_backend  # noqa: E402
+from sadiy_ebaz import ps_backend  # noqa: E402
 from sadiy_ebaz.platforms import ebaz as ebaz_platform  # noqa: E402
 from sadiy_ebaz.ps_backend import EbazPsBackend, release_pl_pins  # noqa: E402
 from sadiy_ebaz.regmap_toml import REGS  # noqa: E402
@@ -66,7 +68,7 @@ class FakeCore:
 # ---------------------------------------------------------------- the backend
 def test_gpio_numbers_are_emio_lines_on_the_ps_chip(sysfs):
     b = EbazPsBackend(gpio_root=sysfs)
-    line = b.gpio(54, output=True, initial=1)                         # ATT_V1 = EMIO 0 = line 54
+    line = b.gpio(54, output=True, initial=1)                         # EMIO 0 = line 54
     assert (sysfs / f"gpio{BASE + 54}" / "direction").read_text() == "high"
     line.write(0)
     assert (sysfs / f"gpio{BASE + 54}" / "value").read_text() == "0"
@@ -141,6 +143,30 @@ def test_prepare_releases_and_closes(tmp_path):
     assert core.owner == 0 and core.closed and "handed back" in notes[0]
 
 
+def test_the_i2c_bus_is_not_opened_while_the_engine_keeps_the_pins(tmp_path, monkeypatch):
+    class Stuck(FakeCore):
+        def write(self, offset, value):
+            self.writes.append((offset, value))
+
+    state = tmp_path / "state"
+    state.write_text("operating\n")
+    opened = []
+    monkeypatch.setattr(ps_backend, "LinuxI2c", lambda bus, address: opened.append((bus, address)) or FakePcf8574())
+    t = [0.0]
+    monkeypatch.setattr(ps_backend, "release_pl_pins",
+                        lambda regs: release_pl_pins(regs, sleep=lambda _s: None,
+                                                     clock=lambda: t.__setitem__(0, t[0] + 0.2) or t[0]))
+    cores = [Stuck(owner=1), FakeCore(owner=0)]
+    b = EbazPsBackend(state_path=state, open_regs=lambda: cores.pop(0))
+    assert "still owns the pins" in b.prepare()[0]
+    with pytest.raises(OSError, match="PL engine owns the I2C bus"):
+        b.i2c()
+    assert opened == []
+    assert b.prepare() == []                                          # the pins are Linux's again
+    b.i2c()
+    assert opened == [(0, 0x27)]
+
+
 def test_prepare_without_devmem_is_a_warning_not_an_error(tmp_path):
     def nope():
         raise PermissionError("/dev/mem")
@@ -149,8 +175,10 @@ def test_prepare_without_devmem_is_a_warning_not_an_error(tmp_path):
 
 
 # ---------------------------------------------------------------- through the bench
-def rig(sysfs, tmp_path):
+def rig(sysfs, tmp_path, monkeypatch, pcf=None):
     cfg = config.load()
+    pcf = FakePcf8574() if pcf is None else pcf
+    monkeypatch.setattr(ps_backend, "LinuxI2c", lambda bus, address: pcf)
     state = tmp_path / "state"
     state.write_text("operating\n")
     core = FakeCore(owner=1)
@@ -160,32 +188,32 @@ def rig(sysfs, tmp_path):
     return daemon, core, (lambda cmd: json.loads(json.dumps(daemon.apply(json.loads(json.dumps(cmd))))))
 
 
-def test_bench_opens_on_the_ps_path_and_drives_the_attenuator(sysfs, tmp_path):
-    daemon, core, call = rig(sysfs, tmp_path)
+def test_bench_opens_on_the_ps_path_and_drives_the_attenuator(sysfs, tmp_path, monkeypatch):
+    pcf = FakePcf8574()
+    daemon, core, call = rig(sysfs, tmp_path, monkeypatch, pcf)
     opened = call({"cmd": "bench_open"})
     assert opened["ok"] and opened["platform"] == "ebaz" and opened["limits"]["can_mux"] is False
     assert core.owner == 0 and any("handed back" in w for w in opened["warnings"])
-    for n in range(54, 60):                                         # the six PE4302 lines are outputs now, all "in" (31.5 dB)
-        d = sysfs / f"gpio{BASE + n}"
-        assert d.joinpath("direction").read_text() == "high", n
+    assert pcf.port == 0xFF                                         # all six stages in (31.5 dB), backlight on
+    for n in range(54, 60):                                         # the spare EMIO lines (former PE4302) stay untouched
+        assert (sysfs / f"gpio{BASE + n}" / "direction").read_text() == "in", n
     tok = opened["token"]
     reply = call({"cmd": "bench_atten", "token": tok, "db": 16.0, "confirm": True})
     assert reply["ok"] and reply["attenuation_db"] == 16.0
-    assert (sysfs / f"gpio{BASE + 59}" / "value").read_text() == "1"        # V6 (16 dB) in
-    assert (sysfs / f"gpio{BASE + 54}" / "value").read_text() == "0"
+    assert pcf.port == 0xC8                                         # V6 (16 dB) on P6, P3 backlight, P7 high
     ce = call({"cmd": "bench_pin", "token": tok, "pin": "SYN_CE", "action": "write", "value": 1, "confirm": True})
     assert ce["ok"] and (sysfs / f"gpio{BASE + 60}" / "direction").read_text() == "high"
     adc = call({"cmd": "bench_adc", "token": tok, "source": "ain", "channel": 0})
-    assert not adc["ok"] and "no on-chip ADC" in adc["error"]
+    assert not adc["ok"] and "no ADC input" in adc["error"]
     call({"cmd": "bench_close", "token": tok})
-    assert (sysfs / f"gpio{BASE + 59}" / "value").read_text() == "1"        # back to the safe state, 31.5 dB
+    assert pcf.port == 0xFF and pcf.closed                          # back to the safe state, 31.5 dB
 
 
 def test_hook_builds_the_ps_backend_from_the_config():
     cfg = config.load()
     cfg["platform"] = {"name": "ebaz", "i2c_bus": 1, "base": 0x43C10000}
     b = ebaz_platform.build_bench_backend(cfg)
-    assert isinstance(b, EbazPsBackend) and b._i2c_args == (1, 0x48) and b._regs_base == 0x43C10000
+    assert isinstance(b, EbazPsBackend) and b._i2c_args == (1, 0x27) and b._regs_base == 0x43C10000
     assert isinstance(hardware_backend(config.load(), pinmap_ebaz.EBAZ), EbazPsBackend)
 
 

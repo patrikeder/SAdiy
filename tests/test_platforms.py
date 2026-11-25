@@ -49,14 +49,18 @@ def test_ebaz_pins():
     pm = pinmap_ebaz.EBAZ
     assert len(pm.pins) == 60
     assert {p.header for p in pm.pins.values()} == {"DATA1", "DATA2", "DATA3"}
-    assert pm.ids(pm.att_nets) == tuple(f"DATA2.{n}" for n in range(14, 20))
+    assert not set(pm.att_nets) & set(pm.by_net)                      # the PE4302 hangs on the PCF8574
+    spare = [pm.pins[f"DATA2.{n}"] for n in range(14, 20)]
+    assert all(p.net is None and p.access == pinmap.EXPERT for p in spare)
+    assert [p.gpio for p in spare] == [54, 55, 56, 57, 58, 59]           # EMIO n is 54 + n
     assert pm.ids(pm.spi_nets) == ("DATA2.5", "DATA2.7", "DATA2.8")
     assert pm.ids(pm.i2c_nets) == ("DATA2.20", "DATA2.11")          # SCL, SDA
     assert pm.by_net[pm.lock_net].access == pinmap.INPUT_ONLY
     assert pm.by_net[pm.ce_net].access == pinmap.WIRED
-    assert [pm.by_net[n].gpio for n in pm.att_nets] == [54, 55, 56, 57, 58, 59]       # EMIO n is 54 + n
     assert (pm.by_net["SYN_CE"].gpio, pm.by_net["SYN_LD"].gpio) == (60, 61)
-    assert pm.find("ATT_V1") is pm.pins["DATA2.14"] and pm.find("DATA2.14").net == "ATT_V1"
+    assert pm.find("I2C_SCL") is pm.pins["DATA2.20"]
+    with pytest.raises(KeyError):
+        pm.find("ATT_V1")
     with pytest.raises(KeyError):
         pm.find("P8.7")
 
@@ -71,12 +75,13 @@ def test_ebaz_display_pins_cannot_be_driven():
     pm = pinmap_ebaz.EBAZ
     for pin in pm.pins.values():
         if pin.net is None:
-            assert pin.access == pinmap.DISPLAY, pin.id
+            spare = pin.header == "DATA2" and 14 <= pin.number <= 19     # the former PE4302 balls: spare EMIO GPIO
+            assert pin.access == (pinmap.EXPERT if spare else pinmap.DISPLAY), pin.id
     assert not any(p.ain is not None for p in pm.pins.values())
 
 
 def test_ebaz_boards_have_no_ain_block():
-    assert [b.title for b in pinmap_ebaz.EBAZ.boards] == ["PE4302", "ADF4351", "ADS1115"]
+    assert [b.title for b in pinmap_ebaz.EBAZ.boards] == ["PCF8574", "ADF4351"]
     assert "AIN0" in [b.title for b in pinmap.BBB.boards]
 
 
@@ -133,7 +138,7 @@ def test_sweepd_status_and_bench_open_name_the_platform():
     opened = call({"cmd": "bench_open"})
     assert opened["ok"] and opened["platform"] == "ebaz"
     assert opened["limits"]["can_mux"] is False
-    assert set(opened["pins"]) >= {"DATA2.14", "DATA2.9", "DATA2.13"}
+    assert set(opened["pins"]) >= {"DATA2.20", "DATA2.9", "DATA2.13"}
     assert not any(pid.startswith(("P8", "P9")) for pid in opened["pins"])
 
 
@@ -142,7 +147,11 @@ def test_ebaz_bench_rejects_bbb_pins_and_bus_pins():
     tok = call({"cmd": "bench_open"})["token"]
     wrong = call({"cmd": "bench_pin", "token": tok, "pin": "P8.7", "action": "read"})
     assert not wrong["ok"] and "EBAZ4205" in wrong["error"]
-    assert call({"cmd": "bench_pin", "token": tok, "pin": "ATT_V1", "action": "read"})["ok"]
+    assert call({"cmd": "bench_pin", "token": tok, "pin": "SYN_CE", "action": "read"})["ok"]
+    expander = call({"cmd": "bench_pin", "token": tok, "pin": "ATT_V1", "action": "read"})
+    assert not expander["ok"] and "PCF8574" in expander["error"]
+    spare = call({"cmd": "bench_pin", "token": tok, "pin": "DATA2.14", "action": "write", "value": 1, "confirm": True})
+    assert not spare["ok"] and "xpert" in spare["error"]
     # DATA2.5 is the SPI clock, wired to the PS in the bitstream: it can not become a GPIO
     gpio = call({"cmd": "bench_pin", "token": tok, "pin": "DATA2.5", "action": "read"})
     assert not gpio["ok"] or gpio.get("dir") != "out"
@@ -159,7 +168,7 @@ def test_bbb_bench_rejects_ebaz_pins():
     assert not reply["ok"] and "BeagleBone" in reply["error"]
 
 
-def test_attenuator_pattern_uses_the_ebaz_pins():
+def test_attenuator_pattern_runs_through_the_expander_on_ebaz():
     _daemon, _bench, call = _ebaz_rig()
     tok = call({"cmd": "bench_open"})["token"]
     reply = call({"cmd": "bench_pattern", "token": tok, "action": "start", "confirm": True,
@@ -188,7 +197,7 @@ def test_board_geometry(pm):
     blocks = bench_core.blocks(pm)
     assert [b.board.title for b in blocks] == [t for t, *_ in pm.layout.blocks]
     rows = [r for b in blocks for r in b.rows]
-    assert {r.net for r in rows} >= set(pm.att_nets) | set(pm.spi_nets) | set(pm.i2c_nets)
+    assert {r.net for r in rows} >= set(pm.spi_nets) | set(pm.i2c_nets)
     for pin in pm.pins.values():
         x, y, pw, ph = bench_core.pin_rect(pin, pm)
         assert 0 <= x and x + pw <= w and 0 <= y and y + ph <= h, pin.id

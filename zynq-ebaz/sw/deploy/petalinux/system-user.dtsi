@@ -50,13 +50,13 @@
     };
 };
 
-/* ADS1115 (0x48) on PS I2C0 via EMIO: /dev/i2c-N (N is probably 0, check) */
+/* PCF8574 of the PE4302 attenuator (0x27) on PS I2C0 via EMIO: /dev/i2c-N (N = 0 on the booted image) */
 &i2c0 {
     status = "okay";
     clock-frequency = <100000>;
 };
 
-/* EMIO GPIO (PE4302 V1..V6 = lines 54..59, ADF4351 CE = 60, LD = 61, LCD DC/RES = 62/63,
+/* EMIO GPIO (spare = lines 54..59, ADF4351 CE = 60, LD = 61, LCD DC/RES = 62/63,
  * LEDs 64..66, keys 67..71) is in the Zynq gpio node and needs no entry here. */
 
 /* ---- adapter board (HelloFPGA EBAZ4205_ZJB05): LCD, LEDs, keys. Lines are 54 + EMIO n.
