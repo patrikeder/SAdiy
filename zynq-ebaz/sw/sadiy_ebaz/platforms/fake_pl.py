@@ -80,8 +80,7 @@ def build_engine(cfg: dict) -> SweepEngine:
     """Engine on the fake platform: ADF4351 and PE4302 drivers on the fakes, sweep through the PL model."""
     pcfg = cfg.get("platform", {})
     plat = FakePlPlatform(det_src=int(pcfg.get("det_src", SRC_TEST)),
-                          det_test_base=int(pcfg.get("det_test_base", 10000)),
-                          volts_per_count=float(cfg["adc"].get("ads1115_full_scale_v", 4.096)) / 32768.0)
+                          det_test_base=int(pcfg.get("det_test_base", 10000)))
     syn = cfg["synth"]
     synth = Adf4351(plat.synth_link(), pfd_hz=float(syn["pfd_hz"]), mod_max=int(syn.get("mod_max", 4095)))
     synth.set_outputs(Outputs.from_config(syn))

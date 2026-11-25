@@ -46,12 +46,20 @@ interface) ... V1 to P0, V2 to P1, V3 to P2, V4 to P4, V5 to P5 and V6 to P6 ...
   transaction, `acquire_pins` sends the last sent levels), `ebaz_pl` (detector "test" only: "pl" / "ps" refused with
   a message; PCF8574 address from `[attenuator] pcf8574_address`, NACK logged), `fake_pl`, `ramp_test`,
   `pl_bringup` (stage `att` automatic, stage `adc` removed, version gates compare the whole version).
+- After the commit, on L's request (merged before L's part, which was not committed yet): `data2_pins.xdc` snapshot = L's regenerated XDC (comments only
+  differ), `gen_pinmap.py` labels and a PCF8574 wiring section, `pinmap*.svg / .md` regenerated **from L's
+  `pins.toml`**, so `gen_pinmap.py --check` and `check_pins.sh` pass in this worktree only once L's part is merged
+  (until then: `PINS_TOML=<L's pins.toml>`). L's `test_platform_gui_smoke.py` passed 21/21 on a copy of L's tree with
+  the new adapter picture (shape counts unchanged). `fake_pl` no longer reads `[adc] ads1115_full_scale_v`.
 - Fix before the commit: `ebaz_pl` read `err_nack` right after taking the pins, before the transaction had ended, so a
   missing PCF8574 would not have been reported on the board (the model finishes at once). New `RegOffload.wait_att`;
   a NACK during a sweep is now logged too (once). Two tests with a delayed `ATT_STAT` / unplugged PCF8574.
 - Bitstream 2026-11-25 20:14: WNS +1.68 ns, WHS +0.061 ns, LUT 2886 (16.4 %), FF 3166 (9.0 %), BRAM 12.5 tiles,
   DSP 4, 0 critical warnings. Docs: `rtl-spec.md` (sections 1, 2, 3, 8, 8a, 9, 10, 11), `blockdiagram.svg`,
   `selftest.md`, `adc-module.md` (balls freed for adapter v2), `ebaz-pl-measurements.md` (note).
+- Rebuilt 2026-11-25 21:26 after xsim passed (project recreated; sources differ from the 20:14 build in XDC / tcl
+  comments only): `.bit.bin` byte-identical (md5 `5e61bd8b70779d0437920a6ccdb65bdf`), same WNS / WHS / utilisation,
+  slices 1024 / 4400 (23 %), 0 critical warnings, PS7 identical. Map 2.0.
 - Hardware notes for the user: the PCF8574 drives high only weakly (about 100 uA), and the PE4302 module has 10 kohm
   pull-downs, so every V line needs a pull-up to 3.3 V (2.2 kohm as on the adapter). Power the PCF8574 board from 3.3 V:
   its SDA / SCL pull-ups go to its supply and the FPGA pins are 3.3 V only. A PCF8574A board answers at 0x38..0x3F.

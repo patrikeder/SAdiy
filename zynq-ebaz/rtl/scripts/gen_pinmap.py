@@ -57,8 +57,8 @@ def used_balls():
 
 FUNC = {  # signal prefix -> (function, colour)
     "adf4351": ("ADF4351 synthesiser", "#2f6fdb"),
-    "pe4302": ("PE4302 attenuator", "#e07b00"),
-    "i2c": ("I2C, ADS1115", "#2a9d4b"),
+    "pe4302": ("spare GPIO (was PE4302)", "#e07b00"),      # port names pe4302_v[n] stay (top level, XDC)
+    "i2c": ("I2C: PCF8574 for the PE4302", "#2a9d4b"),
     "adc": ("AD9226 (planned)", "#6b6b6b"),
     "spare": ("spare", "#c8c8c8"),
 }
@@ -185,7 +185,8 @@ def md(rows):
         L.append(f"| {i} | {a} | {sig(a)} | {b} | {sig(b)} |")
     free = [x for r in RIGHT_CONN for x in r if x not in ("GND", "3V3") and x not in port_of]
     L += ["", f"All 14 DATA2 control balls are on this connector. Free for the PCBs: {', '.join(free)} "
-          "(J18 is DATA2-6, the others come from DATA3).", "",
+          "(J18 is DATA2-6, the others come from DATA3). The six former PE4302 balls (`pe4302_v[n]`) are spare GPIO "
+          "too, still constrained in the build.", "",
           "### Conflict with the planned AD9226 on DATA1", "",
           "With this adapter the following planned `adc_*` balls are also wired to adapter functions: " +
           ", ".join(f"{b} ({f})" for b, f in DATA1_ON_ADAPTER.items() if b in {r['ball'] for r in rows}) +
@@ -207,17 +208,29 @@ def md(rows):
           "resistor, termination or ESD part sits on it; (2) that the negative balls reach the HDMI pins (the "
           "silk only names the positive nets); (3) the HDMI +5 V and shield pins must never touch a signal line; "
           "(4) which pad of your HDMI breakout is which TMDS line.", ""]
+    L += ["", "## PE4302 through a PCF8574 (I2C)", "",
+          "The attenuator is on a PCF8574 port expander (an I2C-to-LCD adapter board) on `i2c_scl` (DATA2-20) and "
+          "`i2c_sda` (DATA2-11), address 0x27 (a PCF8574A answers at 0x38..0x3F). Register map: `ATT_I2C`, `ATT_STAT`.",
+          "", "| PCF8574 | P0 | P1 | P2 | P3 | P4 | P5 | P6 | P7 |", "|---|---|---|---|---|---|---|---|---|",
+          "| Connected to | V1 (0.5 dB) | V2 (1 dB) | V3 (2 dB) | LCD backlight LED | V4 (4 dB) | V5 (8 dB) | "
+          "V6 (16 dB) | spare |", "",
+          "- Each of V1..V6 needs a pull-up to 3.3 V (2.2 kohm): the PCF8574 drives high only weakly (about 100 uA) "
+          "and the PE4302 module has 10 kohm pull-downs.",
+          "- Supply the PCF8574 board from 3.3 V: its SDA / SCL pull-ups go to its supply, and the FPGA pins are "
+          "3.3 V only.",
+          "- DATA2-14..19 carried V1..V6 until 2026-11-25. They are spare GPIO now (EMIO 0..5, port names "
+          "`pe4302_v[n]`); do not drive them while old attenuator wires are still connected.", ""]
     L += ["", "## EMIO line map (Linux GPIO line = 54 + n on the Zynq gpiochip)", "",
           "| n | Signal | n | Signal |", "|---|---|---|---|"]
-    emio = ["pe4302_v[0] (V1)", "pe4302_v[1] (V2)", "pe4302_v[2] (V3)", "pe4302_v[3] (V4)", "pe4302_v[4] (V5)",
-            "pe4302_v[5] (V6)", "adf4351_ce", "adf4351_ld"]
+    emio = [f"spare GPIO {i} (`pe4302_v[{i}]`)" for i in range(6)] + ["adf4351_ce", "adf4351_ld"]
     second = ["lcd_dc (adapter LCD)", "lcd_res (adapter LCD)", "led[0] (adapter)", "led[1] (adapter)",
               "led[2] (adapter)", "keys[0] (adapter, active low)", "keys[1] (adapter, active low)",
               "keys[2] (adapter, active low)", "keys[3] (adapter, active low)", "keys[4] (adapter, active low)"]
     L += [f"| {i} | {emio[i]} | {i + 8} | {second[i]} |" for i in range(8)]
     L += [f"| | | {i + 8} | {second[i]} |" for i in range(8, 10)]
-    L += ["", "Since register map 1.1 `adf4351_ce` and the I2C pins pass the engine's pin mux: while the engine owns the pins "
-          "CE follows `ADF_PINS.ce`, and with `DET_CFG.src = 3` the PL reads the ADS1115 itself.", "",
+    L += ["", "`adf4351_ce` and the I2C pins pass the engine's pin mux: while the engine owns the pins CE follows "
+          "`ADF_PINS.ce` and the I2C bus is the engine's, which drives the PE4302 through the PCF8574 (register map 2.0). "
+          "Linux must not use I2C0 in that time.", "",
           "Also on EMIO: SPI0 (SCLK, MOSI, SS0 = LE), SPI1 (adapter LCD: SCLK, MOSI, SS0) and I2C0 (SCL, SDA), "
           "see the tables above.", ""]
     return "\n".join(L)
@@ -310,7 +323,7 @@ def svg(rows):
     y += 22
     o.append(f'<text x="{px}" y="{y}" font-size="14" font-weight="bold">EMIO GPIO lines (Linux 54 + n)</text>')
     y += 20
-    for n, nm in enumerate(["V1 .. V6 = pe4302_v[0..5]", "", "", "", "", "", "adf4351_ce", "adf4351_ld", "lcd_dc",
+    for n, nm in enumerate(["spare (pe4302_v[0..5])", "", "", "", "", "", "adf4351_ce", "adf4351_ld", "lcd_dc",
                             "lcd_res", "led[0..2] = n 10..12", "keys[0..4] = n 13..17"]):
         if nm:
             lab = {0: "n = 0..5", 6: "n = 6", 7: "n = 7", 8: "n = 8", 9: "n = 9", 10: "n = 10..12", 11: "n = 13..17"}[n]
@@ -327,7 +340,7 @@ def ball_svg(rows):
     sig = {}                                    # ball -> (label, colour)
     for r in rows:
         if r["used"]:
-            sig[r["ball"]] = (r["name"].replace("adf4351_", "adf_").replace("pe4302_v", "pe"), func_of(r["name"])[1])
+            sig[r["ball"]] = (r["name"].replace("adf4351_", "adf_").replace("pe4302_v", "gpio"), func_of(r["name"])[1])
     for ball, port in fixed_balls():
         sig[ball] = (port.replace("ENET0_GMII_", "").replace("enet0_mdio_mdio_io", "mdio").replace("enet0_mdio_", "")
                                 .replace("enet0_", "").replace("_0", ""), "#8a4fbf")
@@ -506,6 +519,8 @@ def adapter_svg(rows):
             colour = "#9a9a9a" if free else col_of(port)
             dot(x, y, colour, "", 13, dash=free)
             name = port or "free"
+            if port.startswith("pe4302_v"):
+                name = f"spare GPIO {port[-2]}"
             if ball == "J18":
                 name = "spare_d2_6 (free)"
             xl = x - 22 if k == 0 else x + 22
@@ -516,8 +531,9 @@ def adapter_svg(rows):
     # side panel: legend and proposal
     px = 990
     o.append(f'<text x="{px}" y="90" font-size="16" font-weight="bold">Legend</text>')
-    for i, (c, t, d) in enumerate(((FUNC["adf4351"][1], "ADF4351 synthesiser", 0), (FUNC["pe4302"][1], "PE4302", 0),
-                                   (FUNC["i2c"][1], "I2C (ADS1115)", 0), ("#00838f", "adapter display, keys, LEDs", 0),
+    for i, (c, t, d) in enumerate(((FUNC["adf4351"][1], "ADF4351 synthesiser", 0),
+                                   (FUNC["pe4302"][1], "spare GPIO (was PE4302)", 0),
+                                   (FUNC["i2c"][1], "I2C: PCF8574 (PE4302)", 0), ("#00838f", "adapter display, keys, LEDs", 0),
                                    ("#9a9a9a", "free pin", 1))):
         y = 116 + i * 24
         dot(px + 8, y - 4, c, "", 8, dash=bool(d))

@@ -106,7 +106,7 @@
 <text x="852" y="470" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">adf4351_clk</text>
 <text x="852" y="482" text-anchor="start" font-size="9" fill="#9ad">G20 · bank 35</text>
 <circle cx="790" cy="516" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
-<text x="768" y="514" text-anchor="end" font-size="12" font-weight="bold" fill="#fff">pe4302_v[0]</text>
+<text x="768" y="514" text-anchor="end" font-size="12" font-weight="bold" fill="#fff">spare GPIO 0</text>
 <text x="768" y="526" text-anchor="end" font-size="9" fill="#9ad">J20 · bank 35</text>
 <circle cx="830" cy="516" r="13" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="2"/>
 <text x="852" y="514" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">adf4351_le</text>
@@ -118,22 +118,22 @@
 <text x="852" y="558" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">adf4351_ld</text>
 <text x="852" y="570" text-anchor="start" font-size="9" fill="#9ad">J19 · bank 35</text>
 <circle cx="790" cy="604" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
-<text x="768" y="602" text-anchor="end" font-size="12" font-weight="bold" fill="#fff">pe4302_v[4]</text>
+<text x="768" y="602" text-anchor="end" font-size="12" font-weight="bold" fill="#fff">spare GPIO 4</text>
 <text x="768" y="614" text-anchor="end" font-size="9" fill="#9ad">L20 · bank 35</text>
 <circle cx="830" cy="604" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
-<text x="852" y="602" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">pe4302_v[2]</text>
+<text x="852" y="602" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">spare GPIO 2</text>
 <text x="852" y="614" text-anchor="start" font-size="9" fill="#9ad">L19 · bank 35</text>
 <circle cx="790" cy="648" r="13" fill="#2a9d4b" stroke="#2a9d4b" stroke-width="2"/>
 <text x="768" y="646" text-anchor="end" font-size="12" font-weight="bold" fill="#fff">i2c_scl</text>
 <text x="768" y="658" text-anchor="end" font-size="9" fill="#9ad">L17 · bank 35</text>
 <circle cx="830" cy="648" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
-<text x="852" y="646" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">pe4302_v[1]</text>
+<text x="852" y="646" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">spare GPIO 1</text>
 <text x="852" y="658" text-anchor="start" font-size="9" fill="#9ad">L16 · bank 35</text>
 <circle cx="790" cy="692" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
-<text x="768" y="690" text-anchor="end" font-size="12" font-weight="bold" fill="#fff">pe4302_v[5]</text>
+<text x="768" y="690" text-anchor="end" font-size="12" font-weight="bold" fill="#fff">spare GPIO 5</text>
 <text x="768" y="702" text-anchor="end" font-size="9" fill="#9ad">M20 · bank 35</text>
 <circle cx="830" cy="692" r="13" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
-<text x="852" y="690" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">pe4302_v[3]</text>
+<text x="852" y="690" text-anchor="start" font-size="12" font-weight="bold" fill="#fff">spare GPIO 3</text>
 <text x="852" y="702" text-anchor="start" font-size="9" fill="#9ad">M18 · bank 35</text>
 <circle cx="790" cy="736" r="13" fill="#1c1c1c" stroke="#9a9a9a" stroke-width="2" stroke-dasharray="3 2"/>
 <text x="768" y="734" text-anchor="end" font-size="12" font-weight="bold" fill="#ccc">free</text>
@@ -161,9 +161,9 @@
 <circle cx="998" cy="112" r="8" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="2"/>
 <text x="1014" y="116" font-size="12">ADF4351 synthesiser</text>
 <circle cx="998" cy="136" r="8" fill="#e07b00" stroke="#e07b00" stroke-width="2"/>
-<text x="1014" y="140" font-size="12">PE4302</text>
+<text x="1014" y="140" font-size="12">spare GPIO (was PE4302)</text>
 <circle cx="998" cy="160" r="8" fill="#2a9d4b" stroke="#2a9d4b" stroke-width="2"/>
-<text x="1014" y="164" font-size="12">I2C (ADS1115)</text>
+<text x="1014" y="164" font-size="12">I2C: PCF8574 (PE4302)</text>
 <circle cx="998" cy="184" r="8" fill="#00838f" stroke="#00838f" stroke-width="2"/>
 <text x="1014" y="188" font-size="12">adapter display, keys, LEDs</text>
 <circle cx="998" cy="208" r="8" fill="#1c1c1c" stroke="#9a9a9a" stroke-width="2" stroke-dasharray="3 2"/>
