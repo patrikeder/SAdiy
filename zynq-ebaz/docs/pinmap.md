@@ -25,15 +25,15 @@ Reference: EBAZ4205 (XC7Z010-CLG400), expansion connectors DATA1..3 (2.0 mm, 2x1
 | DATA2-7 | G19 | 35 | IO_L18P_T2_AD13P_35 | `adf4351_dat` | out | ADF4351 synthesiser | in use | PS SPI0 MOSI via EMIO |
 | DATA2-8 | H20 | 35 | IO_L17N_T2_AD5N_35 | `adf4351_le` | out | ADF4351 synthesiser | in use | PS SPI0 SS0 via EMIO (LE = chip select) |
 | DATA2-9 | J19 | 35 | IO_L10N_T1_AD11N_35 | `adf4351_ld` | in | ADF4351 synthesiser | in use | lock detect, EMIO GPIO input; pulldown so a missing cable reads unlocked |
-| DATA2-11 | K18 | 35 | IO_L12N_T1_MRCC_35 | `i2c_sda` | inout | I2C, ADS1115 | in use | PS I2C0 SDA via EMIO |
+| DATA2-11 | K18 | 35 | IO_L12N_T1_MRCC_35 | `i2c_sda` | inout | I2C: PCF8574 for the PE4302 | in use | I2C SDA, PS I2C0 via EMIO or the PL engine |
 | DATA2-13 | K19 | 35 | IO_L10P_T1_AD11P_35 | `adf4351_ce` | out | ADF4351 synthesiser | in use | EMIO GPIO, tri-stated until software drives it; adapter jumper holds CE high |
-| DATA2-14 | J20 | 35 | IO_L17P_T2_AD5P_35 | `pe4302_v[0]` | out | PE4302 attenuator | in use | V1 = 0.5 dB |
-| DATA2-15 | L16 | 35 | IO_L11P_T1_SRCC_35 | `pe4302_v[1]` | out | PE4302 attenuator | in use | V2 = 1 dB |
-| DATA2-16 | L19 | 35 | IO_L9P_T1_DQS_AD3P_35 | `pe4302_v[2]` | out | PE4302 attenuator | in use | V3 = 2 dB |
-| DATA2-17 | M18 | 35 | IO_L8N_T1_AD10N_35 | `pe4302_v[3]` | out | PE4302 attenuator | in use | V4 = 4 dB |
-| DATA2-18 | L20 | 35 | IO_L9N_T1_DQS_AD3N_35 | `pe4302_v[4]` | out | PE4302 attenuator | in use | V5 = 8 dB |
-| DATA2-19 | M20 | 35 | IO_L7N_T1_AD2N_35 | `pe4302_v[5]` | out | PE4302 attenuator | in use | V6 = 16 dB |
-| DATA2-20 | L17 | 35 | IO_L11N_T1_SRCC_35 | `i2c_scl` | inout | I2C, ADS1115 | in use | PS I2C0 SCL via EMIO (ADS1115, address 0x48) |
+| DATA2-14 | J20 | 35 | IO_L17P_T2_AD5P_35 | `pe4302_v[0]` | inout | spare GPIO (was PE4302) | in use | spare EMIO GPIO 0 (was PE4302 V1 until 2026-11-25) |
+| DATA2-15 | L16 | 35 | IO_L11P_T1_SRCC_35 | `pe4302_v[1]` | inout | spare GPIO (was PE4302) | in use | spare EMIO GPIO 1 (was PE4302 V2 until 2026-11-25) |
+| DATA2-16 | L19 | 35 | IO_L9P_T1_DQS_AD3P_35 | `pe4302_v[2]` | inout | spare GPIO (was PE4302) | in use | spare EMIO GPIO 2 (was PE4302 V3 until 2026-11-25) |
+| DATA2-17 | M18 | 35 | IO_L8N_T1_AD10N_35 | `pe4302_v[3]` | inout | spare GPIO (was PE4302) | in use | spare EMIO GPIO 3 (was PE4302 V4 until 2026-11-25) |
+| DATA2-18 | L20 | 35 | IO_L9N_T1_DQS_AD3N_35 | `pe4302_v[4]` | inout | spare GPIO (was PE4302) | in use | spare EMIO GPIO 4 (was PE4302 V5 until 2026-11-25) |
+| DATA2-19 | M20 | 35 | IO_L7N_T1_AD2N_35 | `pe4302_v[5]` | inout | spare GPIO (was PE4302) | in use | spare EMIO GPIO 5 (was PE4302 V6 until 2026-11-25) |
+| DATA2-20 | L17 | 35 | IO_L11N_T1_SRCC_35 | `i2c_scl` | inout | I2C: PCF8574 for the PE4302 | in use | I2C SCL, PS I2C0 via EMIO or the PL engine (PCF8574 of the PE4302, address 0x27) |
 | DATA3-9 | N17 | 34 | IO_L23P_T3_34 | `lcd_res` | out | other | in use | ST7789 RES = EMIO GPIO 9 |
 | DATA3-11 | P20 | 34 | IO_L14N_T2_SRCC_34 | `lcd_sda` | out | other | in use | ST7789 SDA = PS SPI1 MOSI via EMIO |
 | DATA3-13 | R18 | 34 | IO_L20N_T3_34 | `lcd_dc` | out | other | in use | ST7789 DC = EMIO GPIO 8 |
@@ -116,15 +116,13 @@ Present on the adapter but not constrained: HDMI (DAT0 D19, DAT1 C20, DAT2 B19, 
 | 9 | P18 | `free` | M17 | `free` |
 | 10 | GND | GND | 3V3 | 3V3 |
 
-All 14 DATA2 control balls are on this connector. Free for the PCBs: J18, M19, N20, P18, M17 (J18 is DATA2-6, the others come from DATA3).
+All 14 DATA2 control balls are on this connector. Free for the PCBs: J18, M19, N20, P18, M17 (J18 is DATA2-6, the others come from DATA3). The six former PE4302 balls (`pe4302_v[n]`) are spare GPIO too, still constrained in the build.
 
 ### Conflict with the planned AD9226 on DATA1
 
 With this adapter the following planned `adc_*` balls are also wired to adapter functions: H18 (LED1), K17 (LED2), E19 (LED3), H16 (UART header RX), H17 (UART header TX), D19 (HDMI DAT0), C20 (HDMI DAT1), B19 (HDMI DAT2), F19 (HDMI CLK), D18 (buzzer). The right-hand connector carries no DATA1 signals, so the AD9226 cannot use DATA1 with this adapter. The LEDs H18 / K17 / E19 stay as they are (user decision 2026-11-15; `pins.toml` lists them as `led[n]`), so `adc_d[8]`, `adc_d[10]` and `adc_clk` have no DATA1 ball on this adapter; only a different adapter PCB (planned for a later stage) would free them.
 
 ### Proposal: AD9226 through the HDMI port
-
-**Superseded 2026-11-23:** the user plans a different adapter (adapter v2) without HDMI and LCD that wires the 14 DATA1 signals straight to the AD9226 module (`adc-module.md` section 4). This proposal is not needed any more; kept as a record.
 
 The HDMI port carries four differential pairs (DAT0, DAT1, DAT2, CLK) = 8 FPGA balls, exactly 8 of the 14 planned AD9226 balls. With the 5 free balls of the right connector that makes 13: 12 data bits and the clock; OTR needs one more (the UART header H16 once its jumper is removed, or leave it out). Used as single-ended LVCMOS33. A proposal only: NOT in `pins.toml` (the Linux lane owns that file) and not constrained; the adapter PCB will probably be replaced later, then the pins are chosen again.
 
@@ -148,21 +146,34 @@ The HDMI port carries four differential pairs (DAT0, DAT1, DAT2, CLK) = 8 FPGA b
 To check before wiring: (1) continuity from each HDMI pad to its EBAZ DATA1 pin and that no series resistor, termination or ESD part sits on it; (2) that the negative balls reach the HDMI pins (the silk only names the positive nets); (3) the HDMI +5 V and shield pins must never touch a signal line; (4) which pad of your HDMI breakout is which TMDS line.
 
 
+## PE4302 through a PCF8574 (I2C)
+
+The attenuator is on a PCF8574 port expander (an I2C-to-LCD adapter board) on `i2c_scl` (DATA2-20) and `i2c_sda` (DATA2-11), address 0x27 (a PCF8574A answers at 0x38..0x3F). Register map: `ATT_I2C`, `ATT_STAT`.
+
+| PCF8574 | P0 | P1 | P2 | P3 | P4 | P5 | P6 | P7 |
+|---|---|---|---|---|---|---|---|---|
+| Connected to | V1 (0.5 dB) | V2 (1 dB) | V3 (2 dB) | LCD backlight LED | V4 (4 dB) | V5 (8 dB) | V6 (16 dB) | spare |
+
+- Each of V1..V6 needs a pull-up to 3.3 V (2.2 kohm): the PCF8574 drives high only weakly (about 100 uA) and the PE4302 module has 10 kohm pull-downs.
+- Supply the PCF8574 board from 3.3 V: its SDA / SCL pull-ups go to its supply, and the FPGA pins are 3.3 V only.
+- DATA2-14..19 carried V1..V6 until 2026-11-25. They are spare GPIO now (EMIO 0..5, port names `pe4302_v[n]`); do not drive them while old attenuator wires are still connected.
+
+
 ## EMIO line map (Linux GPIO line = 54 + n on the Zynq gpiochip)
 
 | n | Signal | n | Signal |
 |---|---|---|---|
-| 0 | pe4302_v[0] (V1) | 8 | lcd_dc (adapter LCD) |
-| 1 | pe4302_v[1] (V2) | 9 | lcd_res (adapter LCD) |
-| 2 | pe4302_v[2] (V3) | 10 | led[0] (adapter) |
-| 3 | pe4302_v[3] (V4) | 11 | led[1] (adapter) |
-| 4 | pe4302_v[4] (V5) | 12 | led[2] (adapter) |
-| 5 | pe4302_v[5] (V6) | 13 | keys[0] (adapter, active low) |
+| 0 | spare GPIO 0 (`pe4302_v[0]`) | 8 | lcd_dc (adapter LCD) |
+| 1 | spare GPIO 1 (`pe4302_v[1]`) | 9 | lcd_res (adapter LCD) |
+| 2 | spare GPIO 2 (`pe4302_v[2]`) | 10 | led[0] (adapter) |
+| 3 | spare GPIO 3 (`pe4302_v[3]`) | 11 | led[1] (adapter) |
+| 4 | spare GPIO 4 (`pe4302_v[4]`) | 12 | led[2] (adapter) |
+| 5 | spare GPIO 5 (`pe4302_v[5]`) | 13 | keys[0] (adapter, active low) |
 | 6 | adf4351_ce | 14 | keys[1] (adapter, active low) |
 | 7 | adf4351_ld | 15 | keys[2] (adapter, active low) |
 | | | 16 | keys[3] (adapter, active low) |
 | | | 17 | keys[4] (adapter, active low) |
 
-Since register map 1.1 `adf4351_ce` and the I2C pins pass the engine's pin mux: while the engine owns the pins CE follows `ADF_PINS.ce`, and with `DET_CFG.src = 3` the PL reads the ADS1115 itself.
+`adf4351_ce` and the I2C pins pass the engine's pin mux: while the engine owns the pins CE follows `ADF_PINS.ce` and the I2C bus is the engine's, which drives the PE4302 through the PCF8574 (register map 2.0). Linux must not use I2C0 in that time.
 
 Also on EMIO: SPI0 (SCLK, MOSI, SS0 = LE), SPI1 (adapter LCD: SCLK, MOSI, SS0) and I2C0 (SCL, SDA), see the tables above.
